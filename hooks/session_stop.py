@@ -8,6 +8,24 @@ import subprocess
 import time
 import urllib.request
 import urllib.parse
+from pathlib import Path
+from datetime import datetime
+
+
+def _warn(tag: str, msg: str) -> None:
+    try:
+        log = Path.home() / ".efficlaude" / "efficlaude.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        line = f"[{datetime.utcnow().isoformat(timespec='seconds')}] [{tag}] {msg}\n"
+        lines = log.read_text().splitlines(keepends=True) if log.exists() else []
+        if len(lines) >= 1000:
+            lines = lines[-999:]
+        log.write_text("".join(lines) + line)
+        if os.getenv("EFFICLAUDE_DEBUG"):
+            print(line, end="", file=sys.stderr)
+    except Exception:
+        pass
+
 
 WORKER_URL = "http://localhost:37777"
 START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
@@ -81,8 +99,8 @@ def auto_export(project):
         os.makedirs(os.path.dirname(export_path), exist_ok=True)
         with open(export_path, 'w') as f:
             json.dump(export, f)
-    except Exception:
-        pass
+    except Exception as e:
+        _warn("session_stop", f"auto_export failed: {e}")
 
 
 def ensure_commit_hook():
@@ -102,8 +120,8 @@ def ensure_commit_hook():
             import shutil
             shutil.copy2(src, dst)
             os.chmod(dst, 0o755)
-    except Exception:
-        pass
+    except Exception as e:
+        _warn("session_stop", f"commit hook install failed: {e}")
 
 
 def main():
@@ -120,8 +138,8 @@ def main():
     )
     try:
         urllib.request.urlopen(req, timeout=10)
-    except Exception:
-        pass
+    except Exception as e:
+        _warn("session_stop", f"summarize failed: {e}")
     auto_export(project)
     ensure_commit_hook()
 

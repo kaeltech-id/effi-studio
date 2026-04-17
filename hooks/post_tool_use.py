@@ -7,6 +7,24 @@ import os
 import subprocess
 import time
 import urllib.request
+from pathlib import Path
+from datetime import datetime
+
+
+def _warn(tag: str, msg: str) -> None:
+    try:
+        log = Path.home() / ".efficlaude" / "efficlaude.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        line = f"[{datetime.utcnow().isoformat(timespec='seconds')}] [{tag}] {msg}\n"
+        lines = log.read_text().splitlines(keepends=True) if log.exists() else []
+        if len(lines) >= 1000:
+            lines = lines[-999:]
+        log.write_text("".join(lines) + line)
+        if os.getenv("EFFICLAUDE_DEBUG"):
+            print(line, end="", file=sys.stderr)
+    except Exception:
+        pass
+
 
 WORKER_URL = "http://localhost:37777"
 TRACKED_TOOLS = {"Write", "Edit", "Bash", "MultiEdit"}
@@ -87,8 +105,8 @@ def main():
     if ensure_worker_quick():
         try:
             post_observation(project, observation)
-        except Exception:
-            pass
+        except Exception as e:
+            _warn("post_tool_use", f"observe failed: {e}")
 
 
 if __name__ == "__main__":

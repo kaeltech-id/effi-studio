@@ -4,6 +4,7 @@ import re
 import json
 from datetime import datetime
 from pathlib import Path
+from logger import warn
 
 EXTENSION_TO_LANG = {
     'py': 'python',
@@ -97,7 +98,8 @@ class GraphEngine:
                 try:
                     self.index_file(project, str(path), root_dir)
                     indexed += 1
-                except Exception:
+                except Exception as e:
+                    warn("graph", f"index_file failed ({path}): {e}")
                     continue
         return indexed
 
@@ -117,7 +119,8 @@ class GraphEngine:
 
         try:
             source = abs_path.read_text(encoding='utf-8', errors='ignore')
-        except Exception:
+        except Exception as e:
+            warn("graph", f"read failed ({abs_path}): {e}")
             return
 
         try:
@@ -164,7 +167,8 @@ class GraphEngine:
             nodes = []
             self._walk_tree(tree.root_node, source, lang, nodes)
             return nodes
-        except Exception:
+        except Exception as e:
+            warn("graph", f"tree-sitter parse error: {e}")
             return self._extract_nodes_regex(source, lang)
 
     def _walk_tree(self, node, source, lang, results):

@@ -4,6 +4,7 @@ import re
 import requests
 import chromadb
 from datetime import datetime
+from logger import warn
 
 
 LIBRARY_SOURCES = {
@@ -142,7 +143,8 @@ class DocsEngine:
             )
             return len(chunks)
 
-        except Exception:
+        except Exception as e:
+            warn("docs", f"fetch failed ({name}): {e}")
             return 0
 
     def _chunk_markdown(self, content, library, max_chars=600):
@@ -205,7 +207,8 @@ class DocsEngine:
                         "content": doc,
                         "distance": dist
                     })
-            except Exception:
+            except Exception as e:
+                warn("docs", f"search error ({lib_name}): {e}")
                 continue
 
         all_results.sort(key=lambda x: x['distance'])

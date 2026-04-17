@@ -5,6 +5,7 @@ import json
 import hashlib
 import chromadb
 from datetime import datetime
+from logger import warn
 
 
 SCHEMA_VERSION = 1
@@ -88,8 +89,8 @@ class MemoryEngine:
                             (SCHEMA_VERSION,)
                         )
                     conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            warn("memory", f"migration error: {e}")
 
     def _reconcile_chromadb(self):
         try:
@@ -125,8 +126,8 @@ class MemoryEngine:
                         metadatas=[{"type": r[1], "created_at": r[4], **json.loads(r[3] or '{}')} for r in missing],
                         ids=[str(r[0]) for r in missing]
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            warn("memory", f"chromadb reconcile error: {e}")
 
     def _get_collection(self, project):
         key = hashlib.md5(project.encode()).hexdigest()[:8]
@@ -152,8 +153,8 @@ class MemoryEngine:
                 conn.commit()
             collection = self._get_collection(project)
             collection.delete(ids=excess_str_ids)
-        except Exception:
-            pass
+        except Exception as e:
+            warn("memory", f"prune error (type={obs_type}): {e}")
 
     def _prune_on_startup(self) -> None:
         try:
@@ -165,8 +166,8 @@ class MemoryEngine:
                 ).fetchall()
             for project, obs_type in pairs:
                 self._prune_type(project, obs_type, TYPE_CAPS[obs_type])
-        except Exception:
-            pass
+        except Exception as e:
+            warn("memory", f"prune on startup error: {e}")
 
     def _fts_search(self, project: str, query: str, limit: int) -> list:
         try:
@@ -188,7 +189,8 @@ class MemoryEngine:
                 }
                 for r in rows
             ]
-        except Exception:
+        except Exception as e:
+            warn("memory", f"fts search error: {e}")
             return []
 
     def save_observation(self, project, obs_type, content, metadata=None):
@@ -217,8 +219,9 @@ class MemoryEngine:
                     ids=[str(obs_id)]
                 )
                 break
-            except Exception:
-                pass
+            except Exception as e:
+                if attempt == 1:
+                    warn("memory", f"chromadb add failed: {e}")
         cap = TYPE_CAPS.get(obs_type)
         if cap is not None:
             self._prune_type(project, obs_type, cap)
@@ -246,7 +249,8 @@ class MemoryEngine:
                 if fts:
                     return fts
             return items
-        except Exception:
+        except Exception as e:
+            warn("memory", f"chromadb search error: {e}")
             return self._fts_search(project, query, limit)
 
     def get_recent(self, project, limit=20):

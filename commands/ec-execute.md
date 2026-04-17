@@ -100,7 +100,7 @@ for each modified_file in completed_tasks:
 ```
 This enables blast radius analysis in the next /ec-review run.
 
-## Step 7 — Save Execution Memory (if worker running)
+## Step 6 — Save Execution Memory (if worker running)
 After all tasks complete, save what was built:
 ```
 curl -s -X POST http://localhost:37777/memory/observe \
@@ -113,7 +113,7 @@ curl -s -X POST http://localhost:37777/memory/observe \
   }'
 ```
 
-## Step 6 — Report
+## Step 7 — Report
 ```
 ## Execution Complete
 

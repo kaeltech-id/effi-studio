@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify
 from memory import MemoryEngine
 from docs import DocsEngine
 from graph import GraphEngine
+from logger import get_counts
 
 app = Flask(__name__)
 
@@ -34,7 +35,8 @@ def health():
     return jsonify({
         "status": "ok",
         "version": version,
-        "tree_sitter": graph._ts_available
+        "tree_sitter": graph._ts_available,
+        "error_counts": get_counts()
     })
 
 

@@ -8,6 +8,24 @@ import subprocess
 import time
 import urllib.request
 import urllib.parse
+from pathlib import Path
+from datetime import datetime
+
+
+def _warn(tag: str, msg: str) -> None:
+    try:
+        log = Path.home() / ".efficlaude" / "efficlaude.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        line = f"[{datetime.utcnow().isoformat(timespec='seconds')}] [{tag}] {msg}\n"
+        lines = log.read_text().splitlines(keepends=True) if log.exists() else []
+        if len(lines) >= 1000:
+            lines = lines[-999:]
+        log.write_text("".join(lines) + line)
+        if os.getenv("EFFICLAUDE_DEBUG"):
+            print(line, end="", file=sys.stderr)
+    except Exception:
+        pass
+
 
 WORKER_URL = "http://localhost:37777"
 MAX_MEMORY_ITEMS = 5
@@ -48,7 +66,8 @@ def ensure_worker():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-    except Exception:
+    except Exception as e:
+        _warn("prompt_submit", f"worker start failed: {e}")
         return (False, False)
     # Retry health check every 1s up to WORKER_RESTART_WAIT_SECS
     for _ in range(WORKER_RESTART_WAIT_SECS):
