@@ -35,9 +35,9 @@ Claude will scan your existing code, ask you to confirm what it found, collect y
 | Command | What it does |
 |---|---|
 | `/setup` | Scans your codebase, learns your stack & conventions, stores config for future sessions |
-| `/feature` | Gathers your ticket, design, and API contract — then writes a detailed execution plan |
-| `/execute` | Runs the plan using parallel subagents with pre-flight checks and error recovery |
-| `/review` | Reviews code for quality, security, performance, and accessibility — auto-fixes issues |
+| `/feature` | Gathers your ticket, design, and API contract — then writes a granular execution plan |
+| `/execute` | Runs the plan using parallel subagents — every task must be verified before marked done |
+| `/review` | Two-stage review: spec compliance first, then code quality — auto-fixes all issues |
 | `/git` | The **only** way Claude can touch git. No surprise commits, ever |
 
 ---
@@ -66,7 +66,7 @@ Everything is saved to the project. Run once, works forever.
 
 ---
 
-## /feature — Interactive Planning
+## /feature — Granular Planning
 
 Works with any input — from a full Jira ticket to a single sentence.
 
@@ -81,19 +81,31 @@ Claude: Any API contract? (paste or skip)
 You:    skip
 ```
 
-Claude then produces a full plan including:
+Every plan includes:
 
 - **Reuse scan** — finds existing components, hooks, and utils to reuse instead of recreating
 - **Impact analysis** — lists every existing file that will be touched
-- **Breaking change warnings** — flags anything that could break existing behavior
-- **Task breakdown** with size estimates: `S` < 1hr · `M` 1–3hr · `L` > 3hr
-- **Edge cases per task** — loading state, empty state, error state
+- **Breaking change warnings** — flags anything that could affect existing behavior
+- **Size estimates** per task: `S` < 1hr · `M` 1–3hr · `L` > 3hr
 
-You review and approve the plan before anything gets written.
+### Atomic Task Breakdown
+
+Each task is scoped to **2–5 minutes of focused work** — one action, fully specified:
+
+| Field | What it contains |
+|---|---|
+| File | Exact path to create or modify |
+| Code sample | Concrete snippet or expected structure — no "fill in details" |
+| Edge cases | Loading state, empty state, error state |
+| Verify | Exact command or check to confirm the task is done |
+
+Claude self-reviews the plan before presenting it. No vague tasks make it through.
+
+You approve the plan before anything gets written.
 
 ---
 
-## /execute — Parallel Execution
+## /execute — Parallel Execution with Evidence
 
 Runs your approved plan using one subagent per task, simultaneously.
 
@@ -102,15 +114,30 @@ Runs your approved plan using one subagent per task, simultaneously.
 - No two tasks write to the same file
 - Task dependencies are correctly ordered
 
-**Progress updates** — you see which tasks are running and which are done.
+**Evidence rule** — every subagent must prove completion:
+1. Run the verify step from the task
+2. Read the actual output
+3. Only mark done if output confirms success
+4. If verification fails: fix and re-verify
 
-**Error recovery** — if a task fails, Claude asks: *Retry / Skip / Fix manually?* It never silently moves on.
+No task is marked complete without evidence.
+
+**Error recovery** — if a task fails, Claude asks: *Retry / Skip / Fix manually?*
 
 ---
 
-## /review — Automated Code Review
+## /review — Two-Stage Code Review
 
-Claude reviews every file touched during execution and **fixes issues directly** — not just reports them.
+Inspired by [Superpowers](https://github.com/obra/superpowers). Stage 2 only runs after Stage 1 is fully clean.
+
+### Stage 1 — Spec Compliance
+Verifies the implementation matches the approved plan exactly:
+- Output matches task description and code sample
+- All edge cases handled as specified
+- Correct existing code reused as planned
+- No over-building, no under-building
+
+### Stage 2 — Code Quality
 
 | Check | What it catches |
 |---|---|
@@ -120,7 +147,9 @@ Claude reviews every file touched during execution and **fixes issues directly**
 | **Security** | Hardcoded secrets, XSS risks, exposed sensitive data |
 | **Accessibility** | Missing `alt`, `aria-label`, keyboard navigation *(UI only)* |
 
-After review, Claude will optionally generate unit tests and run your existing test suite.
+Claude fixes all issues directly — not just reports them.
+
+After review, Claude will optionally generate unit tests and run your existing test suite with real output.
 
 When everything is clean: *"No issues found. Ready to commit."*
 
