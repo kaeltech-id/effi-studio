@@ -14,8 +14,9 @@ Before executing, verify:
 - All files referenced in the plan exist (if modifying existing files)
 - No two tasks write to the same file (conflict risk)
 - Dependencies between tasks are correctly ordered
+- Every task has a verify step defined
 
-If any issue found, report it and ask user to confirm before continuing:
+If any issue found, report it and ask:
 "Found pre-flight issue: {issue}. Continue anyway or adjust the plan?"
 
 ## Step 3 — Group Tasks
@@ -23,28 +24,34 @@ From the plan:
 - **Parallel**: tasks with no dependencies → run simultaneously
 - **Sequential**: tasks that depend on others → run after their dependencies complete
 
-## Step 4 — Execute with Progress Updates
-For each parallel group:
-
-Show before starting:
+## Step 4 — Execute with Evidence Verification
+For each parallel group, show before starting:
 ```
 Running group {n}: {task names} (parallel)
 ```
 
 Spawn one subagent per task simultaneously. Each subagent prompt must include:
-- Task name, description, implementation notes
-- Only the context relevant to that task (stack, structure, conventions)
-- Reuse instructions from plan (existing components/utils to use)
-- Edge cases to handle (loading, empty, error states)
+- Task name, description, file path, code sample
+- Only the context relevant to that specific task (stack, structure, conventions)
+- Reuse instructions from plan
+- Edge cases to handle
 - Clean code rules: readable, best practices, no unnecessary comments
 - ⚠️ Breaking change note if flagged in plan
-- File paths to create/modify
+- The verify step from the plan
+
+### Evidence Rule — mandatory for every subagent
+Each subagent MUST prove completion before claiming done:
+1. Identify the verify step from the task
+2. Run it (compile check, test, lint, or file existence check)
+3. Read the actual output
+4. Only claim task complete if output confirms success
+5. If verification fails: fix and re-verify — do NOT claim done without evidence
 
 Wait for ALL subagents in the group to finish before starting the next group.
 
 ### Error Recovery
-If a subagent fails or produces an error:
-- Report clearly: "Task {name} failed: {reason}"
+If a subagent fails or cannot verify:
+- Report: "Task {name} failed: {reason}"
 - Ask user: "Retry / Skip / Fix manually?"
 - Do not continue to dependent tasks until resolved
 
@@ -58,8 +65,8 @@ If a subagent fails or produces an error:
 - Failed/Skipped: {n}
 
 ### Tasks
-- ✓ Task 1 — {files created/modified}
-- ✓ Task 2 — {files created/modified}
+- ✓ Task 1 — {files modified} — verified: {how}
+- ✓ Task 2 — {files modified} — verified: {how}
 - ✗ Task 3 — {reason if failed}
 
 ### Breaking Changes Applied

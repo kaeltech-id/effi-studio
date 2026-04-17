@@ -37,6 +37,20 @@ Flag any task that could break existing behavior, APIs, or shared components.
 
 ## Step 3 — Write Plan
 
+### Task Granularity Rules
+Each task must represent 2–5 minutes of focused work. One action per task.
+Never write tasks like "implement the feature" or "handle edge cases".
+Instead, split into atomic steps:
+- "Write failing test for {behavior}"
+- "Create {ComponentName} with {props}"
+- "Add {endpoint} call in {file}"
+- "Handle loading state in {component}"
+
+Every task must include:
+- Exact file path to create or modify
+- Concrete code sample or clear expected output (no "fill in details")
+- Specific verification step: how to confirm this task is done
+
 ```
 ## Feature: {feature_name}
 
@@ -48,27 +62,39 @@ Flag any task that could break existing behavior, APIs, or shared components.
 - {component/hook/util} at {path} — used for {reason}
 
 ### Tasks
-- [ ] Task 1: {name} [S/M/L] — {short description}
-- [ ] Task 2: {name} [S/M/L] — {short description}
+- [ ] Task 1: {name} [S/M/L] — {one-line description}
+- [ ] Task 2: {name} [S/M/L] — {one-line description}
 - [ ] Task N: ...
 
 ### Per Task Detail
 **Task 1 — {name}** `S/M/L`
-- Files to create/modify:
-- Reuse: {existing code to use}
-- Edge cases: loading state / empty state / error state / {feature-specific cases}
+- File: {exact path to create/modify}
+- Reuse: {existing code to use, or "none"}
+- Code sample: {concrete snippet or expected structure}
+- Edge cases: loading state / empty state / error state
 - ⚠️ Breaking change: {description or "none"}
-- Implementation notes:
-- Dependencies: {other tasks}
+- Verify: {exact command or check to confirm task is done}
+- Dependencies: {other tasks, or "none"}
 
 **Task 2 — {name}**
 ...
 ```
 
-Size guide: S = <1hr, M = 1-3hr, L = >3hr
+Size guide: S = <1hr · M = 1–3hr · L = >3hr
 
 Save plan to `.claude/current-plan.md`.
 
-## Step 4 — Confirm
+## Step 4 — Self-Review Before Presenting
+Before showing the plan, check:
+- [ ] Every task has an exact file path
+- [ ] Every task has a concrete code sample or expected output
+- [ ] Every task has a verify step
+- [ ] No task says "fill in details", "handle edge cases", or "similar to Task N"
+- [ ] No task would take more than 5 minutes
+- [ ] Dependencies are correctly ordered
+
+Fix any issues found, then present the plan.
+
+## Step 5 — Confirm
 Ask: "Does this plan look right? Anything to change before executing?"
 Only tell user to run /execute after they approve.
