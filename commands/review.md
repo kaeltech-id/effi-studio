@@ -13,6 +13,29 @@ If worker is running:
 - Use memory to flag: if this feature contradicts past decisions or patterns.
 - Use docs to verify: API usage matches current library versions.
 
+## Step 1.5 — Blast Radius Analysis (if worker running)
+Extract all files modified during execution from `.claude/current-plan.md`.
+
+Index changed files into the graph:
+```
+for each modified_file in plan:
+  curl -s -X POST http://localhost:37777/graph/index \
+    -H "Content-Type: application/json" \
+    -d '{"project": "{project_name}", "file_path": "{modified_file}", "root_dir": "{cwd}"}'
+```
+
+Get blast radius — files that import from the changed files:
+```
+curl -s "http://localhost:37777/graph/blast-radius?project={project_name}&depth=2{&files=file1&files=file2...}"
+```
+
+If `affected` files are returned:
+- Show: "Blast radius: {n} additional files may be affected → {list}"
+- Include those files in Stage 1 and Stage 2 review scope
+- Flag any breakage found in affected files as ⚠️ Collateral impact
+
+If no affected files: note "No dependents found — isolated change."
+
 ---
 
 ## Stage 1 — Spec Compliance Review

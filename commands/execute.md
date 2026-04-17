@@ -66,7 +66,17 @@ If a subagent fails or cannot verify:
 - Ask user: "Retry / Skip / Fix manually?"
 - Do not continue to dependent tasks until resolved
 
-## Step 5 — Save Execution Memory (if worker running)
+## Step 5 — Index Modified Files into Graph (if worker running)
+After all tasks complete, index every created/modified file into the dependency graph:
+```
+for each modified_file in completed_tasks:
+  curl -s -X POST http://localhost:37777/graph/index \
+    -H "Content-Type: application/json" \
+    -d '{"project": "{project_name}", "file_path": "{modified_file}", "root_dir": "{cwd}"}'
+```
+This enables blast radius analysis in the next /review run.
+
+## Step 7 — Save Execution Memory (if worker running)
 After all tasks complete, save what was built:
 ```
 curl -s -X POST http://localhost:37777/memory/observe \

@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from flask import Flask, request, jsonify
 from memory import MemoryEngine
 from docs import DocsEngine
+from graph import GraphEngine
 
 app = Flask(__name__)
 
@@ -18,11 +19,16 @@ os.makedirs(CHROMA_PATH, exist_ok=True)
 
 memory = MemoryEngine(DB_PATH, CHROMA_PATH)
 docs = DocsEngine(DB_PATH, CHROMA_PATH)
+graph = GraphEngine(DB_PATH)
 
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok", "version": "1.0.0"})
+    return jsonify({
+        "status": "ok",
+        "version": "1.0.0",
+        "tree_sitter": graph._ts_available
+    })
 
 
 # ── Memory endpoints ──────────────────────────────────────────────────────────
@@ -112,6 +118,50 @@ def docs_refresh():
 def docs_list():
     project = request.args.get('project', '')
     return jsonify(docs.list_libraries(project))
+
+
+# ── Graph endpoints ───────────────────────────────────────────────────────────
+
+@app.route('/graph/index', methods=['POST'])
+def graph_index():
+    data = request.json or {}
+    project = data.get('project', '')
+    root_dir = data.get('root_dir', '')
+    file_path = data.get('file_path', '')
+
+    if not project:
+        return jsonify({"error": "project required"}), 400
+
+    if file_path:
+        graph.index_file(project, file_path, root_dir or None)
+        return jsonify({"status": "indexed", "file": file_path})
+
+    if root_dir:
+        count = graph.index_project(project, root_dir)
+        return jsonify({"status": "indexed", "files": count, "root": root_dir})
+
+    return jsonify({"error": "file_path or root_dir required"}), 400
+
+
+@app.route('/graph/blast-radius')
+def graph_blast_radius():
+    project = request.args.get('project', '')
+    files = request.args.getlist('files')
+    depth = int(request.args.get('depth', 2))
+
+    if not project or not files:
+        return jsonify({"changed": [], "affected": [], "total_files": 0})
+
+    result = graph.get_blast_radius(project, files, depth)
+    return jsonify(result)
+
+
+@app.route('/graph/summary')
+def graph_summary():
+    project = request.args.get('project', '')
+    if not project:
+        return jsonify({"error": "project required"}), 400
+    return jsonify(graph.get_summary(project))
 
 
 if __name__ == '__main__':
