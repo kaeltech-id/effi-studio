@@ -125,4 +125,4 @@ curl -s -X POST http://localhost:37777/memory/observe \
 - {description or "none"}
 ```
 
-Tell user to run /ec-review to review the results.
+Next: run `/ec-review` to review the results.

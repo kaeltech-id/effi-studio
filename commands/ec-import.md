@@ -3,7 +3,7 @@ Import project memory and graph from .claude/memory-export.json (shared via git)
 ## Step 0 — Check Worker
 Check worker: `curl -s http://localhost:37777/health`
 - If running: show "(worker online ✓)" and proceed.
-- If offline: show "Worker offline — cannot import. Start worker first." and stop.
+- If offline: show "(worker OFFLINE ⚠️ — import unavailable)" and stop.
 
 ## Step 1 — Check Export File
 Check if `.claude/memory-export.json` exists and is valid JSON.
@@ -35,3 +35,5 @@ Show:
 - "Imported {observations_imported} observations, {summaries_imported} summaries"
 - "Imported {nodes_imported} graph nodes, {edges_imported} graph edges"
 - "Memory and graph are now available for /ec-feature and /ec-review"
+
+Next: run `/ec-feature` or `/ec-review` to use the imported context.

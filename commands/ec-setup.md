@@ -152,3 +152,4 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 ## Step 6 — Confirm
 Show full summary of saved config. Ask: "Setup complete. Anything you'd like to change?"
+Next: run `/ec-brainstorm` to explore your first feature, or `/ec-feature` to plan directly.

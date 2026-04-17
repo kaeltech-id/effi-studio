@@ -60,3 +60,7 @@ Skip non-applicable items. Only proceed to Step 3 after applicable items are con
 ## Step 3 — Execute
 Only execute after explicit user confirmation.
 Show result after done.
+
+**Next step after each operation:**
+- After commit/push: if this completes a feature → run `/ec-brainstorm` to plan the next one
+- After pull/branch/merge: continue with your current workflow

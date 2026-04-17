@@ -161,4 +161,4 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 ## Step 6 — Confirm
 Ask: "Does this plan look right? Anything to change before executing?"
-Only tell user to run /ec-execute after they approve.
+Next: run `/ec-execute` to implement this plan.

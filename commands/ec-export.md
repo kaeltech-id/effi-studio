@@ -3,7 +3,7 @@ Export project memory and graph to a shareable JSON file at .claude/memory-expor
 ## Step 0 — Check Worker
 Check worker: `curl -s http://localhost:37777/health`
 - If running: show "(worker online ✓)" and proceed.
-- If offline: show "Worker offline — cannot export. Start worker first." and stop.
+- If offline: show "(worker OFFLINE ⚠️ — export unavailable)" and stop.
 
 ## Step 1 — Load Project Name
 Read `.claude/project-config.json` → get `project_name`.
@@ -30,4 +30,4 @@ Show summary:
 - "Exported {observations count} observations, {summaries count} summaries"
 - "Exported {nodes count} graph nodes, {edges count} graph edges"
 - "Written to .claude/memory-export.json"
-- "Tip: commit this file to share memory with your team: `git add .claude/memory-export.json`"
+- "Next: run `/ec-git` to commit `.claude/memory-export.json` and share with your team."
