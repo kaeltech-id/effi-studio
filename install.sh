@@ -86,7 +86,8 @@ fi
 # ── 6. Install Python dependencies ───────────────────────────────────────────
 echo ""
 echo "Installing Python dependencies..."
-pip3 install -q -r "$SERVER_DIR/requirements.txt"
+pip3 install -q -r "$SERVER_DIR/requirements.txt" \
+  || { echo "  ✗ Failed to install Python dependencies. Check requirements.txt."; exit 1; }
 echo "  ✓ Python dependencies installed"
 
 # ── 7. Register hooks in ~/.claude/settings.json ─────────────────────────────

@@ -18,7 +18,7 @@ Check worker status: `curl -s http://localhost:37777/health`
 - Pre-fill the feature description from the decision's "Chosen Approach" section
 - Skip asking about approach — user already decided
 - Note: "(decision.md loaded — using chosen approach from brainstorm)"
-- After planning is complete, delete `.claude/decision.md` so it doesn't carry over to next feature
+- Do NOT delete `.claude/decision.md` here — it will be deleted by `/ec-review` after a clean review
 
 **Check for saved brainstorms:** If no `decision.md` was found:
 - Check if `.claude/brainstorms/` exists and contains `.md` files

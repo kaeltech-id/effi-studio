@@ -27,7 +27,7 @@ def _warn(tag: str, msg: str) -> None:
         pass
 
 
-WORKER_URL = "http://localhost:37777"
+WORKER_URL = f"http://localhost:{os.environ.get('EFFICLAUDE_PORT', '37777')}"
 START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
 
 

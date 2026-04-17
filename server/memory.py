@@ -32,7 +32,7 @@ class MemoryEngine:
         self._init_db()
         self._migrate()
         self._reconcile_chromadb()
-        self._prune_on_startup()
+        threading.Thread(target=self._prune_on_startup, daemon=True).start()
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
