@@ -15,6 +15,12 @@ BASE_DIR = os.path.expanduser("~/.efficlaude")
 DB_PATH = os.path.join(BASE_DIR, "efficlaude.db")
 CHROMA_PATH = os.path.join(BASE_DIR, "chroma")
 
+VALID_NODE_TYPES = {"function", "class", "method", "module", "variable"}
+
+
+def _is_safe_path(p: str) -> bool:
+    return bool(p) and not p.startswith('/') and '..' not in p.split('/')
+
 os.makedirs(BASE_DIR, exist_ok=True)
 os.makedirs(CHROMA_PATH, exist_ok=True)
 
@@ -208,7 +214,18 @@ def graph_import():
     project = data.get('project', '')
     if not project:
         return jsonify({"error": "project required"}), 400
-    result = graph.import_data(project, data.get('data', {}))
+    import_data = data.get('data', {})
+    for node in import_data.get('nodes', []):
+        fp = node.get('file_path', '')
+        if not _is_safe_path(fp):
+            return jsonify({"error": f"invalid file_path: {fp!r}"}), 400
+        if node.get('node_type') not in VALID_NODE_TYPES:
+            node['node_type'] = ''
+    for edge in import_data.get('edges', []):
+        src = edge.get('source_file', '')
+        if not _is_safe_path(src):
+            return jsonify({"error": f"invalid source_file: {src!r}"}), 400
+    result = graph.import_data(project, import_data)
     return jsonify(result)
 
 
