@@ -8,6 +8,8 @@ EFFICLAUDE_HOME="$HOME/.efficlaude"
 COMMANDS_DIR="$HOME/.claude/commands"
 HOOKS_DIR="$HOME/.efficlaude/hooks"
 SERVER_DIR="$HOME/.efficlaude/server"
+BIN_DIR="$HOME/.efficlaude/bin"
+SHELL_DIR="$HOME/.efficlaude/shell"
 COMMANDS=("setup" "feature" "execute" "review" "git")
 SERVER_FILES=("worker.py" "memory.py" "docs.py" "requirements.txt" "start.sh" "stop.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py")
@@ -35,7 +37,7 @@ fi
 echo "  ✓ Python $PYTHON_VERSION"
 
 # ── 2. Create directories ─────────────────────────────────────────────────────
-mkdir -p "$COMMANDS_DIR" "$HOOKS_DIR" "$SERVER_DIR" "$EFFICLAUDE_HOME/chroma"
+mkdir -p "$COMMANDS_DIR" "$HOOKS_DIR" "$SERVER_DIR" "$BIN_DIR" "$SHELL_DIR" "$EFFICLAUDE_HOME/chroma"
 
 # ── 3. Install Claude commands ────────────────────────────────────────────────
 echo ""
@@ -113,7 +115,53 @@ with open(settings_path, "w") as f:
 print("  ✓ Hooks registered in ~/.claude/settings.json")
 PYEOF
 
-# ── 8. Register daemon ────────────────────────────────────────────────────────
+# ── 8. Install token optimizer (etok) ────────────────────────────────────────
+echo ""
+echo "Installing token optimizer (etok)..."
+
+PLATFORM="$(uname -s)-$(uname -m)"
+ETOK_INSTALLED=false
+
+if command -v cargo &>/dev/null; then
+  TMPDIR_ETOK=$(mktemp -d)
+  curl -fsSL "$BASE_URL/token-optimizer/Cargo.toml" -o "$TMPDIR_ETOK/Cargo.toml"
+  mkdir -p "$TMPDIR_ETOK/src/filters"
+  for f in main.rs; do
+    curl -fsSL "$BASE_URL/token-optimizer/src/$f" -o "$TMPDIR_ETOK/src/$f"
+  done
+  for f in mod.rs generic.rs git.rs npm.rs docker.rs cargo.rs; do
+    curl -fsSL "$BASE_URL/token-optimizer/src/filters/$f" -o "$TMPDIR_ETOK/src/filters/$f"
+  done
+  (cd "$TMPDIR_ETOK" && cargo build --release -q && cp target/release/etok "$BIN_DIR/etok")
+  rm -rf "$TMPDIR_ETOK"
+  ETOK_INSTALLED=true
+  echo "  ✓ etok built from source"
+else
+  RELEASE_URL="https://github.com/$REPO/releases/latest/download/etok-$PLATFORM"
+  if curl -fsSL "$RELEASE_URL" -o "$BIN_DIR/etok" 2>/dev/null; then
+    chmod +x "$BIN_DIR/etok"
+    ETOK_INSTALLED=true
+    echo "  ✓ etok downloaded (pre-built binary)"
+  else
+    echo "  ℹ etok skipped — install Rust (https://rustup.rs) and re-run to enable token optimization"
+  fi
+fi
+
+if [ "$ETOK_INSTALLED" = true ]; then
+  chmod +x "$BIN_DIR/etok"
+  curl -fsSL "$BASE_URL/shell/effi-shell.sh" -o "$SHELL_DIR/effi-shell.sh"
+
+  for RC in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    if [ -f "$RC" ] && ! grep -q "effi-shell.sh" "$RC"; then
+      echo '' >> "$RC"
+      echo '# EffiClaude token optimizer' >> "$RC"
+      echo 'source "$HOME/.efficlaude/shell/effi-shell.sh"' >> "$RC"
+    fi
+  done
+  echo "  ✓ Shell wrappers installed (git, npm, yarn, pnpm, docker, cargo)"
+fi
+
+# ── 9. Register daemon ────────────────────────────────────────────────────────
 echo ""
 echo "Registering auto-start daemon..."
 
@@ -150,7 +198,7 @@ else
   echo "    Start manually with: python3 ~/.efficlaude/server/worker.py &"
 fi
 
-# ── 9. Start worker now ───────────────────────────────────────────────────────
+# ── 10. Start worker now ──────────────────────────────────────────────────────
 echo ""
 bash "$SERVER_DIR/start.sh"
 

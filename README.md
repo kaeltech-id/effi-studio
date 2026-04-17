@@ -8,18 +8,21 @@ Built for developers who want to move fast without cutting corners. Works with a
 
 ## Install
 
-Run once. Commands and memory service are installed globally.
+Run once. Commands, memory service, and token optimizer are installed globally.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/install.sh | bash
 ```
 
 **Requirements:** Python 3.8+, [Claude Code](https://claude.ai/code)
+**Optional:** Rust/cargo (for token optimizer — auto-detected by installer)
 
 The installer will:
 - Install all slash commands to `~/.claude/commands/`
 - Set up the EffiClaude worker service (memory + docs engine)
 - Register Claude Code hooks for automatic context capture
+- Build and install `etok` token optimizer (if Rust is available)
+- Add shell wrappers to `~/.zshrc` / `~/.bashrc`
 - Start the worker as a background daemon (auto-starts on login)
 
 ---
@@ -251,6 +254,54 @@ my-project/        ← run /setup here
 ├── frontend/
 ├── mobile/
 └── shared-ui/
+```
+
+---
+
+## Token Optimizer (etok)
+
+EffiClaude ships a Rust-based token optimizer inspired by [RTK](https://github.com/rtk-ai/rtk). It intercepts common command outputs and compresses them before they reach Claude — reducing token usage by 60–90% on typical dev operations.
+
+### How it works
+
+Shell wrapper functions replace common commands. Output is piped through the `etok` binary, which applies smart filtering, deduplication, and truncation — then returns the compressed result to Claude.
+
+```bash
+# Before etok:  git status → 459 chars
+# After etok:   git status → 129 chars  (-72%)
+```
+
+### Supported commands
+
+| Command | What gets optimized |
+|---|---|
+| `git status` | Groups staged/unstaged/untracked, collapses boilerplate |
+| `git log` | Compact one-line format per commit, caps at 20 entries |
+| `git diff` | Removes context lines, keeps only `+`/`-` and headers |
+| `git branch` | Caps at 15 branches |
+| `npm/yarn/pnpm install` | Removes progress spinners, keeps summary + errors |
+| `docker ps` | Caps at 20 containers |
+| `docker logs` | Shows last 50 lines |
+| `docker build` | Keeps only Step/Success/Error lines |
+| `cargo test` | Shows only failures + summary |
+| `cargo build/check` | Groups warnings, keeps errors |
+
+### Manual usage
+
+```bash
+# Pipe any command through etok
+git log --oneline | etok git log
+npm install 2>&1 | etok npm install
+
+# Check binary
+~/.efficlaude/bin/etok
+```
+
+### Install Rust (if skipped during install)
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# Then re-run the EffiClaude installer
 ```
 
 ---

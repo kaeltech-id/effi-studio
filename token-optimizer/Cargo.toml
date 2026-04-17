@@ -1,0 +1,11 @@
+[package]
+name = "etok"
+version = "0.1.0"
+edition = "2021"
+description = "EffiClaude Token Optimizer — compress command output before it reaches Claude"
+
+[[bin]]
+name = "etok"
+path = "src/main.rs"
+
+[dependencies]
