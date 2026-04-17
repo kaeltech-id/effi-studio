@@ -4,9 +4,12 @@
 import sys
 import json
 import os
+import subprocess
+import time
 import urllib.request
 
 WORKER_URL = "http://localhost:37777"
+START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
 
 
 def get_project_name():
@@ -18,7 +21,31 @@ def get_project_name():
         return os.path.basename(os.getcwd())
 
 
+def ensure_worker(wait_secs=3):
+    req = urllib.request.Request(f"{WORKER_URL}/health")
+    try:
+        urllib.request.urlopen(req, timeout=1)
+        return True
+    except Exception:
+        pass
+    try:
+        subprocess.Popen(["bash", START_SH],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(wait_secs):
+            time.sleep(1)
+            try:
+                urllib.request.urlopen(req, timeout=1)
+                return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return False
+
+
 def main():
+    if not ensure_worker(wait_secs=3):
+        sys.exit(0)
     project = get_project_name()
     payload = json.dumps({"project": project}).encode()
     req = urllib.request.Request(

@@ -4,11 +4,13 @@
 import sys
 import json
 import os
+import subprocess
+import time
 import urllib.request
-import urllib.error
 
 WORKER_URL = "http://localhost:37777"
 TRACKED_TOOLS = {"Write", "Edit", "Bash", "MultiEdit"}
+START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
 
 
 def get_project_name():
@@ -49,6 +51,23 @@ def post_observation(project, content, obs_type="tool_use"):
     urllib.request.urlopen(req, timeout=2)
 
 
+def ensure_worker_quick():
+    req = urllib.request.Request(f"{WORKER_URL}/health")
+    try:
+        urllib.request.urlopen(req, timeout=1)
+        return True
+    except Exception:
+        pass
+    try:
+        subprocess.Popen(["bash", START_SH],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1)
+        urllib.request.urlopen(req, timeout=1)
+        return True
+    except Exception:
+        return False
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -65,10 +84,11 @@ def main():
         sys.exit(0)
 
     project = get_project_name()
-    try:
-        post_observation(project, observation)
-    except Exception:
-        pass
+    if ensure_worker_quick():
+        try:
+            post_observation(project, observation)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

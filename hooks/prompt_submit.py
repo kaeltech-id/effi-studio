@@ -4,12 +4,16 @@
 import sys
 import json
 import os
+import subprocess
+import time
 import urllib.request
 import urllib.parse
 
 WORKER_URL = "http://localhost:37777"
 MAX_MEMORY_ITEMS = 5
 MAX_DOCS_ITEMS = 3
+START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
+WORKER_RESTART_WAIT_SECS = 5
 
 
 def get_project_name():
@@ -29,9 +33,27 @@ def fetch(url, timeout=2):
         return None
 
 
-def worker_running():
+def ensure_worker():
+    """Check worker health; auto-start if down. Returns (is_up: bool, was_restarted: bool)."""
     result = fetch(f"{WORKER_URL}/health", timeout=1)
-    return result is not None
+    if result is not None:
+        return (True, False)
+    # Worker is down — attempt to start it
+    try:
+        subprocess.Popen(
+            ["bash", START_SH],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return (False, False)
+    # Retry health check every 1s up to WORKER_RESTART_WAIT_SECS
+    for _ in range(WORKER_RESTART_WAIT_SECS):
+        time.sleep(1)
+        result = fetch(f"{WORKER_URL}/health", timeout=1)
+        if result is not None:
+            return (True, True)
+    return (False, False)
 
 
 def get_memory_context(project, query):
@@ -56,16 +78,16 @@ def main():
         sys.exit(0)
 
     prompt = data.get("prompt", "")
-    if not prompt or not worker_running():
+    if not prompt:
+        sys.exit(0)
+    is_up, was_restarted = ensure_worker()
+    if not is_up:
         sys.exit(0)
 
     project = get_project_name()
 
     memory_items = get_memory_context(project, prompt)
     docs_items = get_docs_context(project, prompt)
-
-    if not memory_items and not docs_items:
-        sys.exit(0)
 
     parts = []
 
@@ -76,6 +98,12 @@ def main():
     if docs_items:
         doc_lines = [f"- [{d['library']} › {d['heading']}] {d['content'][:120]}" for d in docs_items]
         parts.append("**Relevant docs:**\n" + "\n".join(doc_lines))
+
+    if was_restarted:
+        parts.insert(0, "**EffiClaude worker was restarted — context may be partial.**")
+
+    if not parts:
+        sys.exit(0)
 
     context_block = "\n\n".join(parts)
     print(f"<efficlaude-context>\n{context_block}\n</efficlaude-context>")

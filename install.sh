@@ -11,7 +11,7 @@ SERVER_DIR="$HOME/.efficlaude/server"
 BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
 COMMANDS=("setup" "feature" "brainstorm" "execute" "review" "git")
-SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh")
+SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py")
 
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
@@ -62,7 +62,7 @@ for file in "${SERVER_FILES[@]}"; do
   curl -fsSL "$BASE_URL/server/$file" -o "$SERVER_DIR/$file"
   echo "  ✓ server/$file"
 done
-chmod +x "$SERVER_DIR/start.sh" "$SERVER_DIR/stop.sh"
+chmod +x "$SERVER_DIR/start.sh" "$SERVER_DIR/stop.sh" "$SERVER_DIR/watchdog.sh"
 
 # ── 5. Install hooks ──────────────────────────────────────────────────────────
 echo ""
