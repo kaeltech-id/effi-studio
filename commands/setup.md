@@ -10,17 +10,19 @@ Scan all repos/folders in this project directory. Detect:
 ## Step 2 — Interactive Q&A
 Ask ONE question at a time. Wait for user response before proceeding.
 
-Ask in this order:
-1. "Nama project ini apa?"
-2. "Tech stack yang saya detect: [hasil scan]. Benar? Ada yang perlu ditambah/ubah?"
-3. "Folder structure: [hasil scan]. Benar? Ada koreksi?"
-4. "Naming convention yang saya detect: [hasil scan]. Benar?"
-5. "Jira base URL? (contoh: company.atlassian.net)"
-6. "Jira API key?"
-7. "Jira project key? (contoh: PROJ)"
-8. "Figma API key?"
-9. "Base URL API backend?"
-10. "Ada hal lain yang perlu saya ketahui tentang project ini?"
+1. "What is this project called?"
+2. "Tech stack I detected: [scan result]. Correct? Anything to add or change?"
+3. "Folder structure: [scan result]. Correct? Any corrections?"
+4. "Naming conventions I detected: [scan result]. Correct?"
+5. "Do you use a project management tool? (Jira / Linear / GitHub Issues / Notion / Trello / other / none)"
+   - If yes: "Base URL?" then "API key?" then "Project key or board ID?"
+   - If none: skip
+6. "Do you use Figma or another design tool? (Figma / Sketch / other / none)"
+   - If Figma: "Figma API key?"
+   - If other: "How do you share designs? (link / screenshot / description)"
+   - If none: skip
+7. "Backend API base URL? (or skip)"
+8. "Anything else I should know about this project?"
 
 ## Step 3 — Save Files
 After all answers collected, create/overwrite these files:
@@ -42,9 +44,11 @@ Context: .claude/context/
 ```json
 {
   "project_name": "",
-  "jira_base_url": "",
-  "jira_api_key": "",
-  "jira_project_key": "",
+  "ticket_tool": "",
+  "ticket_base_url": "",
+  "ticket_api_key": "",
+  "ticket_project_key": "",
+  "design_tool": "",
   "figma_api_key": "",
   "api_base_url": ""
 }
@@ -63,4 +67,4 @@ Naming conventions & clean code rules.
 Add `.claude/project-config.json` to gitignore.
 
 ## Step 4 — Confirm
-Show full summary of saved config. Ask: "Setup selesai. Ada yang perlu diubah?"
+Show full summary of saved config. Ask: "Setup complete. Anything you'd like to change?"

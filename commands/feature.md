@@ -1,21 +1,24 @@
-Run interactive feature planning. Read .claude/project-config.json first.
+Run interactive feature planning. Read .claude/project-config.json and CLAUDE.md first.
 
 ## Step 1 — Gather Input
-Ask ONE question at a time:
+Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.
 
-1. "Jira ticket number? (e.g. PROJ-123, or skip)"
-   - If provided: fetch `https://{jira_base_url}/rest/api/3/issue/{ticket}` with Authorization header `Basic {base64(email:api_key)}`
-   - Extract: summary, description, acceptance criteria, any Figma/API links
+1. "How would you like to describe this feature?"
+   - Option A: Ticket number (Jira, Linear, GitHub Issues, Notion, etc.)
+   - Option B: Paste a link or description directly
+   - Option C: Just tell me what you want to build
+   - If ticket system configured in project-config.json: auto-fetch from that system
+   - If no tool: accept any free-form text description
 
-2. "Figma frame link? (paste URL, or skip)"
-   - If provided: extract file_key and node_id from URL
-   - Fetch `https://api.figma.com/v1/files/{file_key}/nodes?ids={node_id}` with header `X-Figma-Token: {figma_api_key}`
-   - Analyze: components, layout, interactions
+2. "Do you have a design reference? (Figma link / Sketch / screenshot path / text description / skip)"
+   - Figma URL: extract file_key + node_id, fetch `https://api.figma.com/v1/files/{file_key}/nodes?ids={node_id}` with `X-Figma-Token: {figma_api_key}`
+   - Screenshot path: read and analyze the image
+   - Text description: use as-is
+   - Skip: plan UI based on description only
 
-3. "Any additional API contract? (paste or skip)"
-   - Accept JSON, OpenAPI spec, or plain text description
+3. "Any API contract? (paste JSON / OpenAPI / endpoint description / skip)"
 
-4. "Any other context? (or type 'done')"
+4. "Anything else I should know? (or type 'done')"
 
 ## Step 2 — Analyze
 Read .claude/context/stack.md, .claude/context/structure.md, .claude/context/conventions.md.
@@ -24,40 +27,45 @@ Read .claude/context/stack.md, .claude/context/structure.md, .claude/context/con
 Silently scan existing codebase for:
 - Components, hooks, utils that overlap with this feature
 - Existing patterns that should be followed
-- Anything that can be reused instead of created from scratch
-Note reusable items — reference them in the plan instead of creating new ones.
+- Anything reusable — reference in plan, do not recreate
 
 ### Impact Analysis
-Identify existing files that will be affected or at risk of breaking.
+Identify existing files that will be modified or at risk of breaking.
+
+### Breaking Change Detection
+Flag any task that could break existing behavior, APIs, or shared components.
 
 ## Step 3 — Write Plan
-Output a structured plan:
 
 ```
 ## Feature: {feature_name}
 
 ### Impact Analysis
-Files affected: {list of existing files that will be modified or at risk}
+- Files affected: {list}
+- ⚠️ Breaking change risk: {list or "none"}
 
 ### Reusable Existing Code
 - {component/hook/util} at {path} — used for {reason}
 
 ### Tasks
-- [ ] Task 1: {name} — {short description}
-- [ ] Task 2: {name} — {short description}
+- [ ] Task 1: {name} [S/M/L] — {short description}
+- [ ] Task 2: {name} [S/M/L] — {short description}
 - [ ] Task N: ...
 
 ### Per Task Detail
-**Task 1 — {name}**
+**Task 1 — {name}** `S/M/L`
 - Files to create/modify:
-- Reuse: {existing components/utils to use}
-- Edge cases to handle: loading state / empty state / error state
+- Reuse: {existing code to use}
+- Edge cases: loading state / empty state / error state / {feature-specific cases}
+- ⚠️ Breaking change: {description or "none"}
 - Implementation notes:
-- Dependencies: (other tasks it depends on)
+- Dependencies: {other tasks}
 
 **Task 2 — {name}**
 ...
 ```
+
+Size guide: S = <1hr, M = 1-3hr, L = >3hr
 
 Save plan to `.claude/current-plan.md`.
 
