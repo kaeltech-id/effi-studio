@@ -5,13 +5,13 @@ Context: .claude/context/
 
 ## GIT RULES
 - NEVER perform any git operation autonomously
-- NEVER commit, push, pull, merge, branch, stash without /git command
-- Git ONLY allowed when user explicitly runs /git
+- NEVER commit, push, pull, merge, branch, stash without /ec-git command
+- Git ONLY allowed when user explicitly runs /ec-git
 - NEVER add Co-Authored-By to commit messages
 
 ## WORKFLOW RULES
-- After /brainstorm completes → always suggest running /feature
-- After /feature plan approved → always suggest running /execute
-- After /execute completes → always suggest running /review
-- After /review is clean → always suggest running /git
-- Always guide user through the full flow: /brainstorm → /feature → /execute → /review → /git
+- After /ec-brainstorm completes → always suggest running /ec-feature
+- After /ec-feature plan approved → always suggest running /ec-execute
+- After /ec-execute completes → always suggest running /ec-review
+- After /ec-review is clean → always suggest running /ec-git
+- Always guide user through the full flow: /ec-brainstorm → /ec-feature → /ec-execute → /ec-review → /ec-git

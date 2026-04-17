@@ -24,10 +24,10 @@ Built for developers who want Claude to remember everything, plan precisely, and
 ## How it works
 
 ```
-┌─────────┐     ┌────────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐     ┌──────┐
-│ /setup  │────▶│/brainstorm │────▶│ /feature │────▶│ /execute │────▶│ /review │────▶│ /git │
-│  once   │     │ (optional) │     │   plan   │     │  build   │     │  check  │     │ push │
-└─────────┘     └────────────┘     └──────────┘     └──────────┘     └─────────┘     └──────┘
+┌──────────┐     ┌───────────────┐     ┌────────────┐     ┌────────────┐     ┌───────────┐     ┌──────────┐
+│/ec-setup │────▶│/ec-brainstorm │────▶│/ec-feature │────▶│/ec-execute │────▶│/ec-review │────▶│ /ec-git  │
+│  once    │     │  (optional)   │     │    plan    │     │   build    │     │   check   │     │   push   │
+└──────────┘     └───────────────┘     └────────────┘     └────────────┘     └───────────┘     └──────────┘
 ```
 
 ---
@@ -47,21 +47,21 @@ Installs commands to `~/.claude/commands/`, starts worker daemon, registers hook
 
 ## The workflow
 
-### /setup — once per project
+### /ec-setup — once per project
 
 Scans your codebase, learns your stack, registers docs libraries, initializes project memory.
 
 ```
-/setup
+/ec-setup
 ```
 
 > **What you get:** `CLAUDE.md` + `.claude/context/` + project memory initialized. Run once, works forever.
 
 ---
 
-### /brainstorm — before complex features
+### /ec-brainstorm — before complex features
 
-Explore approaches before committing. Claude presents 2–3 options with pros/cons — you pick one, decision is auto-loaded by `/feature`.
+Explore approaches before committing. Claude presents 2–3 options with pros/cons — you pick one, decision is auto-loaded by `/ec-feature`.
 
 ```
 You:    Users can't reset password without contacting support
@@ -73,11 +73,11 @@ Claude: ## Option 1: Email Reset Flow       Effort: M · Risk: Low
 You:    Option 1
 ```
 
-> **What you get:** Decision saved to `.claude/decision.md`, pre-loaded next time you run `/feature`.
+> **What you get:** Decision saved to `.claude/decision.md`, pre-loaded next time you run `/ec-feature`.
 
 ---
 
-### /feature — ticket to atomic plan
+### /ec-feature — ticket to atomic plan
 
 Works with a Jira ticket, Figma link, API contract, or a plain sentence.
 
@@ -94,11 +94,11 @@ You:    skip
 
 Produces a plan with exact file paths, concrete code samples, edge cases, and verify steps per task — memory-informed to avoid re-creating existing work. You approve before anything is written.
 
-> **What you get:** `.claude/current-plan.md` — ready for `/execute`.
+> **What you get:** `.claude/current-plan.md` — ready for `/ec-execute`.
 
 ---
 
-### /execute — parallel build with evidence
+### /ec-execute — parallel build with evidence
 
 Runs one subagent per task simultaneously. No task is marked done without running its verify step.
 
@@ -110,11 +110,11 @@ Running group 1: Avatar component, Upload hook, API endpoint (parallel)
 ✓ API endpoint       — src/api/upload.ts              — grep "uploadAvatar" found
 ```
 
-> **What you get:** All modified files indexed into code graph — blast radius ready for `/review`.
+> **What you get:** All modified files indexed into code graph — blast radius ready for `/ec-review`.
 
 ---
 
-### /review — blast radius + two-stage check
+### /ec-review — blast radius + two-stage check
 
 Before reviewing code, traces which files are affected by your changes.
 
@@ -132,9 +132,9 @@ Claude fixes all issues directly — not just reports them.
 
 ---
 
-### /git — controlled git
+### /ec-git — controlled git
 
-Claude never touches git autonomously. `/git` is the only entry point.
+Claude never touches git autonomously. `/ec-git` is the only entry point.
 
 ```
 Claude: What do you want to do? (commit / push / pull / branch / merge)
@@ -170,7 +170,7 @@ Claude: Confirmed → executes
 
 **Token optimizer (etok)** — Rust binary. Compresses `git status`, `git log`, `git diff`, `npm install`, `docker ps/logs/build`, `cargo test/build`. 60–90% reduction typical.
 
-**Figma MCP** — Registered automatically during `/setup` when Figma API key provided. Requires Node.js.
+**Figma MCP** — Registered automatically during `/ec-setup` when Figma API key provided. Requires Node.js.
 
 ```bash
 curl http://localhost:37777/health      # check status

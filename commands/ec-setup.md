@@ -43,8 +43,8 @@ Context: .claude/context/
 
 ## GIT RULES
 - NEVER perform any git operation autonomously
-- NEVER commit, push, pull, merge, branch, stash without /git command
-- Git ONLY allowed when user explicitly runs /git
+- NEVER commit, push, pull, merge, branch, stash without /ec-git command
+- Git ONLY allowed when user explicitly runs /ec-git
 ```
 
 ### .claude/project-config.json
@@ -61,6 +61,10 @@ Context: .claude/context/
   "blast_radius_depth": 2
 }
 ```
+
+When writing any `.claude/context/*.md` file, prepend the following as the very first line:
+`<!-- last_updated: {YYYY-MM-DD} -->`
+Replace `{YYYY-MM-DD}` with today's date (use the `currentDate` context variable if available, otherwise `date +%Y-%m-%d`).
 
 ### .claude/context/stack.md
 Tech stack detail per repo.
@@ -98,9 +102,9 @@ with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
 ```
 
-Show: "Figma MCP registered — paste any Figma frame link in /feature to use it."
+Show: "Figma MCP registered — paste any Figma frame link in /ec-feature to use it."
 
-If Node.js not available: show "Node.js not found — install it and re-run /setup to enable Figma MCP. Figma REST API fallback will be used."
+If Node.js not available: show "Node.js not found — install it and re-run /ec-setup to enable Figma MCP. Figma REST API fallback will be used."
 
 ## Step 4 — Register Docs Libraries (if worker running)
 If the worker is online, detect which libraries from the stack are supported and register them:

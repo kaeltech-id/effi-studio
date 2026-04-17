@@ -74,7 +74,7 @@ for each modified_file in completed_tasks:
     -H "Content-Type: application/json" \
     -d '{"project": "{project_name}", "file_path": "{modified_file}", "root_dir": "{cwd}"}'
 ```
-This enables blast radius analysis in the next /review run.
+This enables blast radius analysis in the next /ec-review run.
 
 ## Step 7 — Save Execution Memory (if worker running)
 After all tasks complete, save what was built:
@@ -107,4 +107,4 @@ curl -s -X POST http://localhost:37777/memory/observe \
 - {description or "none"}
 ```
 
-Tell user to run /review to review the results.
+Tell user to run /ec-review to review the results.

@@ -155,4 +155,4 @@ curl -s -X POST http://localhost:37777/memory/observe \
 ```
 
 If everything is clean: "No issues found. Ready to commit."
-Tell user to run /git to commit and push.
+Tell user to run /ec-git to commit and push.

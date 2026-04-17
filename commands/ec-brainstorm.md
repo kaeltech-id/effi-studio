@@ -100,4 +100,4 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 ## Step 6 — Hand Off
 Show summary of the decision, then ask:
-"Ready to plan the implementation? Run /feature — it will load this decision automatically."
+"Ready to plan the implementation? Run /ec-feature — it will load this decision automatically."

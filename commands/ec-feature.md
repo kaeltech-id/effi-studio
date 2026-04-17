@@ -18,6 +18,13 @@ If worker is offline:
 - Note: "(decision.md loaded — using chosen approach from brainstorm)"
 - After planning is complete, delete `.claude/decision.md` so it doesn't carry over to next feature
 
+**Check context freshness:**
+Read the first line of `.claude/context/stack.md`.
+If it matches `<!-- last_updated: {date} -->`, parse the date and compare to today.
+If more than 30 days have passed, show:
+"⚠️ Context files last updated {n} days ago. Consider running /ec-setup to refresh stack, structure, and conventions."
+If the tag is absent, the file doesn't exist, or date parsing fails — skip silently.
+
 ## Step 1 — Gather Input
 Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.
 
@@ -159,4 +166,4 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 ## Step 6 — Confirm
 Ask: "Does this plan look right? Anything to change before executing?"
-Only tell user to run /execute after they approve.
+Only tell user to run /ec-execute after they approve.

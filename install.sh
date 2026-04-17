@@ -10,7 +10,7 @@ HOOKS_DIR="$HOME/.efficlaude/hooks"
 SERVER_DIR="$HOME/.efficlaude/server"
 BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
-COMMANDS=("setup" "feature" "brainstorm" "execute" "review" "git")
+COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git")
 SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py")
 
@@ -220,6 +220,6 @@ echo "Done! EffiClaude installed."
 echo ""
 echo "Next steps:"
 echo "  1. Open your project folder in Claude Code"
-echo "  2. Run /setup to configure the project"
-echo "     - Provide your Figma API key to enable Figma MCP (paste any frame link in /feature)"
-echo "  3. Start with /feature"
+echo "  2. Run /ec-setup to configure the project"
+echo "     - Provide your Figma API key to enable Figma MCP (paste any Figma frame link in /ec-feature)"
+echo "  3. Start with /ec-feature"
