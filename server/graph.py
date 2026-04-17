@@ -243,10 +243,12 @@ class GraphEngine:
             'javascript': [
                 r'''import\s+.*?from\s+['"]([^'"]+)['"]''',
                 r'''require\s*\(\s*['"]([^'"]+)['"]\s*\)''',
+                r'''import\s*\(\s*['"]([^'"]+)['"]\s*\)''',
             ],
             'typescript': [
                 r'''import\s+.*?from\s+['"]([^'"]+)['"]''',
                 r'''require\s*\(\s*['"]([^'"]+)['"]\s*\)''',
+                r'''import\s*\(\s*['"]([^'"]+)['"]\s*\)''',
             ],
             'go': [
                 r'''"([\w./]+)"''',
@@ -350,3 +352,36 @@ class GraphEngine:
             'edges': edge_count,
             'languages': [{'lang': r[0], 'nodes': r[1]} for r in languages],
         }
+
+    def export(self, project: str) -> dict:
+        with sqlite3.connect(self.db_path) as conn:
+            nodes = conn.execute(
+                'SELECT file_path, name, node_type, start_line, end_line, language FROM graph_nodes WHERE project=?',
+                (project,)
+            ).fetchall()
+            edges = conn.execute(
+                'SELECT source_file, target_ref, edge_type FROM graph_edges WHERE project=?',
+                (project,)
+            ).fetchall()
+        return {
+            'nodes': [{'file_path': r[0], 'name': r[1], 'node_type': r[2], 'start_line': r[3], 'end_line': r[4], 'language': r[5]} for r in nodes],
+            'edges': [{'source_file': r[0], 'target_ref': r[1], 'edge_type': r[2]} for r in edges],
+        }
+
+    def import_data(self, project: str, data: dict) -> dict:
+        now = datetime.utcnow().isoformat()
+        nodes = data.get('nodes', [])
+        edges = data.get('edges', [])
+        with sqlite3.connect(self.db_path) as conn:
+            for node in nodes:
+                conn.execute(
+                    'INSERT INTO graph_nodes (project, file_path, name, node_type, start_line, end_line, language, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+                    (project, node['file_path'], node['name'], node['node_type'], node.get('start_line', 0), node.get('end_line', 0), node.get('language', ''), now)
+                )
+            for edge in edges:
+                conn.execute(
+                    'INSERT INTO graph_edges (project, source_file, target_ref, edge_type, updated_at) VALUES (?,?,?,?,?)',
+                    (project, edge['source_file'], edge['target_ref'], edge.get('edge_type', 'imports'), now)
+                )
+            conn.commit()
+        return {'nodes_imported': len(nodes), 'edges_imported': len(edges)}

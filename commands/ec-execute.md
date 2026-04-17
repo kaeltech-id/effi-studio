@@ -42,6 +42,15 @@ From the plan:
 - **Parallel**: tasks with no dependencies → run simultaneously
 - **Sequential**: tasks that depend on others → run after their dependencies complete
 
+## Step 3.5 — Pre-spawn Verification Anchor
+Before spawning any subagent, explicitly confirm each item:
+- [ ] `.claude/current-plan.md` is loaded and all tasks are numbered
+- [ ] Every task has an exact file path, code sample, and verify step
+- [ ] No two tasks write to the same file (checked in Step 2)
+- [ ] Rollback snapshot was taken (Step 1.5)
+- [ ] Task dependency order is respected (sequential tasks listed after their dependencies)
+Only proceed after all items are confirmed. If any item fails, report and ask user before continuing.
+
 ## Step 4 — Execute with Evidence Verification
 For each parallel group, show before starting:
 ```

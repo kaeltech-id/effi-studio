@@ -35,6 +35,10 @@ If `affected` files are returned:
 
 If no affected files: note "No dependents found — isolated change."
 
+**Manual scope:** Ask once: "Any additional files to include in the review scope beyond what blast radius detected? (paste paths or 'no')"
+If user provides paths: add them to Stage 1 and Stage 2 review scope. Flag their issues as ⚠️ Manually scoped.
+If user says 'no' or worker is offline: skip.
+
 ---
 
 ## Stage 1 — Spec Compliance Review

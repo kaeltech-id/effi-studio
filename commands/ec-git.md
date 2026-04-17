@@ -48,6 +48,15 @@ Options: commit / push / pull / branch / merge / status / log / lainnya
 - Ask user to describe what they want
 - Confirm exact command before executing
 
+## Step 2.5 — Pre-execute Safety Checklist
+Before executing any git command, explicitly confirm all applicable items:
+- [ ] User gave explicit confirmation in Step 2 (never skip this)
+- [ ] **commit only:** conventional prefix is present in commit message
+- [ ] **commit only:** staged files do not include `.env`, credentials, or API keys
+- [ ] **push only:** correct remote and branch were confirmed
+- [ ] **destructive ops (reset --hard, branch -D, force push):** user typed explicit "yes" confirmation
+Skip non-applicable items. Only proceed to Step 3 after applicable items are confirmed.
+
 ## Step 3 — Execute
 Only execute after explicit user confirmation.
 Show result after done.

@@ -78,6 +78,24 @@ def summarize():
     return jsonify({"summary": summary})
 
 
+@app.route('/memory/export')
+def memory_export():
+    project = request.args.get('project', '')
+    if not project:
+        return jsonify({"error": "project required"}), 400
+    return jsonify(memory.export(project))
+
+
+@app.route('/memory/import', methods=['POST'])
+def memory_import():
+    data = request.json or {}
+    project = data.get('project', '')
+    if not project:
+        return jsonify({"error": "project required"}), 400
+    result = memory.import_data(project, data.get('data', {}))
+    return jsonify(result)
+
+
 # ── Docs endpoints ────────────────────────────────────────────────────────────
 
 @app.route('/docs/register', methods=['POST'])
@@ -165,6 +183,24 @@ def graph_summary():
     if not project:
         return jsonify({"error": "project required"}), 400
     return jsonify(graph.get_summary(project))
+
+
+@app.route('/graph/export')
+def graph_export():
+    project = request.args.get('project', '')
+    if not project:
+        return jsonify({"error": "project required"}), 400
+    return jsonify(graph.export(project))
+
+
+@app.route('/graph/import', methods=['POST'])
+def graph_import():
+    data = request.json or {}
+    project = data.get('project', '')
+    if not project:
+        return jsonify({"error": "project required"}), 400
+    result = graph.import_data(project, data.get('data', {}))
+    return jsonify(result)
 
 
 if __name__ == '__main__':

@@ -270,3 +270,60 @@ class MemoryEngine:
             )
             conn.commit()
         return summary
+
+    def export(self, project: str) -> dict:
+        with sqlite3.connect(self.db_path) as conn:
+            obs = conn.execute(
+                'SELECT type, content, metadata, created_at FROM observations WHERE project=? ORDER BY created_at ASC',
+                (project,)
+            ).fetchall()
+            sums = conn.execute(
+                'SELECT session_id, summary, created_at FROM summaries WHERE project=? ORDER BY created_at ASC',
+                (project,)
+            ).fetchall()
+        return {
+            'observations': [{'type': r[0], 'content': r[1], 'metadata': r[2], 'created_at': r[3]} for r in obs],
+            'summaries': [{'session_id': r[0], 'summary': r[1], 'created_at': r[2]} for r in sums],
+        }
+
+    def import_data(self, project: str, data: dict) -> dict:
+        obs_list = data.get('observations', [])
+        sums_list = data.get('summaries', [])
+        imported_obs = 0
+        imported_sums = 0
+        for obs in obs_list:
+            try:
+                with sqlite3.connect(self.db_path) as conn:
+                    exists = conn.execute(
+                        'SELECT id FROM observations WHERE project=? AND type=? AND content=?',
+                        (project, obs.get('type', 'general'), obs.get('content', ''))
+                    ).fetchone()
+                if not exists:
+                    meta = obs.get('metadata', '{}')
+                    self.save_observation(
+                        project,
+                        obs.get('type', 'general'),
+                        obs.get('content', ''),
+                        json.loads(meta) if isinstance(meta, str) else meta
+                    )
+                    imported_obs += 1
+            except Exception:
+                pass
+        for s in sums_list:
+            try:
+                with sqlite3.connect(self.db_path) as conn:
+                    exists = conn.execute(
+                        'SELECT id FROM summaries WHERE project=? AND summary=?',
+                        (project, s.get('summary', ''))
+                    ).fetchone()
+                if not exists:
+                    with sqlite3.connect(self.db_path) as conn:
+                        conn.execute(
+                            'INSERT INTO summaries (project, session_id, summary, created_at) VALUES (?,?,?,?)',
+                            (project, s.get('session_id', ''), s.get('summary', ''), s.get('created_at', datetime.utcnow().isoformat()))
+                        )
+                        conn.commit()
+                    imported_sums += 1
+            except Exception:
+                pass
+        return {'observations_imported': imported_obs, 'summaries_imported': imported_sums}
