@@ -8,10 +8,14 @@ Options: commit / push / pull / branch / merge / status / log / lainnya
 
 **commit:**
 - Show `git status` and `git diff --staged` first
-- Ask: "Commit message?"
-- If the message has no conventional prefix (`feat`/`fix`/`docs`/`test`/`chore`/`refactor`/`style`/`perf`), ask:
-  "Pesan commit ini tidak ada conventional prefix. Tipe apa? (feat / fix / docs / chore / refactor / test)"
-  Apply the answer as the prefix before proceeding.
+- Silently read `.claude/current-plan.md` if it exists for feature name and task context
+- Generate a suggested conventional commit message from staged diff + plan context (infer prefix type from the nature of changes; always include the prefix)
+- Ask: "Commit message: `{suggested_message}`. OK? (y/n):"
+  - If y: use the suggested message, proceed
+  - If n: ask "Commit message-nya apa?" — if the user's response has no conventional prefix, ask:
+    "Pesan commit ini tidak ada conventional prefix. Tipe apa? (feat / fix / docs / chore / refactor / test)"
+    Apply the answer as the prefix before proceeding.
+- Edge case: if staged diff is empty, remind user to stage files first instead of generating a message
 - **VERSION auto-bump** — inspect prefix after it's confirmed:
   - `feat!:` or message body contains `BREAKING CHANGE` → bump **major** (1.1.0 → 2.0.0)
   - `feat:` → bump **minor** (1.1.0 → 1.2.0)
@@ -25,9 +29,11 @@ Options: commit / push / pull / branch / merge / status / log / lainnya
 - Ask: "Confirm (y/n):" before executing
 
 **push:**
-- Show current branch
-- Ask: "Push ke branch mana? (default: current branch)"
-- Ask: "Push ke {remote}/{branch}. Confirm (y/n):"
+- Run `git branch --show-current` to get current branch name
+- Ask: "Push ke origin/{current_branch}. Confirm (y/n):"
+  - If y: proceed with origin/{current_branch}
+  - If n: ask "Push ke branch mana?" and use the user's answer as the branch
+- Edge case: if `git branch --show-current` returns empty (detached HEAD), skip suggestion and ask "Push ke branch mana?" directly
 
 **pull:**
 - Show current branch

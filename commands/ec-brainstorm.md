@@ -54,7 +54,11 @@ Format:
 ```
 
 After presenting all options:
-"Which option do you want to go with? (or mix elements from multiple?)"
+Give one recommendation: "Rekomendasiku: Option {n} — {one-line reason specific to this problem}. Setuju? (y/n):"
+- If y: proceed directly to Step 4 with that option
+- If n: ask "Pilih option mana? (atau describe mix):" — accept any answer and proceed to Step 4
+
+Note: recommendation may say "mix of Option 1+2" if that is genuinely the best fit. If only 1 option was generated, skip the recommendation and proceed to Step 4 directly.
 
 ## Step 4 — Deepen the Chosen Option
 Once user picks an option:
