@@ -47,8 +47,8 @@ Claude will scan your existing code, ask you to confirm what it found, collect y
 |---|---|
 | `/setup` | Scans your codebase, learns your stack & conventions, registers docs libraries, initializes project memory |
 | `/feature` | Gathers your ticket, design, and API contract — plans with memory context + up-to-date docs |
-| `/execute` | Runs the plan using parallel subagents — every task verified with memory + docs context |
-| `/review` | Two-stage review: spec compliance first, then code quality + API correctness — auto-fixes all issues |
+| `/execute` | Runs the plan using parallel subagents — indexes modified files into the code graph |
+| `/review` | Blast radius analysis first, then two-stage review: spec compliance + code quality + API correctness |
 | `/git` | The **only** way Claude can touch git. No surprise commits, ever |
 
 ---
@@ -64,35 +64,50 @@ Claude will scan your existing code, ask you to confirm what it found, collect y
 
 ---
 
-## Memory Engine
+## Worker Service
 
-EffiClaude runs a local worker service (`localhost:37777`) that gives Claude persistent memory and up-to-date docs across every session.
+EffiClaude runs a local worker service (`localhost:37777`) with three engines: memory, docs, and code graph.
 
 ```
 ~/.efficlaude/
-├── efficlaude.db       ← SQLite: observations, summaries, docs cache
+├── efficlaude.db       ← SQLite: observations, summaries, docs cache, code graph
 ├── chroma/             ← ChromaDB: semantic search index
 ├── server/             ← Worker service source
 │   ├── worker.py
 │   ├── memory.py
-│   └── docs.py
+│   ├── docs.py
+│   └── graph.py        ← Code graph engine (tree-sitter + blast radius)
 └── hooks/              ← Claude Code hooks
     ├── post_tool_use.py    ← captures every Write/Edit/Bash
     ├── session_stop.py     ← summarizes session on stop
     └── prompt_submit.py    ← injects relevant context per prompt
 ```
 
-### How it works
+### Memory Engine
 
-**Memory** — every file write, edit, and command is silently captured as an observation. At session end, observations are summarized. At the start of each prompt, the most relevant memories are injected as context — so Claude always knows what was built before, what decisions were made, and what patterns are in use.
+Every file write, edit, and command is silently captured as an observation. At session end, observations are summarized. At the start of each prompt, the most relevant memories are injected as context — so Claude always knows what was built before, what decisions were made, and what patterns are in use.
 
-**Docs** — when you run `/setup`, EffiClaude detects your stack and caches docs from npm/PyPI for your libraries (React, Next.js, Tailwind, TypeScript, FastAPI, and more). When planning or reviewing, Claude searches these cached docs to ensure correct, up-to-date API usage.
+**Progressive disclosure** — context is injected in compact form. Claude only expands what's relevant, keeping token usage minimal.
 
-**Progressive disclosure** — context is injected in compact form first. Claude only expands what's relevant, keeping token usage minimal.
+### Docs Engine
 
-### Supported libraries (auto-detected from stack)
+When you run `/setup`, EffiClaude detects your stack and caches docs from npm/PyPI for your libraries. When planning or reviewing, Claude searches these cached docs to ensure correct, up-to-date API usage.
 
+**Supported libraries (auto-detected from stack):**
 `react` · `next` · `tailwindcss` · `typescript` · `vue` · `nuxt` · `svelte` · `express` · `prisma` · `zod` · `axios` · `fastapi` · `django` · `flask` · `sqlalchemy` · `pydantic`
+
+### Code Graph Engine
+
+Inspired by [code-review-graph](https://github.com/tirth8205/code-review-graph). Builds a structural dependency map of your codebase using Tree-sitter AST parsing, then uses it to compute **blast radius** — which files are affected by your changes — before every review.
+
+**How it works:**
+1. After `/execute`, every modified file is indexed into the graph (nodes = functions/classes, edges = imports)
+2. Before `/review`, blast radius analysis runs: traces all files that import from changed files (BFS, 2 levels deep)
+3. Review scope expands to include affected files — catching collateral breakage automatically
+
+**Supported languages:** Python · JavaScript · TypeScript · Go · Rust · Ruby · Java · C# · C/C++ · PHP · Swift · Kotlin · and more (23 total via Tree-sitter)
+
+**Token efficiency:** Only affected files are reviewed, not the entire codebase — similar to the ~8x token reduction approach from code-review-graph.
 
 ---
 
@@ -178,13 +193,26 @@ Each subagent receives:
 
 No task is marked complete without evidence.
 
+After execution, every modified file is **indexed into the code graph** — ready for blast radius analysis in `/review`.
+
 **Error recovery** — if a task fails, Claude asks: *Retry / Skip / Fix manually?*
 
 ---
 
-## /review — Two-Stage Code Review
+## /review — Blast Radius + Two-Stage Code Review
 
-Inspired by [Superpowers](https://github.com/obra/superpowers). Stage 2 only runs after Stage 1 is fully clean.
+Inspired by [Superpowers](https://github.com/obra/superpowers) and [code-review-graph](https://github.com/tirth8205/code-review-graph).
+
+### Blast Radius Analysis (pre-review)
+Before any review begins, EffiClaude computes which files are affected by the changes:
+- Queries the code graph for all files that import from modified files
+- Expands review scope to include affected files automatically
+- Flags collateral breakage as ⚠️ Collateral impact
+
+```
+Modified: auth/utils.py
+Blast radius: api/routes.py, tests/test_auth.py → also reviewed
+```
 
 ### Stage 1 — Spec Compliance
 Verifies the implementation matches the approved plan exactly:
@@ -311,7 +339,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 The worker runs at `localhost:37777`. You can interact with it directly:
 
 ```bash
-# Check status
+# Check status (also shows tree_sitter availability)
 curl http://localhost:37777/health
 
 # Search project memory
@@ -327,6 +355,17 @@ curl "http://localhost:37777/docs/list?project=my-app"
 curl -X POST http://localhost:37777/docs/register \
   -H "Content-Type: application/json" \
   -d '{"name": "prisma", "project": "my-app"}'
+
+# Index entire project into code graph
+curl -X POST http://localhost:37777/graph/index \
+  -H "Content-Type: application/json" \
+  -d '{"project": "my-app", "root_dir": "/path/to/project"}'
+
+# Get blast radius for changed files
+curl "http://localhost:37777/graph/blast-radius?project=my-app&files=src/auth.ts&files=src/utils.ts"
+
+# Get code graph summary
+curl "http://localhost:37777/graph/summary?project=my-app"
 ```
 
 Start/stop manually:
