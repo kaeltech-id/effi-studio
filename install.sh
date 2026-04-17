@@ -120,7 +120,8 @@ echo ""
 echo "Installing token optimizer (etok)..."
 
 # Source cargo env so rustup-installed cargo is visible in non-interactive shells
-[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+export PATH="$HOME/.cargo/bin:$PATH"
 
 PLATFORM="$(uname -s)-$(uname -m)"
 ETOK_INSTALLED=false
