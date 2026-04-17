@@ -8,6 +8,10 @@ from datetime import datetime
 
 
 SCHEMA_VERSION = 1
+TYPE_CAPS: dict[str, int] = {
+    "tool_use": 200,
+    "summary": 50,
+}
 _MIGRATIONS: dict[int, list[str]] = {
     # 1 = baseline — no DDL changes needed, just establishes the versioning system
 }
@@ -20,6 +24,7 @@ class MemoryEngine:
         self._init_db()
         self._migrate()
         self._reconcile_chromadb()
+        self._prune_on_startup()
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -115,6 +120,42 @@ class MemoryEngine:
         key = hashlib.md5(project.encode()).hexdigest()[:8]
         return self.chroma_client.get_or_create_collection(f"mem_{key}")
 
+    def _prune_type(self, project: str, obs_type: str, cap: int) -> None:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                rows = conn.execute(
+                    'SELECT id FROM observations WHERE project=? AND type=? ORDER BY created_at ASC',
+                    (project, obs_type)
+                ).fetchall()
+            if len(rows) <= cap:
+                return
+            excess_int_ids = [r[0] for r in rows[:-cap]]
+            excess_str_ids = [str(i) for i in excess_int_ids]
+            placeholders = ','.join('?' * len(excess_int_ids))
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    f'DELETE FROM observations WHERE id IN ({placeholders})',
+                    excess_int_ids
+                )
+                conn.commit()
+            collection = self._get_collection(project)
+            collection.delete(ids=excess_str_ids)
+        except Exception:
+            pass
+
+    def _prune_on_startup(self) -> None:
+        try:
+            placeholders = ','.join('?' * len(TYPE_CAPS))
+            with sqlite3.connect(self.db_path) as conn:
+                pairs = conn.execute(
+                    f'SELECT DISTINCT project, type FROM observations WHERE type IN ({placeholders})',
+                    list(TYPE_CAPS.keys())
+                ).fetchall()
+            for project, obs_type in pairs:
+                self._prune_type(project, obs_type, TYPE_CAPS[obs_type])
+        except Exception:
+            pass
+
     def save_observation(self, project, obs_type, content, metadata=None):
         now = datetime.utcnow().isoformat()
         with sqlite3.connect(self.db_path) as conn:
@@ -131,6 +172,9 @@ class MemoryEngine:
             metadatas=[{"type": obs_type, "created_at": now, **(metadata or {})}],
             ids=[str(obs_id)]
         )
+        cap = TYPE_CAPS.get(obs_type)
+        if cap is not None:
+            self._prune_type(project, obs_type, cap)
 
     def search(self, project, query, limit=5):
         collection = self._get_collection(project)

@@ -1,229 +1,115 @@
-# Feature: README Rewrite — Hybrid Option 2+3
+# Feature: Memory Tiered Cap
 
 ## Impact Analysis
-- Files affected:
-  - `README.md` (full rewrite)
-- ⚠️ Breaking change risk: none — documentation only
+- Files affected: `server/memory.py`
+- ⚠️ Breaking change risk: none — additive pruning only, existing API unchanged
 
 ## Reusable Existing Code
-- Content dari README lama tetap dipakai sebagai referensi — jangan hapus fakta yang akurat, hanya restrukturisasi dan tambah visual
+- `collection.delete(ids=[...])` pattern at `server/docs.py:136` — same ChromaDB delete call, confirmed working
+- `_get_collection(project)` at `server/memory.py:114` — reused as-is in _prune_type
 
 ## Tasks
-- [ ] Task 1: Hero section + flow diagram + install [M] — badges, tagline, before/after table, ASCII flow, install command
-- [ ] Task 2: Per-command demos [M] — 6 commands masing-masing dengan mini contoh + "what you get"
-- [ ] Task 3: Benefits + advanced features + footer [S] — why section, worker/etok/figma compact, contributing
+- [ ] Task 1: Add TYPE_CAPS constant [S] — define per-type hard caps as module-level dict in memory.py
+- [ ] Task 2: Implement _prune_type() method [S] — deletes oldest excess rows from SQLite + ChromaDB for one project+type
+- [ ] Task 3: Wire _prune_type() into save_observation() [S] — call after insert if type has a cap
+- [ ] Task 4: Implement _prune_on_startup() and call from __init__ [S] — retroactive cleanup of existing noise
+
+---
 
 ## Per Task Detail
 
-**Task 1 — Hero section + flow diagram + install** `M`
-- File: `README.md` (full overwrite — starts fresh)
-- Dependencies: none
-- Target output structure:
-  ```markdown
-  # EffiClaude
-
-  [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](...)
-  [![Claude Code](https://img.shields.io/badge/Claude%20Code-required-blueviolet)](...)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](...)
-
-  > Structured workflow for Claude Code — from ticket to commit, without losing context.
-
-  Built for developers who want Claude to remember everything, plan precisely, and build with proof.
-
-  ---
-
-  ## Before / After
-
-  | Without EffiClaude | With EffiClaude |
-  |---|---|
-  | Re-explain context every session | Memory persists — Claude knows what was built |
-  | Plan features in chat, lose track | Atomic plan with exact files + verify steps |
-  | Review manually, miss collateral damage | Blast radius analysis catches downstream breakage |
-  | Claude guesses which library API to use | Cached docs ensure correct API usage every time |
-
-  ---
-
-  ## How it works
-
+**Task 1 — Add TYPE_CAPS constant** `S`
+- File: `server/memory.py`
+- Reuse: none
+- Code sample: add after `SCHEMA_VERSION = 1` line (line 10):
+  ```python
+  TYPE_CAPS: dict[str, int] = {
+      "tool_use": 200,
+      "summary": 50,
+  }
   ```
-  ┌─────────┐     ┌────────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐     ┌──────┐
-  │ /setup  │────▶│/brainstorm │────▶│ /feature │────▶│ /execute │────▶│ /review │────▶│ /git │
-  │  once   │     │ (optional) │     │   plan   │     │  build   │     │  check  │     │ push │
-  └─────────┘     └────────────┘     └──────────┘     └──────────┘     └─────────┘     └──────┘
-  ```
-
-  ---
-
-  ## Install
-
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/install.sh | bash
-  ```
-
-  **Requirements:** Python 3.8+ · [Claude Code](https://claude.ai/code)
-  **Optional:** Rust (token optimizer) · Node.js (Figma MCP) — auto-detected
-
-  Installs commands to `~/.claude/commands/`, starts worker daemon, registers hooks, builds `etok`.
-
-  ---
-  ```
-- Edge cases: badges harus pakai URL yang valid (shields.io standard format)
+  Types absent from this dict (e.g. `decision`) are uncapped.
+- Edge cases: none — dict lookup returns None for absent keys (used in Task 3)
 - ⚠️ Breaking change: none
-- Verify: `grep -c "Before / After" README.md` = 1 && `grep "How it works" README.md` mengembalikan 1 baris
+- Verify: `grep "TYPE_CAPS" server/memory.py` returns the constant definition
 - Dependencies: none
 
-**Task 2 — Per-command demos** `M`
-- File: `README.md` (append setelah Task 1 output)
-- Dependencies: Task 1
-- Target output structure (6 sections, masing-masing max 25 baris):
-  ```markdown
-  ## The Workflow
+---
 
-  ### /setup — once per project
-  Scans your codebase, learns your stack, registers docs libraries, initializes memory.
+**Task 2 — Implement _prune_type() method** `S`
+- File: `server/memory.py` — add as a new private method after `_get_collection()`
+- Reuse: `_get_collection(project)` for ChromaDB handle; `collection.delete(ids=...)` pattern from `docs.py:136`
+- Code sample:
+  ```python
+  def _prune_type(self, project: str, obs_type: str, cap: int) -> None:
+      try:
+          with sqlite3.connect(self.db_path) as conn:
+              rows = conn.execute(
+                  'SELECT id FROM observations WHERE project=? AND type=? ORDER BY created_at ASC',
+                  (project, obs_type)
+              ).fetchall()
+          if len(rows) <= cap:
+              return
+          excess_int_ids = [r[0] for r in rows[:-cap]]
+          excess_str_ids = [str(i) for i in excess_int_ids]
+          placeholders = ','.join('?' * len(excess_int_ids))
+          with sqlite3.connect(self.db_path) as conn:
+              conn.execute(
+                  f'DELETE FROM observations WHERE id IN ({placeholders})',
+                  excess_int_ids
+              )
+              conn.commit()
+          collection = self._get_collection(project)
+          collection.delete(ids=excess_str_ids)
+      except Exception:
+          pass
   ```
-  /setup
-  ```
-  > What you get: `CLAUDE.md` + `.claude/context/` + project memory initialized. Run once, works forever.
-
-  ---
-
-  ### /brainstorm — before complex features
-  Explore approaches before committing. Claude presents 2–3 options, you pick one — decision is loaded automatically by `/feature`.
-  ```
-  You:    Users can't reset password without contacting support
-
-  Claude: ## Option 1: Email Reset Flow  Effort: M · Risk: Low
-          ## Option 2: SMS OTP            Effort: M · Risk: Medium
-          ## Option 3: Magic Link         Effort: L · Risk: Low
-
-  You:    Option 1
-  ```
-  > What you get: Decision saved to `.claude/decision.md`, auto-loaded by `/feature`.
-
-  ---
-
-  ### /feature — ticket to atomic plan
-  Works with a Jira ticket, Figma link, API contract, or a plain sentence.
-  ```
-  Claude: Describe the feature (or ticket number)?
-  You:    Add user profile page with avatar upload
-
-  Claude: Design reference?
-  You:    https://figma.com/design/abc123?node-id=12-34
-
-  Claude: API contract?
-  You:    skip
-  ```
-  > What you get: Plan with exact file paths, code samples, edge cases, and verify steps — approved by you before anything is written.
-
-  ---
-
-  ### /execute — parallel build with evidence
-  Runs one subagent per task simultaneously. Each agent must prove completion before marking done.
-  ```
-  Running group 1: TaskA, TaskB, TaskC (parallel)
-
-  ✓ TaskA — src/components/Avatar.tsx — verified: tsc --noEmit passed
-  ✓ TaskB — src/api/upload.ts — verified: grep "uploadAvatar" passed
-  ✓ TaskC — src/hooks/useProfile.ts — verified: file exists, parses ok
-  ```
-  > What you get: All modified files indexed into code graph for blast radius analysis.
-
-  ---
-
-  ### /review — blast radius + two-stage check
-  Before reviewing code, computes which files are affected by your changes.
-  ```
-  Modified:     src/api/upload.ts
-  Blast radius: src/api/index.ts, tests/upload.test.ts → also reviewed
-  ```
-  **Stage 1 — Spec compliance:** does the code match the approved plan?
-  **Stage 2 — Code quality:** naming, types, performance, security, API correctness vs cached docs.
-  Claude fixes all issues directly — not just reports them.
-  > What you get: Clean code or a list of fixes applied. Ready to commit.
-
-  ---
-
-  ### /git — controlled git
-  Claude never touches git autonomously. `/git` is the only entry point.
-  ```
-  Claude: What do you want to do? (commit / push / pull / branch / merge)
-  You:    commit and push
-  Claude: [shows diff] Commit message?
-  You:    feat: add profile page with avatar upload
-  Claude: Confirm → executes
-  ```
-  > What you get: No surprise commits, ever.
-
-  ---
-  ```
-- Edge cases: code block fence di dalam code block harus pakai 3 backticks konsisten; jangan ada raw HTML
+- Edge cases: `rows[:-cap]` is correct when `len(rows) > cap`; early return guards the empty-excess case
 - ⚠️ Breaking change: none
-- Verify: `grep -c "^### /" README.md` = 6 (satu per command)
+- Verify: `python3 -c "import sys; sys.path.insert(0,'server'); from memory import MemoryEngine; print(hasattr(MemoryEngine, '_prune_type'))"`
 - Dependencies: Task 1
 
-**Task 3 — Benefits + advanced features + footer** `S`
-- File: `README.md` (append setelah Task 2 output)
-- Dependencies: Task 2
-- Target output structure:
-  ```markdown
-  ## Why EffiClaude
+---
 
-  | | What it solves |
-  |---|---|
-  | **Persistent memory** | Claude remembers every file touched, decision made, and pattern used — across sessions |
-  | **Parallel execution** | Multiple tasks run simultaneously via subagents — faster than sequential chat |
-  | **Blast radius analysis** | Tree-sitter AST graph traces which files import from yours — no more surprise breakage |
-  | **Docs caching** | Library docs cached locally — correct API usage without Claude guessing |
-  | **Evidence-based tasks** | No task marked done without running its verify step |
-  | **Token optimizer** | Shell wrappers compress `git`, `npm`, `docker` output by 60–90% before it reaches Claude |
-  | **Figma MCP** | Paste any Figma frame link — Claude gets structured layout data, not a screenshot |
-
-  ---
-
-  ## Under the hood
-
-  **Worker service** (`localhost:37777`) — Memory engine (SQLite + ChromaDB), Docs engine, Code graph engine (tree-sitter, 23 languages). Auto-starts on login via launchd/systemd.
-
-  **Token optimizer (etok)** — Rust binary. Compresses `git status`, `git log`, `git diff`, `npm install`, `docker ps/logs/build`, `cargo test/build`. 60–90% reduction typical.
-
-  **Figma MCP** — Registered automatically during `/setup` when Figma API key provided. Requires Node.js.
-
-  ```bash
-  # Worker commands
-  curl http://localhost:37777/health
-  bash ~/.efficlaude/server/start.sh
-  bash ~/.efficlaude/server/stop.sh
+**Task 3 — Wire _prune_type() into save_observation()** `S`
+- File: `server/memory.py` — `save_observation()` method, append after the ChromaDB `collection.add()` call (line ~133)
+- Reuse: `TYPE_CAPS` from Task 1, `_prune_type()` from Task 2
+- Code sample: append at the end of `save_observation()`:
+  ```python
+  cap = TYPE_CAPS.get(obs_type)
+  if cap is not None:
+      self._prune_type(project, obs_type, cap)
   ```
+- Edge cases: `TYPE_CAPS.get()` returns `None` for uncapped types — no prune called for `decision` etc.
+- ⚠️ Breaking change: none — adds ~10ms on capped saves when pruning needed, negligible for local use
+- Verify: send 201 `tool_use` observations via `/memory/observe`, then `SELECT COUNT(*) FROM observations WHERE type='tool_use'` should return ≤200
+- Dependencies: Task 1, Task 2
 
-  ---
+---
 
-  ## Project memory files
-
+**Task 4 — Implement _prune_on_startup() and call from __init__** `S`
+- File: `server/memory.py` — new private method + one `__init__` call after `self._reconcile_chromadb()`
+- Reuse: `TYPE_CAPS`, `_prune_type()`
+- Code sample (method):
+  ```python
+  def _prune_on_startup(self) -> None:
+      try:
+          placeholders = ','.join('?' * len(TYPE_CAPS))
+          with sqlite3.connect(self.db_path) as conn:
+              pairs = conn.execute(
+                  f'SELECT DISTINCT project, type FROM observations WHERE type IN ({placeholders})',
+                  list(TYPE_CAPS.keys())
+              ).fetchall()
+          for project, obs_type in pairs:
+              self._prune_type(project, obs_type, TYPE_CAPS[obs_type])
+      except Exception:
+          pass
   ```
-  your-project/
-  ├── CLAUDE.md                   ← auto-loaded every session
-  └── .claude/
-      ├── project-config.json     ← credentials & config (gitignored)
-      ├── current-plan.md         ← active feature plan
-      └── context/
-          ├── stack.md
-          ├── structure.md
-          └── conventions.md
+  Wire in `__init__`, after `self._reconcile_chromadb()`:
+  ```python
+  self._prune_on_startup()
   ```
-
-  ---
-
-  ## Contributing
-
-  Issues and PRs welcome at [github.com/kaeltech-id/EffiClaude](https://github.com/kaeltech-id/EffiClaude)
-
-  ---
-
-  <p align="center">Built by <a href="https://github.com/kaeltech-id">kaeltech-id</a></p>
-  ```
-- Edge cases: pastikan tidak ada duplikasi konten dari Task 1 atau Task 2
-- ⚠️ Breaking change: none
-- Verify: `wc -l README.md` output antara 220–320 baris && `grep "Why EffiClaude" README.md` ada 1 baris
+- Edge cases: `TYPE_CAPS` always has entries in practice; `except Exception: pass` catches SQL edge cases
+- ⚠️ Breaking change: none — one-time pruning on startup, idempotent
+- Verify: restart worker (`curl -s http://localhost:37777/health`), then `SELECT COUNT(*), type FROM observations GROUP BY type` — `tool_use` ≤200, `summary` ≤50
 - Dependencies: Task 1, Task 2
