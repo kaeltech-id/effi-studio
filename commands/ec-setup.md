@@ -1,12 +1,12 @@
 Run interactive project setup. Follow these steps strictly.
 
 ## Step 0 — Check Worker
-Before starting, silently check if the EffiClaude worker is running:
+Check worker status:
 ```
 curl -s http://localhost:37777/health
 ```
-- If running: proceed normally. Memory + docs features will be active.
-- If not running: note it quietly as "(worker offline — memory/docs unavailable)" and continue setup without those features.
+- If running: show "(worker online ✓ — memory/docs active)" and proceed normally.
+- If not running: show "(worker OFFLINE ⚠️ — memory/docs unavailable)" and continue without those features.
 
 ## Step 1 — Silent Scan
 Scan all repos/folders in this project directory. Detect:
@@ -85,6 +85,14 @@ Naming conventions & clean code rules.
 
 ### .gitignore
 Add `.claude/project-config.json` to gitignore.
+
+### .git/hooks/commit-msg
+If `~/.efficlaude/hooks/commit-msg` exists:
+```bash
+cp ~/.efficlaude/hooks/commit-msg .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg
+```
+Show: "✓ commit-msg hook installed — VERSION auto-bumps on feat:/fix: commits"
+If `~/.efficlaude/hooks/commit-msg` does not exist: skip silently.
 
 ## Step 3.5 — Register Figma MCP (if Figma API key provided + Node.js available)
 

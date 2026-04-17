@@ -3,15 +3,12 @@ Review all code changes from the last execution. Two-stage review: spec complian
 ## Step 1 — Load Context
 Read `.claude/current-plan.md`, `.claude/context/conventions.md`, `.claude/context/stack.md`.
 
-Check worker: `curl -s http://localhost:37777/health`
-
-If worker is running:
-- Load memory for consistency check:
+Check worker status: `curl -s http://localhost:37777/health`
+- If running: show "(worker online ✓ — memory/docs active)" then load memory and docs:
   `curl -s "http://localhost:37777/memory/search?q={feature_name}&project={project_name}&limit=5"`
-- Load docs for libraries used:
   `curl -s "http://localhost:37777/docs/search?q={feature_keywords}&project={project_name}&limit=3"`
-- Use memory to flag: if this feature contradicts past decisions or patterns.
-- Use docs to verify: API usage matches current library versions.
+  Use memory to flag contradictions with past decisions. Use docs to verify API usage.
+- If offline: show "(worker OFFLINE ⚠️ — memory/docs unavailable)" and continue.
 
 ## Step 1.5 — Blast Radius Analysis (if worker running)
 Extract all files modified during execution from `.claude/current-plan.md`.

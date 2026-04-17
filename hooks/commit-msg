@@ -1,0 +1,19 @@
+#!/bin/bash
+# Auto-bumps VERSION based on conventional commit prefix
+COMMIT_MSG=$(cat "$1")
+VERSION_FILE="$(git rev-parse --show-toplevel 2>/dev/null)/VERSION"
+[ -f "$VERSION_FILE" ] || exit 0
+read -r CUR < "$VERSION_FILE"
+IFS='.' read -r MAJ MIN PAT <<< "$CUR"
+if echo "$COMMIT_MSG" | grep -qE '^feat!:|BREAKING CHANGE'; then
+    NEW="$((MAJ+1)).0.0"
+elif echo "$COMMIT_MSG" | grep -qE '^feat:'; then
+    NEW="$MAJ.$((MIN+1)).0"
+elif echo "$COMMIT_MSG" | grep -qE '^fix:'; then
+    NEW="$MAJ.$MIN.$((PAT+1))"
+else
+    exit 0
+fi
+echo "$NEW" > "$VERSION_FILE"
+git add "$VERSION_FILE"
+echo "VERSION bumped: $CUR → $NEW"

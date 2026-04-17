@@ -9,14 +9,23 @@ Read:
 - `.claude/context/conventions.md`
 - `CLAUDE.md`
 
-Check worker: `curl -s http://localhost:37777/health`
-
-If worker is running:
-- Load relevant memory for this feature:
+Check worker status: `curl -s http://localhost:37777/health`
+- If running: show "(worker online ✓ — memory/docs/graph active)" then load memory and docs:
   `curl -s "http://localhost:37777/memory/search?q={feature_name}&project={project_name}&limit=5"`
-- Load docs for libraries used in this feature:
   `curl -s "http://localhost:37777/docs/search?q={feature_keywords}&project={project_name}&limit=5"`
-- Pass relevant memory + docs snippets into each subagent's context.
+  Pass relevant snippets into each subagent's context.
+- If offline: show "(worker OFFLINE ⚠️ — memory/docs/graph unavailable)" and continue.
+
+## Step 1.5 — Rollback Snapshot
+Before any task executes, create a safety snapshot:
+```
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+git stash --include-untracked -m "efficlaude-pre-execute-$TIMESTAMP" 2>/dev/null \
+  && echo "Snapshot saved: efficlaude-pre-execute-$TIMESTAMP" \
+  || echo "(nothing to snapshot — clean working tree)"
+```
+Show the stash label to the user: "To restore if needed: `git stash pop`"
+If nothing to stash (clean tree): note it silently and continue.
 
 ## Step 2 — Pre-flight Check
 Before executing, verify:

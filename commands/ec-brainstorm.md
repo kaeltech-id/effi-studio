@@ -3,10 +3,10 @@ Explore solution approaches before committing to a feature plan. Read .claude/pr
 ## Step 0 — Load Context
 Read `.claude/context/stack.md`, `.claude/context/structure.md`, `.claude/context/conventions.md`.
 
-Silently check worker: `curl -s http://localhost:37777/health`
-
-If worker running, load relevant memory:
-`curl -s "http://localhost:37777/memory/search?q={problem_keywords}&project={project_name}&limit=5"`
+Check worker status: `curl -s http://localhost:37777/health`
+- If running: show "(worker online ✓ — memory active)" then load relevant memory:
+  `curl -s "http://localhost:37777/memory/search?q={problem_keywords}&project={project_name}&limit=5"`
+- If offline: show "(worker OFFLINE ⚠️ — memory unavailable)" and continue without memory
 
 Use memory to surface: past decisions, similar problems solved before, patterns already in use. Do not dump raw memory — silently inform your suggestions.
 

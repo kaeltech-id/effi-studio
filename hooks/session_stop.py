@@ -43,7 +43,20 @@ def ensure_worker(wait_secs=3):
     return False
 
 
+def check_uncommitted():
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, cwd=os.getcwd(), timeout=5
+        )
+        if result.stdout.strip():
+            print("\n⚠️  Uncommitted changes detected. Run /ec-git to commit before closing.")
+    except Exception:
+        pass
+
+
 def main():
+    check_uncommitted()
     if not ensure_worker(wait_secs=3):
         sys.exit(0)
     project = get_project_name()

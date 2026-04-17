@@ -1,16 +1,11 @@
 Run interactive feature planning. Read .claude/project-config.json and CLAUDE.md first.
 
 ## Step 0 — Load Context & Memory
-Silently check worker: `curl -s http://localhost:37777/health`
-
-If worker is running:
-- Load recent project memory (last 10 observations):
+Check worker status: `curl -s http://localhost:37777/health`
+- If running: show "(worker online ✓ — memory active)" then load recent project memory:
   `curl -s "http://localhost:37777/memory/context?project={project_name}&limit=10"`
-- Use this memory to understand: what files have been touched recently, past decisions, patterns used.
-- Note: "(memory loaded)" — do not dump raw memory to user.
-
-If worker is offline:
-- Continue without memory. Read .claude/context/ files for context.
+  Use memory to understand: what files have been touched recently, past decisions, patterns used. Do not dump raw memory.
+- If offline: show "(worker OFFLINE ⚠️ — memory unavailable)" and continue. Read .claude/context/ files for context.
 
 **Check for brainstorm decision:** If `.claude/decision.md` exists, read it silently.
 - Look for `_Created: {YYYY-MM-DD}_` on the last non-empty line. If found, parse the date.

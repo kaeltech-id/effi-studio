@@ -12,7 +12,7 @@ BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
 COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git")
 SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
-HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py")
+HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py" "commit-msg")
 
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 
@@ -74,6 +74,14 @@ for file in "${HOOK_FILES[@]}"; do
   chmod +x "$HOOKS_DIR/$file"
   echo "  ✓ hooks/$file"
 done
+
+# Install commit-msg hook into current project's .git/hooks/
+if git rev-parse --git-dir > /dev/null 2>&1; then
+  GIT_HOOKS_DIR="$(git rev-parse --git-dir)/hooks"
+  cp "$HOOKS_DIR/commit-msg" "$GIT_HOOKS_DIR/commit-msg"
+  chmod +x "$GIT_HOOKS_DIR/commit-msg"
+  echo "  ✓ commit-msg hook installed in .git/hooks/"
+fi
 
 # ── 6. Install Python dependencies ───────────────────────────────────────────
 echo ""
