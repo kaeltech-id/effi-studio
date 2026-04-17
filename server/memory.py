@@ -19,6 +19,7 @@ class MemoryEngine:
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)
         self._init_db()
         self._migrate()
+        self._reconcile_chromadb()
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -70,6 +71,43 @@ class MemoryEngine:
                             (SCHEMA_VERSION,)
                         )
                     conn.commit()
+        except Exception:
+            pass
+
+    def _reconcile_chromadb(self):
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                projects = [r[0] for r in conn.execute(
+                    'SELECT DISTINCT project FROM observations'
+                ).fetchall()]
+
+            for project in projects:
+                collection = self._get_collection(project)
+                chroma_count = collection.count()
+
+                with sqlite3.connect(self.db_path) as conn:
+                    sqlite_count = conn.execute(
+                        'SELECT COUNT(*) FROM observations WHERE project=?', (project,)
+                    ).fetchone()[0]
+
+                if chroma_count >= sqlite_count:
+                    continue
+
+                with sqlite3.connect(self.db_path) as conn:
+                    rows = conn.execute(
+                        'SELECT id, type, content, metadata, created_at FROM observations WHERE project=?',
+                        (project,)
+                    ).fetchall()
+
+                existing_ids = set(collection.get()['ids']) if chroma_count > 0 else set()
+                missing = [r for r in rows if str(r[0]) not in existing_ids]
+
+                if missing:
+                    collection.add(
+                        documents=[r[2] for r in missing],
+                        metadatas=[{"type": r[1], "created_at": r[4], **json.loads(r[3] or '{}')} for r in missing],
+                        ids=[str(r[0]) for r in missing]
+                    )
         except Exception:
             pass
 

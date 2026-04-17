@@ -102,25 +102,32 @@ class GraphEngine:
         return indexed
 
     def index_file(self, project, file_path, root_dir=None):
-        path = Path(file_path)
-        if not path.exists() or path.stat().st_size > MAX_FILE_SIZE:
+        if root_dir and not Path(file_path).is_absolute():
+            abs_path = Path(root_dir) / file_path
+        else:
+            abs_path = Path(file_path)
+
+        if not abs_path.exists() or abs_path.stat().st_size > MAX_FILE_SIZE:
             return
 
-        ext = path.suffix.lstrip('.')
+        ext = abs_path.suffix.lstrip('.')
         lang = EXTENSION_TO_LANG.get(ext)
         if not lang:
             return
 
         try:
-            source = path.read_text(encoding='utf-8', errors='ignore')
+            source = abs_path.read_text(encoding='utf-8', errors='ignore')
         except Exception:
             return
 
-        rel_path = str(Path(file_path).relative_to(root_dir)) if root_dir else file_path
+        try:
+            rel_path = str(abs_path.relative_to(root_dir)) if root_dir else file_path
+        except ValueError:
+            rel_path = file_path
         now = datetime.utcnow().isoformat()
 
-        nodes = self._extract_nodes(source, lang, file_path)
-        imports = self._extract_imports(source, lang, file_path, root_dir)
+        nodes = self._extract_nodes(source, lang, str(abs_path))
+        imports = self._extract_imports(source, lang, str(abs_path), root_dir)
 
         with sqlite3.connect(self.db_path) as conn:
             conn.execute('DELETE FROM graph_nodes WHERE project=? AND file_path=?', (project, rel_path))

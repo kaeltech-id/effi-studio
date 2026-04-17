@@ -133,8 +133,11 @@ def graph_index():
         return jsonify({"error": "project required"}), 400
 
     if file_path:
-        graph.index_file(project, file_path, root_dir or None)
-        return jsonify({"status": "indexed", "file": file_path})
+        try:
+            graph.index_file(project, file_path, root_dir or None)
+            return jsonify({"status": "indexed", "file": file_path})
+        except Exception:
+            return jsonify({"status": "error", "file": file_path, "reason": "indexing failed"}), 500
 
     if root_dir:
         count = graph.index_project(project, root_dir)

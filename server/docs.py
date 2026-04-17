@@ -26,6 +26,8 @@ LIBRARY_SOURCES = {
     'pydantic':     ('pypi', 'https://pypi.org/pypi/pydantic/json'),
 }
 
+DOC_TTL_DAYS = 7
+
 
 class DocsEngine:
     def __init__(self, db_path, chroma_path):
@@ -60,6 +62,15 @@ class DocsEngine:
     def _get_collection(self, library):
         safe = re.sub(r'[^a-z0-9]', '_', library.lower())[:40]
         return self.chroma_client.get_or_create_collection(f"docs_{safe}")
+
+    def _is_stale(self, name):
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                'SELECT last_fetched FROM docs_libraries WHERE name=?', (name,)
+            ).fetchone()
+        if not row or not row[0]:
+            return True
+        return (datetime.utcnow() - datetime.fromisoformat(row[0])).days >= DOC_TTL_DAYS
 
     def register_library(self, name, project='', source_type=None):
         name = name.lower()
@@ -172,6 +183,8 @@ class DocsEngine:
 
         all_results = []
         for (lib_name,) in rows:
+            if self._is_stale(lib_name):
+                self.fetch_and_cache(lib_name)
             collection = self._get_collection(lib_name)
             try:
                 count = collection.count()
