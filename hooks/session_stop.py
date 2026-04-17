@@ -55,7 +55,7 @@ def main():
         method="POST"
     )
     try:
-        urllib.request.urlopen(req, timeout=3)
+        urllib.request.urlopen(req, timeout=10)
     except Exception:
         pass
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sqlite3
 import json
 import hashlib
@@ -5,11 +7,18 @@ import chromadb
 from datetime import datetime
 
 
+SCHEMA_VERSION = 1
+_MIGRATIONS: dict[int, list[str]] = {
+    # 1 = baseline — no DDL changes needed, just establishes the versioning system
+}
+
+
 class MemoryEngine:
     def __init__(self, db_path, chroma_path):
         self.db_path = db_path
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)
         self._init_db()
+        self._migrate()
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -33,6 +42,36 @@ class MemoryEngine:
                 )
             ''')
             conn.commit()
+
+    def _migrate(self):
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS schema_version (
+                        version INTEGER NOT NULL
+                    )
+                ''')
+                row = conn.execute(
+                    'SELECT version FROM schema_version LIMIT 1'
+                ).fetchone()
+                current = row[0] if row else 0
+                if current < SCHEMA_VERSION:
+                    for v in range(current + 1, SCHEMA_VERSION + 1):
+                        for sql in _MIGRATIONS.get(v, []):
+                            conn.execute(sql)
+                    if row:
+                        conn.execute(
+                            'UPDATE schema_version SET version = ?',
+                            (SCHEMA_VERSION,)
+                        )
+                    else:
+                        conn.execute(
+                            'INSERT INTO schema_version (version) VALUES (?)',
+                            (SCHEMA_VERSION,)
+                        )
+                    conn.commit()
+        except Exception:
+            pass
 
     def _get_collection(self, project):
         key = hashlib.md5(project.encode()).hexdigest()[:8]

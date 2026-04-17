@@ -57,7 +57,8 @@ Context: .claude/context/
   "ticket_project_key": "",
   "design_tool": "",
   "figma_api_key": "",
-  "api_base_url": ""
+  "api_base_url": "",
+  "blast_radius_depth": 2
 }
 ```
 

@@ -77,7 +77,7 @@ done
 echo ""
 echo "Installing Python dependencies..."
 pip3 install -q -r "$SERVER_DIR/requirements.txt"
-echo "  ✓ flask, chromadb, requests, tree-sitter installed"
+echo "  ✓ Python dependencies installed"
 
 # ── 7. Register hooks in ~/.claude/settings.json ─────────────────────────────
 echo ""

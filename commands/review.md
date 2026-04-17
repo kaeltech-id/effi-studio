@@ -24,9 +24,11 @@ for each modified_file in plan:
     -d '{"project": "{project_name}", "file_path": "{modified_file}", "root_dir": "{cwd}"}'
 ```
 
+Read `blast_radius_depth` from `.claude/project-config.json` (default: 2 if field absent).
+
 Get blast radius — files that import from the changed files:
 ```
-curl -s "http://localhost:37777/graph/blast-radius?project={project_name}&depth=2{&files=file1&files=file2...}"
+curl -s "http://localhost:37777/graph/blast-radius?project={project_name}&depth={blast_radius_depth}{&files=file1&files=file2...}"
 ```
 
 If `affected` files are returned:
