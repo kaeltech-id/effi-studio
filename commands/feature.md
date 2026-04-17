@@ -22,11 +22,27 @@ Ask ONE question at a time. Every input is optional — minimum viable input is 
    - If ticket system configured in project-config.json: auto-fetch from that system
    - If no tool: accept any free-form text description
 
-2. "Do you have a design reference? (Figma link / Sketch / screenshot path / text description / skip)"
-   - Figma URL: extract file_key + node_id, fetch `https://api.figma.com/v1/files/{file_key}/nodes?ids={node_id}` with `X-Figma-Token: {figma_api_key}`
-   - Screenshot path: read and analyze the image
-   - Text description: use as-is
-   - Skip: plan UI based on description only
+2. "Do you have a design reference? (Figma link / screenshot path / text description / skip)"
+
+   **If Figma URL detected (contains figma.com):**
+
+   - Check if Figma MCP is available by checking `~/.claude/settings.json` for `mcpServers.figma`
+   - **If MCP available (preferred):** Call the `get_figma_data` MCP tool with the URL:
+     ```
+     get_figma_data({ url: "{figma_url}" })
+     ```
+     Use the returned structured layout, styling, component, and typography data directly.
+     Note: "(Figma MCP used — structured design data loaded)"
+
+   - **If MCP not available (fallback):** Extract file_key + node_id from URL manually:
+     - file_key: value after `/design/` or `/file/` in the URL
+     - node_id: value of `node-id` query param (replace `-` with `:`)
+     - Fetch: `https://api.figma.com/v1/files/{file_key}/nodes?ids={node_id}` with `X-Figma-Token: {figma_api_key}`
+     - Parse returned JSON for layout, fills, typography, and component structure
+
+   **If screenshot path:** read and analyze the image
+   **If text description:** use as-is
+   **If skip:** plan UI based on feature description only
 
 3. "Any API contract? (paste JSON / OpenAPI / endpoint description / skip)"
 

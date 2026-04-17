@@ -15,15 +15,17 @@ curl -fsSL https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/install
 ```
 
 **Requirements:** Python 3.8+, [Claude Code](https://claude.ai/code)
-**Optional:** Rust/cargo (for token optimizer — auto-detected by installer)
+**Optional:** Rust/cargo (token optimizer) · Node.js (Figma MCP) — auto-detected by installer
 
 The installer will:
 - Install all slash commands to `~/.claude/commands/`
-- Set up the EffiClaude worker service (memory + docs engine)
+- Set up the EffiClaude worker service (memory + docs + graph engine)
 - Register Claude Code hooks for automatic context capture
 - Build and install `etok` token optimizer (if Rust is available)
 - Add shell wrappers to `~/.zshrc` / `~/.bashrc`
 - Start the worker as a background daemon (auto-starts on login)
+
+> Figma MCP (`figma-context-mcp`) is registered automatically during `/setup` when you provide a Figma API key (requires Node.js)
 
 ---
 
@@ -331,6 +333,37 @@ npm install 2>&1 | etok npm install
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Then re-run the EffiClaude installer
 ```
+
+---
+
+## Figma MCP Integration
+
+Powered by [figma-context-mcp](https://github.com/glips/figma-context-mcp). When enabled, paste any Figma frame link in `/feature` and Claude will automatically fetch the structured design data — no screenshots, no manual description needed.
+
+### Setup
+
+1. Get your Figma API key: Figma → Account Settings → Personal access tokens
+2. Run `/setup` in your project and provide the token when asked
+3. EffiClaude registers `figma-context-mcp` as an MCP server in `~/.claude/settings.json`
+
+Requires Node.js — checked automatically by installer.
+
+### How it works in /feature
+
+```
+You:    Do you have a design reference?
+You:    https://figma.com/design/abc123/MyApp?node-id=12-34
+
+Claude: [calls get_figma_data MCP tool]
+        → receives layout, typography, colors, component structure
+        → uses structured data to write accurate implementation plan
+```
+
+**vs. the old approach:** Previously, Claude fetched raw Figma REST API JSON which required manual node-id extraction and returned unfiltered data. The MCP approach returns pre-processed, token-efficient design context.
+
+### Fallback
+
+If Figma MCP is not configured, `/feature` falls back to the Figma REST API using the stored token — same data, more setup.
 
 ---
 

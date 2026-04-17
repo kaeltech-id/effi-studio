@@ -36,6 +36,14 @@ fi
 
 echo "  ✓ Python $PYTHON_VERSION"
 
+# ── 1b. Check Node.js (optional — for Figma MCP) ─────────────────────────────
+if command -v node &>/dev/null; then
+  NODE_VERSION=$(node --version)
+  echo "  ✓ Node.js $NODE_VERSION (Figma MCP supported)"
+else
+  echo "  ℹ Node.js not found — Figma MCP unavailable. Install Node.js to enable it."
+fi
+
 # ── 2. Create directories ─────────────────────────────────────────────────────
 mkdir -p "$COMMANDS_DIR" "$HOOKS_DIR" "$SERVER_DIR" "$BIN_DIR" "$SHELL_DIR" "$EFFICLAUDE_HOME/chroma"
 
@@ -213,4 +221,5 @@ echo ""
 echo "Next steps:"
 echo "  1. Open your project folder in Claude Code"
 echo "  2. Run /setup to configure the project"
+echo "     - Provide your Figma API key to enable Figma MCP (paste any frame link in /feature)"
 echo "  3. Start with /feature"

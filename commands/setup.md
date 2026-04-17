@@ -26,7 +26,7 @@ Ask ONE question at a time. Wait for user response before proceeding.
    - If yes: "Base URL?" then "API key?" then "Project key or board ID?"
    - If none: skip
 6. "Do you use Figma or another design tool? (Figma / Sketch / other / none)"
-   - If Figma: "Figma API key?"
+   - If Figma: "Figma API key?" then "Node.js is required for Figma MCP — is it installed? (yes / no / skip)"
    - If other: "How do you share designs? (link / screenshot / description)"
    - If none: skip
 7. "Backend API base URL? (or skip)"
@@ -72,6 +72,34 @@ Naming conventions & clean code rules.
 
 ### .gitignore
 Add `.claude/project-config.json` to gitignore.
+
+## Step 3.5 — Register Figma MCP (if Figma API key provided + Node.js available)
+
+If user provided a Figma API key AND Node.js is available, register `figma-context-mcp` as an MCP server in `~/.claude/settings.json`:
+
+```python
+import json, os
+
+settings_path = os.path.expanduser("~/.claude/settings.json")
+with open(settings_path) as f:
+    settings = json.load(f)
+
+settings.setdefault("mcpServers", {})
+settings["mcpServers"]["figma"] = {
+    "command": "npx",
+    "args": ["-y", "figma-context-mcp"],
+    "env": {
+        "FIGMA_API_KEY": "{figma_api_key}"
+    }
+}
+
+with open(settings_path, "w") as f:
+    json.dump(settings, f, indent=2)
+```
+
+Show: "Figma MCP registered — paste any Figma frame link in /feature to use it."
+
+If Node.js not available: show "Node.js not found — install it and re-run /setup to enable Figma MCP. Figma REST API fallback will be used."
 
 ## Step 4 — Register Docs Libraries (if worker running)
 If the worker is online, detect which libraries from the stack are supported and register them:
