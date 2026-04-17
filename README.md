@@ -1,28 +1,14 @@
 # EffiClaude
 
-> Claude Code commands that turn your Jira ticket, Figma design, and API contract into production-ready code — with one command.
+> Claude Code commands that turn your ticket, design, and API contract into production-ready code — with one command.
 
-Built for frontend developers who want to move fast without cutting corners.
-
----
-
-## What It Does
-
-EffiClaude gives you 5 slash commands that handle your entire development workflow inside Claude Code:
-
-| Command | What it does |
-|---|---|
-| `/setup` | Scans your codebase, learns your stack & conventions, stores everything for future sessions |
-| `/feature` | Reads your Jira ticket, fetches your Figma frame, parses your API contract — then writes a plan |
-| `/execute` | Runs the plan using parallel subagents. Multiple tasks done simultaneously |
-| `/review` | Reviews generated code for quality, best practices, and optionally runs your test suite |
-| `/git` | The **only** way Claude is allowed to touch git. No surprise commits, ever |
+Built for developers who want to move fast without cutting corners. Works with any stack, any project management tool, any design tool.
 
 ---
 
 ## Install
 
-Run this once. Commands are installed globally and available in every project.
+Run once. Commands are available globally across all your projects.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/install.sh | bash
@@ -38,57 +24,111 @@ In every new project folder, run once:
 /setup
 ```
 
-Claude will:
-1. Silently scan your existing code
-2. Ask you to confirm what it found (tech stack, folder structure, naming conventions)
-3. Ask for your Jira, Figma, and API credentials
-4. Save everything to the project — no need to repeat this again
+Claude will scan your existing code, ask you to confirm what it found, collect your credentials, and save everything. You never have to explain your project again.
 
-> API keys are saved to `.claude/project-config.json` which is automatically added to `.gitignore`
+> `.claude/project-config.json` is automatically added to `.gitignore`
 
 ---
 
-## Workflow
+## Commands
+
+| Command | What it does |
+|---|---|
+| `/setup` | Scans your codebase, learns your stack & conventions, stores config for future sessions |
+| `/feature` | Gathers your ticket, design, and API contract — then writes a detailed execution plan |
+| `/execute` | Runs the plan using parallel subagents with pre-flight checks and error recovery |
+| `/review` | Reviews code for quality, security, performance, and accessibility — auto-fixes issues |
+| `/git` | The **only** way Claude can touch git. No surprise commits, ever |
+
+---
+
+## Full Workflow
 
 ```
 ┌─────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐     ┌──────┐
 │ /setup  │────▶│ /feature │────▶│ /execute │────▶│ /review │────▶│ /git │
-│ once    │     │ planning │     │ parallel │     │ + tests │     │ push │
+│  once   │     │  plan    │     │  build   │     │  check  │     │ push │
 └─────────┘     └──────────┘     └──────────┘     └─────────┘     └──────┘
 ```
 
-### /feature — Interactive Planning
+---
+
+## /setup — Project Configuration
+
+Interactive onboarding. Claude scans your code first, then confirms with you:
+
+- Tech stack, folder structure, naming conventions
+- Project management tool *(Jira / Linear / GitHub Issues / Notion / Trello / none)*
+- Design tool *(Figma / Sketch / screenshots / none)*
+- Backend API base URL
+
+Everything is saved to the project. Run once, works forever.
+
+---
+
+## /feature — Interactive Planning
+
+Works with any input — from a full Jira ticket to a single sentence.
 
 ```
-Claude: Jira ticket number? (e.g. PROJ-123, or skip)
-You:    PROJ-456
+Claude: Ticket number or describe the feature?
+You:    PROJ-123   (or just type what you want to build)
 
-Claude: Figma frame link? (paste URL, or skip)
+Claude: Design reference? (link / screenshot / skip)
 You:    https://figma.com/...
 
-Claude: Any additional API contract? (paste or skip)
+Claude: Any API contract? (paste or skip)
 You:    skip
-
-Claude: Here's the breakdown — 4 tasks. Approve?
-You:    yes → run /execute
 ```
 
-### /execute — Parallel Subagents
+Claude then produces a full plan including:
 
-Claude spawns one subagent per task, all running at the same time. No waiting for one to finish before the next starts.
+- **Reuse scan** — finds existing components, hooks, and utils to reuse instead of recreating
+- **Impact analysis** — lists every existing file that will be touched
+- **Breaking change warnings** — flags anything that could break existing behavior
+- **Task breakdown** with size estimates: `S` < 1hr · `M` 1–3hr · `L` > 3hr
+- **Edge cases per task** — loading state, empty state, error state
 
-### /review — Code Quality Check
+You review and approve the plan before anything gets written.
 
-```
-Claude: Want to add unit tests? (yes/no)
-Claude: Any existing test cases to run? (provide path or skip)
-Claude: Here's the review summary...
-```
+---
 
-### /git — Controlled Git Operations
+## /execute — Parallel Execution
 
-Claude will never commit, push, pull, or branch on its own.  
-`/git` is the only entry point for all git operations — and it always asks before executing.
+Runs your approved plan using one subagent per task, simultaneously.
+
+**Pre-flight check** — before running, Claude verifies:
+- All referenced files exist
+- No two tasks write to the same file
+- Task dependencies are correctly ordered
+
+**Progress updates** — you see which tasks are running and which are done.
+
+**Error recovery** — if a task fails, Claude asks: *Retry / Skip / Fix manually?* It never silently moves on.
+
+---
+
+## /review — Automated Code Review
+
+Claude reviews every file touched during execution and **fixes issues directly** — not just reports them.
+
+| Check | What it catches |
+|---|---|
+| **Code quality** | Naming, structure, dead code, unused imports |
+| **Type safety** | Implicit `any`, bad type assertions, missing types |
+| **Performance** | Unnecessary re-renders, missing memoization, N+1 patterns |
+| **Security** | Hardcoded secrets, XSS risks, exposed sensitive data |
+| **Accessibility** | Missing `alt`, `aria-label`, keyboard navigation *(UI only)* |
+
+After review, Claude will optionally generate unit tests and run your existing test suite.
+
+When everything is clean: *"No issues found. Ready to commit."*
+
+---
+
+## /git — Controlled Git Operations
+
+Claude will never touch git on its own. `/git` is the only entry point.
 
 ```
 Claude: What do you want to do? (commit / push / pull / branch / merge)
@@ -102,44 +142,39 @@ Claude: Confirm? → execute
 
 ## Project Memory
 
-EffiClaude stores project knowledge so Claude stays consistent across sessions:
+EffiClaude stores project knowledge so Claude stays consistent across every session:
 
 ```
 your-project/
-├── CLAUDE.md                       ← auto-loaded every session (stack, rules)
+├── CLAUDE.md                   ← auto-loaded every session
 └── .claude/
-    ├── project-config.json         ← API keys (gitignored)
-    ├── current-plan.md             ← latest feature plan
+    ├── project-config.json     ← credentials & config (gitignored)
+    ├── current-plan.md         ← latest feature plan
     └── context/
-        ├── stack.md                ← tech stack detail
-        ├── structure.md            ← folder architecture
-        └── conventions.md          ← naming & code rules
+        ├── stack.md            ← tech stack detail
+        ├── structure.md        ← folder architecture
+        └── conventions.md      ← naming & code rules
 ```
-
-No need to re-explain your project every session. Claude remembers.
 
 ---
 
 ## Multi-Repo Projects
 
-EffiClaude is designed for projects with multiple repos under one folder:
+One folder, multiple repos — one `/setup` covers everything:
 
 ```
-my-project/          ← run /setup here
+my-project/        ← run /setup here
 ├── frontend/
 ├── mobile/
 └── shared-ui/
 ```
-
-One `/setup` covers the entire project.
 
 ---
 
 ## Requirements
 
 - [Claude Code](https://claude.ai/code) installed
-- Access to Claude Sonnet or Opus
-- Jira, Figma API keys (optional — only needed for those integrations)
+- Jira / Linear / GitHub / Figma credentials *(optional — only needed if you use them)*
 
 ---
 
