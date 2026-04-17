@@ -168,4 +168,4 @@ def graph_summary():
 
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=37777, debug=False)
+    app.run(host='127.0.0.1', port=37777, debug=False, threaded=True)

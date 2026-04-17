@@ -13,6 +13,9 @@ If worker is offline:
 - Continue without memory. Read .claude/context/ files for context.
 
 **Check for brainstorm decision:** If `.claude/decision.md` exists, read it silently.
+- Look for `_Created: {YYYY-MM-DD}_` on the last non-empty line. If found, parse the date.
+  - If older than 7 days: skip this decision entirely. Note: "(decision.md expired — created {n} days ago, ignoring)". Do NOT delete it.
+  - If within 7 days, or date line absent: proceed normally.
 - Pre-fill the feature description from the decision's "Chosen Approach" section
 - Skip asking about approach — user already decided
 - Note: "(decision.md loaded — using chosen approach from brainstorm)"

@@ -54,6 +54,8 @@ for cmd in "${COMMANDS[@]}"; do
   curl -fsSL "$BASE_URL/commands/$cmd.md" -o "$COMMANDS_DIR/$cmd.md"
   echo "  ✓ /$cmd"
 done
+curl -fsSL "$BASE_URL/VERSION" -o "$EFFICLAUDE_HOME/VERSION"
+echo "  ✓ VERSION"
 
 # ── 4. Install server files ───────────────────────────────────────────────────
 echo ""

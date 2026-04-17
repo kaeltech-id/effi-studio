@@ -59,7 +59,7 @@ Once user picks an option:
 - Flag any dependencies on other parts of the system
 
 ## Step 5 — Save Decision
-Save to `.claude/decision.md`:
+Save to `.claude/decision.md`. Replace `{YYYY-MM-DD}` with today's date (use `currentDate` context variable if available, otherwise `date +%Y-%m-%d`):
 
 ```markdown
 # Decision: {problem_title}
@@ -84,6 +84,8 @@ Save to `.claude/decision.md`:
 
 ## Out of Scope
 - {what was explicitly not addressed}
+
+_Created: {YYYY-MM-DD}_
 ```
 
 If worker running, save decision to memory:

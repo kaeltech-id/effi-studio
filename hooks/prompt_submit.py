@@ -14,6 +14,9 @@ MAX_MEMORY_ITEMS = 5
 MAX_DOCS_ITEMS = 3
 START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
 WORKER_RESTART_WAIT_SECS = 5
+VERSION_FILE = os.path.expanduser("~/.efficlaude/VERSION")
+UPDATE_CHECK_FILE = os.path.expanduser("~/.efficlaude/.last_update_check")
+VERSION_URL = "https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/VERSION"
 
 
 def get_project_name():
@@ -70,6 +73,28 @@ def get_docs_context(project, query):
     return fetch(url) or []
 
 
+def check_update():
+    try:
+        if os.path.exists(UPDATE_CHECK_FILE):
+            with open(UPDATE_CHECK_FILE) as f:
+                last = float(f.read().strip())
+            if time.time() - last < 86400:
+                return None
+        with open(UPDATE_CHECK_FILE, 'w') as f:
+            f.write(str(time.time()))
+        if not os.path.exists(VERSION_FILE):
+            return None
+        with open(VERSION_FILE) as f:
+            local = f.read().strip()
+        with urllib.request.urlopen(VERSION_URL, timeout=3) as resp:
+            remote = resp.read().decode().strip()
+        if local != remote:
+            return f"EffiClaude {remote} available (installed: {local}). Run: bash install.sh"
+    except Exception:
+        pass
+    return None
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -85,6 +110,7 @@ def main():
         sys.exit(0)
 
     project = get_project_name()
+    update_msg = check_update()
 
     memory_items = get_memory_context(project, prompt)
     docs_items = get_docs_context(project, prompt)
@@ -101,6 +127,9 @@ def main():
 
     if was_restarted:
         parts.insert(0, "**EffiClaude worker was restarted — context may be partial.**")
+
+    if update_msg:
+        parts.insert(0, f"**{update_msg}**")
 
     if not parts:
         sys.exit(0)

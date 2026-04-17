@@ -45,6 +45,13 @@ Context: .claude/context/
 - NEVER perform any git operation autonomously
 - NEVER commit, push, pull, merge, branch, stash without /ec-git command
 - Git ONLY allowed when user explicitly runs /ec-git
+
+## WORKFLOW RULES
+- After /ec-brainstorm completes → always suggest running /ec-feature
+- After /ec-feature plan approved → always suggest running /ec-execute
+- After /ec-execute completes → always suggest running /ec-review
+- After /ec-review is clean → always suggest running /ec-git
+- Always guide user through the full flow: /ec-brainstorm → /ec-feature → /ec-execute → /ec-review → /ec-git
 ```
 
 ### .claude/project-config.json
