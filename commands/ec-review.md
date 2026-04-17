@@ -111,7 +111,7 @@ Fix all issues found directly. Do not ask for permission to fix — fix and note
 ---
 
 ## Step 2 — Testing
-Ask: "Do you want to add unit tests for this feature? (yes/no)"
+Ask: "Add unit tests for this feature? (y/n):"
 
 If yes:
 - Generate unit tests for new functions/components

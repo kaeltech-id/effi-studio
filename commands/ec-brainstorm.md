@@ -62,7 +62,11 @@ Once user picks an option:
 - Identify the 2–3 biggest unknowns or assumptions
 - Flag any dependencies on other parts of the system
 
-## Step 5 — Save Decision
+## Step 5 — Save
+
+Ask: "Lanjut ke /ec-feature sekarang atau simpan untuk nanti? (now/save):"
+
+**If "now":**
 Save to `.claude/decision.md`. Replace `{YYYY-MM-DD}` with today's date (use `currentDate` context variable if available, otherwise `date +%Y-%m-%d`):
 
 ```markdown
@@ -92,7 +96,13 @@ Save to `.claude/decision.md`. Replace `{YYYY-MM-DD}` with today's date (use `cu
 _Created: {YYYY-MM-DD}_
 ```
 
-If worker running, save decision to memory:
+**If "save":**
+Generate a slug from the problem title: lowercase, spaces→hyphens, max 5 words (e.g. "race-condition-memory-fix").
+Save to `.claude/brainstorms/{YYYY-MM-DD}-{slug}.md` using the exact same format as the decision.md template above.
+Create `.claude/brainstorms/` directory if it doesn't exist.
+Show: "Saved: .claude/brainstorms/{YYYY-MM-DD}-{slug}.md"
+
+**Both paths** — if worker running, save to memory:
 ```
 curl -s -X POST http://localhost:37777/memory/observe \
   -H "Content-Type: application/json" \
@@ -106,4 +116,9 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 ## Step 6 — Hand Off
 Show summary of the decision.
+
+**If "now":**
 Next: run `/ec-feature` — it will load this decision automatically.
+
+**If "save":**
+Run `/ec-feature` when ready — it will show a numbered list of saved brainstorms to pick from.

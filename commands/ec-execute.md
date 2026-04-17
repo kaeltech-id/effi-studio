@@ -35,7 +35,7 @@ Before executing, verify:
 - Every task has a verify step defined
 
 If any issue found, report it and ask:
-"Found pre-flight issue: {issue}. Continue anyway or adjust the plan?"
+"Found pre-flight issue: {issue}. Continue anyway? (y/n):"
 
 ## Step 3 — Group Tasks
 From the plan:

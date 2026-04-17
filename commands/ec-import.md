@@ -13,7 +13,7 @@ Check if `.claude/memory-export.json` exists and is valid JSON.
 ## Step 2 — Load Project Name
 Read `project` field from `.claude/memory-export.json`.
 Also read `.claude/project-config.json` → get local `project_name`.
-If export project != local project: warn "Export is from project '{export.project}' but current project is '{local_project}'. Import anyway? (yes/no)"
+If export project != local project: warn "Export is from project '{export.project}' but current project is '{local_project}'. Import anyway? (y/n):"
 If user says no: stop.
 
 ## Step 3 — Import Memory

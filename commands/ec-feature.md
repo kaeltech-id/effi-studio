@@ -20,6 +20,18 @@ Check worker status: `curl -s http://localhost:37777/health`
 - Note: "(decision.md loaded — using chosen approach from brainstorm)"
 - After planning is complete, delete `.claude/decision.md` so it doesn't carry over to next feature
 
+**Check for saved brainstorms:** If no `decision.md` was found:
+- Check if `.claude/brainstorms/` exists and contains `.md` files
+- If files found, list them numbered (read the `# Title` line from each file):
+  ```
+  Saved brainstorms:
+  1. {filename} — {title}
+  2. {filename} — {title}
+  Pick a number to use, or 'skip' for a new feature:
+  ```
+- If user picks a number: load that file as the decision source, pre-fill Chosen Approach, note "(brainstorm loaded: {filename})", delete the picked file after plan is complete
+- If user types 'skip' or no files exist: proceed to Step 1 normally
+
 ## Step 1 — Gather Input
 Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.
 
@@ -160,5 +172,7 @@ curl -s -X POST http://localhost:37777/memory/observe \
 ```
 
 ## Step 6 — Confirm
-Ask: "Does this plan look right? Anything to change before executing?"
+Ask: "Plan sudah benar? Confirm (y/n):"
+- If y: proceed
+- If n: ask "Apa yang perlu diubah?" → revise plan → re-confirm
 Next: run `/ec-execute` to implement this plan.
