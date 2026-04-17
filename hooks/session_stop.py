@@ -7,6 +7,7 @@ import os
 import subprocess
 import time
 import urllib.request
+import urllib.parse
 
 WORKER_URL = "http://localhost:37777"
 START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
@@ -55,6 +56,56 @@ def check_uncommitted():
         pass
 
 
+def auto_export(project):
+    try:
+        export_path = os.path.join(os.getcwd(), ".claude", "memory-export.json")
+        if os.path.exists(export_path):
+            if time.time() - os.path.getmtime(export_path) < 3600:
+                return
+        mem_req = urllib.request.Request(
+            f"{WORKER_URL}/memory/export?project={urllib.parse.quote(project)}"
+        )
+        graph_req = urllib.request.Request(
+            f"{WORKER_URL}/graph/export?project={urllib.parse.quote(project)}"
+        )
+        with urllib.request.urlopen(mem_req, timeout=5) as r:
+            mem_data = json.loads(r.read())
+        with urllib.request.urlopen(graph_req, timeout=5) as r:
+            graph_data = json.loads(r.read())
+        export = {
+            "project": project,
+            "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "memory": mem_data,
+            "graph": graph_data,
+        }
+        os.makedirs(os.path.dirname(export_path), exist_ok=True)
+        with open(export_path, 'w') as f:
+            json.dump(export, f)
+    except Exception:
+        pass
+
+
+def ensure_commit_hook():
+    try:
+        src = os.path.expanduser("~/.efficlaude/hooks/commit-msg")
+        if not os.path.exists(src):
+            return
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True, text=True, cwd=os.getcwd(), timeout=3
+        )
+        git_dir = result.stdout.strip()
+        if not git_dir:
+            return
+        dst = os.path.join(git_dir, "hooks", "commit-msg")
+        if not os.path.exists(dst):
+            import shutil
+            shutil.copy2(src, dst)
+            os.chmod(dst, 0o755)
+    except Exception:
+        pass
+
+
 def main():
     check_uncommitted()
     if not ensure_worker(wait_secs=3):
@@ -71,6 +122,8 @@ def main():
         urllib.request.urlopen(req, timeout=10)
     except Exception:
         pass
+    auto_export(project)
+    ensure_commit_hook()
 
 
 if __name__ == "__main__":

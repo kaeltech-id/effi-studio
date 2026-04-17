@@ -24,9 +24,16 @@ graph = GraphEngine(DB_PATH)
 
 @app.route('/health')
 def health():
+    version = "unknown"
+    try:
+        version_path = os.path.join(os.path.dirname(__file__), '..', 'VERSION')
+        with open(os.path.normpath(version_path)) as f:
+            version = f.read().strip()
+    except Exception:
+        pass
     return jsonify({
         "status": "ok",
-        "version": "1.0.0",
+        "version": version,
         "tree_sitter": graph._ts_available
     })
 

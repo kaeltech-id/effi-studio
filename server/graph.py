@@ -263,6 +263,9 @@ class GraphEngine:
                 ref = m.group(1)
                 resolved = self._resolve_import(ref, lang, file_path, root_dir)
                 imports.append(resolved or ref)
+        if lang in ('javascript', 'typescript'):
+            for m in re.finditer(r'import\s*\(\s*([^\'"`\)][^\)]*)\s*\)', source):
+                imports.append('__dynamic__')
         return list(set(imports))
 
     def _resolve_import(self, ref, lang, source_file, root_dir):
@@ -325,10 +328,14 @@ class GraphEngine:
             frontier = next_frontier
 
         direct = visited - set(changed_files)
+        affected = sorted(direct)
+        has_dynamic = '__dynamic__' in affected
+        affected = [f for f in affected if f != '__dynamic__']
         return {
             'changed': list(changed_files),
-            'affected': sorted(direct),
+            'affected': affected,
             'total_files': len(visited),
+            'has_dynamic_imports': has_dynamic,
         }
 
     def get_summary(self, project):
@@ -372,16 +379,31 @@ class GraphEngine:
         now = datetime.utcnow().isoformat()
         nodes = data.get('nodes', [])
         edges = data.get('edges', [])
+        imported_nodes = 0
+        imported_edges = 0
         with sqlite3.connect(self.db_path) as conn:
             for node in nodes:
-                conn.execute(
-                    'INSERT INTO graph_nodes (project, file_path, name, node_type, start_line, end_line, language, updated_at) VALUES (?,?,?,?,?,?,?,?)',
-                    (project, node['file_path'], node['name'], node['node_type'], node.get('start_line', 0), node.get('end_line', 0), node.get('language', ''), now)
-                )
+                exists = conn.execute(
+                    'SELECT id FROM graph_nodes WHERE project=? AND file_path=? AND name=? AND node_type=?',
+                    (project, node['file_path'], node['name'], node['node_type'])
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        'INSERT INTO graph_nodes (project, file_path, name, node_type, start_line, end_line, language, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+                        (project, node['file_path'], node['name'], node['node_type'],
+                         node.get('start_line', 0), node.get('end_line', 0), node.get('language', ''), now)
+                    )
+                    imported_nodes += 1
             for edge in edges:
-                conn.execute(
-                    'INSERT INTO graph_edges (project, source_file, target_ref, edge_type, updated_at) VALUES (?,?,?,?,?)',
-                    (project, edge['source_file'], edge['target_ref'], edge.get('edge_type', 'imports'), now)
-                )
+                exists = conn.execute(
+                    'SELECT id FROM graph_edges WHERE project=? AND source_file=? AND target_ref=? AND edge_type=?',
+                    (project, edge['source_file'], edge['target_ref'], edge.get('edge_type', 'imports'))
+                ).fetchone()
+                if not exists:
+                    conn.execute(
+                        'INSERT INTO graph_edges (project, source_file, target_ref, edge_type, updated_at) VALUES (?,?,?,?,?)',
+                        (project, edge['source_file'], edge['target_ref'], edge.get('edge_type', 'imports'), now)
+                    )
+                    imported_edges += 1
             conn.commit()
-        return {'nodes_imported': len(nodes), 'edges_imported': len(edges)}
+        return {'nodes_imported': imported_nodes, 'edges_imported': imported_edges}

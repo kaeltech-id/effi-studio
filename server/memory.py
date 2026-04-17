@@ -11,6 +11,11 @@ SCHEMA_VERSION = 1
 TYPE_CAPS: dict[str, int] = {
     "tool_use": 200,
     "summary": 50,
+    "decision": 100,
+    "execution": 100,
+    "review": 100,
+    "feature_plan": 100,
+    "setup": 50,
 }
 _MIGRATIONS: dict[int, list[str]] = {
     # 1 = baseline — no DDL changes needed, just establishes the versioning system
@@ -204,11 +209,16 @@ class MemoryEngine:
             pass
 
         collection = self._get_collection(project)
-        collection.add(
-            documents=[content],
-            metadatas=[{"type": obs_type, "created_at": now, **(metadata or {})}],
-            ids=[str(obs_id)]
-        )
+        for attempt in range(2):
+            try:
+                collection.add(
+                    documents=[content],
+                    metadatas=[{"type": obs_type, "created_at": now, **(metadata or {})}],
+                    ids=[str(obs_id)]
+                )
+                break
+            except Exception:
+                pass
         cap = TYPE_CAPS.get(obs_type)
         if cap is not None:
             self._prune_type(project, obs_type, cap)

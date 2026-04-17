@@ -20,7 +20,7 @@ Check worker status: `curl -s http://localhost:37777/health`
 Before any task executes, create a safety snapshot:
 ```
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-git stash --include-untracked -m "efficlaude-pre-execute-$TIMESTAMP" 2>/dev/null \
+git stash push --include-untracked -m "efficlaude-pre-execute-$TIMESTAMP" -- . ':(exclude).claude' 2>/dev/null \
   && echo "Snapshot saved: efficlaude-pre-execute-$TIMESTAMP" \
   || echo "(nothing to snapshot — clean working tree)"
 ```
@@ -83,6 +83,12 @@ If a subagent fails or cannot verify:
 - Report: "Task {name} failed: {reason}"
 - Ask user: "Retry / Skip / Fix manually?"
 - Do not continue to dependent tasks until resolved
+
+### Timeout Rule
+If a subagent has not completed within 10 minutes:
+- Treat it as failed
+- Report: "Task {name} timed out after 10 minutes"
+- Ask user: "Retry / Skip / Fix manually?"
 
 ## Step 5 — Index Modified Files into Graph (if worker running)
 After all tasks complete, index every created/modified file into the dependency graph:
