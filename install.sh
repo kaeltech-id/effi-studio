@@ -11,7 +11,7 @@ SERVER_DIR="$HOME/.efficlaude/server"
 BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
 COMMANDS=("setup" "feature" "execute" "review" "git")
-SERVER_FILES=("worker.py" "memory.py" "docs.py" "requirements.txt" "start.sh" "stop.sh")
+SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py")
 
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
@@ -69,7 +69,7 @@ done
 echo ""
 echo "Installing Python dependencies..."
 pip3 install -q -r "$SERVER_DIR/requirements.txt"
-echo "  ✓ flask, chromadb, requests installed"
+echo "  ✓ flask, chromadb, requests, tree-sitter installed"
 
 # ── 7. Register hooks in ~/.claude/settings.json ─────────────────────────────
 echo ""
