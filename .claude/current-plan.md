@@ -1,92 +1,229 @@
-# Feature: Quick Wins Bundle — Blast Radius Configurable + SQLite Migration + Minor Fixes
+# Feature: README Rewrite — Hybrid Option 2+3
 
 ## Impact Analysis
 - Files affected:
-  - `server/memory.py` (modified — schema versioning)
-  - `commands/setup.md` (modified — add blast_radius_depth to config template)
-  - `commands/review.md` (modified — read depth from project-config.json)
-  - `install.sh` (modified — fix misleading pip message)
-  - `hooks/session_stop.py` (modified — increase timeout)
-- ⚠️ Breaking change risk: none
+  - `README.md` (full rewrite)
+- ⚠️ Breaking change risk: none — documentation only
 
 ## Reusable Existing Code
-- `_init_db()` sqlite3 pattern di `server/memory.py:14` — extended dengan `_migrate()` method
-- project-config.json template di `commands/setup.md:51` — tambah satu field
+- Content dari README lama tetap dipakai sebagai referensi — jangan hapus fakta yang akurat, hanya restrukturisasi dan tambah visual
 
 ## Tasks
-- [ ] Task 1: Schema versioning in memory.py [S] — tambah SCHEMA_VERSION + _migrate() ke MemoryEngine
-- [ ] Task 2: Add blast_radius_depth to setup.md template [S] — tambah field ke project-config.json template
-- [ ] Task 3: Read blast_radius_depth in review.md [S] — baca depth dari project-config.json saat blast radius query
-- [ ] Task 4: Fix install.sh pip message [S] — ganti string inaccurate
-- [ ] Task 5: Increase session_stop timeout [S] — 3s → 10s
+- [ ] Task 1: Hero section + flow diagram + install [M] — badges, tagline, before/after table, ASCII flow, install command
+- [ ] Task 2: Per-command demos [M] — 6 commands masing-masing dengan mini contoh + "what you get"
+- [ ] Task 3: Benefits + advanced features + footer [S] — why section, worker/etok/figma compact, contributing
 
 ## Per Task Detail
 
-**Task 1 — Schema versioning in memory.py** `S`
-- File: `server/memory.py`
-- Code sample:
-  ```python
-  SCHEMA_VERSION = 1
-  _MIGRATIONS: dict[int, list[str]] = {}
+**Task 1 — Hero section + flow diagram + install** `M`
+- File: `README.md` (full overwrite — starts fresh)
+- Dependencies: none
+- Target output structure:
+  ```markdown
+  # EffiClaude
 
-  # In MemoryEngine.__init__(), after _init_db():
-  self._migrate()
+  [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](...)
+  [![Claude Code](https://img.shields.io/badge/Claude%20Code-required-blueviolet)](...)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](...)
 
-  def _migrate(self):
-      try:
-          with sqlite3.connect(self.db_path) as conn:
-              conn.execute('''
-                  CREATE TABLE IF NOT EXISTS schema_version (
-                      version INTEGER NOT NULL
-                  )
-              ''')
-              row = conn.execute('SELECT version FROM schema_version LIMIT 1').fetchone()
-              current = row[0] if row else 0
-              if current < SCHEMA_VERSION:
-                  for v in range(current + 1, SCHEMA_VERSION + 1):
-                      for sql in _MIGRATIONS.get(v, []):
-                          conn.execute(sql)
-                  if row:
-                      conn.execute('UPDATE schema_version SET version = ?', (SCHEMA_VERSION,))
-                  else:
-                      conn.execute('INSERT INTO schema_version (version) VALUES (?)', (SCHEMA_VERSION,))
-                  conn.commit()
-      except Exception:
-          pass
+  > Structured workflow for Claude Code — from ticket to commit, without losing context.
+
+  Built for developers who want Claude to remember everything, plan precisely, and build with proof.
+
+  ---
+
+  ## Before / After
+
+  | Without EffiClaude | With EffiClaude |
+  |---|---|
+  | Re-explain context every session | Memory persists — Claude knows what was built |
+  | Plan features in chat, lose track | Atomic plan with exact files + verify steps |
+  | Review manually, miss collateral damage | Blast radius analysis catches downstream breakage |
+  | Claude guesses which library API to use | Cached docs ensure correct API usage every time |
+
+  ---
+
+  ## How it works
+
   ```
-- Edge cases: DB lama tanpa schema_version → treated as v0, migration v1 = no-op; DB corrupt → silent fail
-- ⚠️ Breaking change: none
-- Verify: `python3 -c "import ast; ast.parse(open('server/memory.py').read()); print('ok')"` + `grep -c "schema_version" server/memory.py` >= 3
-- Dependencies: none
-
-**Task 2 — Add blast_radius_depth to setup.md template** `S`
-- File: `commands/setup.md`
-- Code sample: replace project-config.json template to include `"blast_radius_depth": 2`
-- ⚠️ Breaking change: none
-- Verify: `grep "blast_radius_depth" commands/setup.md` returns 1 line
-- Dependencies: none
-
-**Task 3 — Read blast_radius_depth in review.md** `S`
-- File: `commands/review.md`
-- Code sample: add before blast radius section:
+  ┌─────────┐     ┌────────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐     ┌──────┐
+  │ /setup  │────▶│/brainstorm │────▶│ /feature │────▶│ /execute │────▶│ /review │────▶│ /git │
+  │  once   │     │ (optional) │     │   plan   │     │  build   │     │  check  │     │ push │
+  └─────────┘     └────────────┘     └──────────┘     └──────────┘     └─────────┘     └──────┘
   ```
-  Read `blast_radius_depth` from `.claude/project-config.json` (default: 2 if field absent).
+
+  ---
+
+  ## Install
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/install.sh | bash
   ```
-  Change query URL from `depth=2` to `depth={blast_radius_depth}`
-- ⚠️ Breaking change: none — default stays 2
-- Verify: `grep "blast_radius_depth" commands/review.md` returns 2+ lines
+
+  **Requirements:** Python 3.8+ · [Claude Code](https://claude.ai/code)
+  **Optional:** Rust (token optimizer) · Node.js (Figma MCP) — auto-detected
+
+  Installs commands to `~/.claude/commands/`, starts worker daemon, registers hooks, builds `etok`.
+
+  ---
+  ```
+- Edge cases: badges harus pakai URL yang valid (shields.io standard format)
+- ⚠️ Breaking change: none
+- Verify: `grep -c "Before / After" README.md` = 1 && `grep "How it works" README.md` mengembalikan 1 baris
 - Dependencies: none
 
-**Task 4 — Fix install.sh pip message** `S`
-- File: `install.sh`
-- Code sample: `echo "  ✓ flask, chromadb, requests, tree-sitter installed"` → `echo "  ✓ Python dependencies installed"`
-- ⚠️ Breaking change: none
-- Verify: `grep "Python dependencies installed" install.sh` returns 1 line
-- Dependencies: none
+**Task 2 — Per-command demos** `M`
+- File: `README.md` (append setelah Task 1 output)
+- Dependencies: Task 1
+- Target output structure (6 sections, masing-masing max 25 baris):
+  ```markdown
+  ## The Workflow
 
-**Task 5 — Increase session_stop timeout** `S`
-- File: `hooks/session_stop.py`
-- Code sample: `timeout=3` → `timeout=10` in urlopen summarize call
+  ### /setup — once per project
+  Scans your codebase, learns your stack, registers docs libraries, initializes memory.
+  ```
+  /setup
+  ```
+  > What you get: `CLAUDE.md` + `.claude/context/` + project memory initialized. Run once, works forever.
+
+  ---
+
+  ### /brainstorm — before complex features
+  Explore approaches before committing. Claude presents 2–3 options, you pick one — decision is loaded automatically by `/feature`.
+  ```
+  You:    Users can't reset password without contacting support
+
+  Claude: ## Option 1: Email Reset Flow  Effort: M · Risk: Low
+          ## Option 2: SMS OTP            Effort: M · Risk: Medium
+          ## Option 3: Magic Link         Effort: L · Risk: Low
+
+  You:    Option 1
+  ```
+  > What you get: Decision saved to `.claude/decision.md`, auto-loaded by `/feature`.
+
+  ---
+
+  ### /feature — ticket to atomic plan
+  Works with a Jira ticket, Figma link, API contract, or a plain sentence.
+  ```
+  Claude: Describe the feature (or ticket number)?
+  You:    Add user profile page with avatar upload
+
+  Claude: Design reference?
+  You:    https://figma.com/design/abc123?node-id=12-34
+
+  Claude: API contract?
+  You:    skip
+  ```
+  > What you get: Plan with exact file paths, code samples, edge cases, and verify steps — approved by you before anything is written.
+
+  ---
+
+  ### /execute — parallel build with evidence
+  Runs one subagent per task simultaneously. Each agent must prove completion before marking done.
+  ```
+  Running group 1: TaskA, TaskB, TaskC (parallel)
+
+  ✓ TaskA — src/components/Avatar.tsx — verified: tsc --noEmit passed
+  ✓ TaskB — src/api/upload.ts — verified: grep "uploadAvatar" passed
+  ✓ TaskC — src/hooks/useProfile.ts — verified: file exists, parses ok
+  ```
+  > What you get: All modified files indexed into code graph for blast radius analysis.
+
+  ---
+
+  ### /review — blast radius + two-stage check
+  Before reviewing code, computes which files are affected by your changes.
+  ```
+  Modified:     src/api/upload.ts
+  Blast radius: src/api/index.ts, tests/upload.test.ts → also reviewed
+  ```
+  **Stage 1 — Spec compliance:** does the code match the approved plan?
+  **Stage 2 — Code quality:** naming, types, performance, security, API correctness vs cached docs.
+  Claude fixes all issues directly — not just reports them.
+  > What you get: Clean code or a list of fixes applied. Ready to commit.
+
+  ---
+
+  ### /git — controlled git
+  Claude never touches git autonomously. `/git` is the only entry point.
+  ```
+  Claude: What do you want to do? (commit / push / pull / branch / merge)
+  You:    commit and push
+  Claude: [shows diff] Commit message?
+  You:    feat: add profile page with avatar upload
+  Claude: Confirm → executes
+  ```
+  > What you get: No surprise commits, ever.
+
+  ---
+  ```
+- Edge cases: code block fence di dalam code block harus pakai 3 backticks konsisten; jangan ada raw HTML
 - ⚠️ Breaking change: none
-- Verify: `grep "timeout=10" hooks/session_stop.py` returns 1 line
-- Dependencies: none
+- Verify: `grep -c "^### /" README.md` = 6 (satu per command)
+- Dependencies: Task 1
+
+**Task 3 — Benefits + advanced features + footer** `S`
+- File: `README.md` (append setelah Task 2 output)
+- Dependencies: Task 2
+- Target output structure:
+  ```markdown
+  ## Why EffiClaude
+
+  | | What it solves |
+  |---|---|
+  | **Persistent memory** | Claude remembers every file touched, decision made, and pattern used — across sessions |
+  | **Parallel execution** | Multiple tasks run simultaneously via subagents — faster than sequential chat |
+  | **Blast radius analysis** | Tree-sitter AST graph traces which files import from yours — no more surprise breakage |
+  | **Docs caching** | Library docs cached locally — correct API usage without Claude guessing |
+  | **Evidence-based tasks** | No task marked done without running its verify step |
+  | **Token optimizer** | Shell wrappers compress `git`, `npm`, `docker` output by 60–90% before it reaches Claude |
+  | **Figma MCP** | Paste any Figma frame link — Claude gets structured layout data, not a screenshot |
+
+  ---
+
+  ## Under the hood
+
+  **Worker service** (`localhost:37777`) — Memory engine (SQLite + ChromaDB), Docs engine, Code graph engine (tree-sitter, 23 languages). Auto-starts on login via launchd/systemd.
+
+  **Token optimizer (etok)** — Rust binary. Compresses `git status`, `git log`, `git diff`, `npm install`, `docker ps/logs/build`, `cargo test/build`. 60–90% reduction typical.
+
+  **Figma MCP** — Registered automatically during `/setup` when Figma API key provided. Requires Node.js.
+
+  ```bash
+  # Worker commands
+  curl http://localhost:37777/health
+  bash ~/.efficlaude/server/start.sh
+  bash ~/.efficlaude/server/stop.sh
+  ```
+
+  ---
+
+  ## Project memory files
+
+  ```
+  your-project/
+  ├── CLAUDE.md                   ← auto-loaded every session
+  └── .claude/
+      ├── project-config.json     ← credentials & config (gitignored)
+      ├── current-plan.md         ← active feature plan
+      └── context/
+          ├── stack.md
+          ├── structure.md
+          └── conventions.md
+  ```
+
+  ---
+
+  ## Contributing
+
+  Issues and PRs welcome at [github.com/kaeltech-id/EffiClaude](https://github.com/kaeltech-id/EffiClaude)
+
+  ---
+
+  <p align="center">Built by <a href="https://github.com/kaeltech-id">kaeltech-id</a></p>
+  ```
+- Edge cases: pastikan tidak ada duplikasi konten dari Task 1 atau Task 2
+- ⚠️ Breaking change: none
+- Verify: `wc -l README.md` output antara 220–320 baris && `grep "Why EffiClaude" README.md` ada 1 baris
+- Dependencies: Task 1, Task 2
