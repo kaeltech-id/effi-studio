@@ -1,5 +1,17 @@
 Run interactive feature planning. Read .claude/project-config.json and CLAUDE.md first.
 
+## Step 0 — Load Memory & Check Worker
+Silently check worker: `curl -s http://localhost:37777/health`
+
+If worker is running:
+- Load recent project memory (last 10 observations):
+  `curl -s "http://localhost:37777/memory/context?project={project_name}&limit=10"`
+- Use this memory to understand: what files have been touched recently, past decisions, patterns used.
+- Note: "(memory loaded)" — do not dump raw memory to user.
+
+If worker is offline:
+- Continue without memory. Read .claude/context/ files for context.
+
 ## Step 1 — Gather Input
 Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.
 
@@ -22,6 +34,21 @@ Ask ONE question at a time. Every input is optional — minimum viable input is 
 
 ## Step 2 — Analyze
 Read .claude/context/stack.md, .claude/context/structure.md, .claude/context/conventions.md.
+
+### Docs Lookup (if worker running)
+For the feature being planned, search relevant docs:
+```
+curl -s "http://localhost:37777/docs/search?q={feature_keywords}&project={project_name}&limit=5"
+```
+Use returned docs snippets to ensure planned API usage is correct and up-to-date.
+Do not show raw docs to user — silently incorporate into plan accuracy.
+
+### Memory Cross-Check (if worker running)
+Search memory for anything relevant to this feature:
+```
+curl -s "http://localhost:37777/memory/search?q={feature_keywords}&project={project_name}&limit=5"
+```
+Use results to: avoid re-creating things that already exist, follow past decisions, flag if this feature was attempted before.
 
 ### Reuse Scan
 Silently scan existing codebase for:
@@ -95,6 +122,19 @@ Before showing the plan, check:
 
 Fix any issues found, then present the plan.
 
-## Step 5 — Confirm
+## Step 5 — Save Feature Intent to Memory (if worker running)
+After plan is confirmed, save feature intent:
+```
+curl -s -X POST http://localhost:37777/memory/observe \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project": "{project_name}",
+    "type": "feature_plan",
+    "content": "Planning feature: {feature_name}. Tasks: {task_count}. Files: {affected_files}.",
+    "metadata": {"source": "feature"}
+  }'
+```
+
+## Step 6 — Confirm
 Ask: "Does this plan look right? Anything to change before executing?"
 Only tell user to run /execute after they approve.

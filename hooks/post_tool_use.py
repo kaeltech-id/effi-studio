@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Captures Write/Edit/Bash tool usage as memory observations."""
+
+import sys
+import json
+import os
+import urllib.request
+import urllib.error
+
+WORKER_URL = "http://localhost:37777"
+TRACKED_TOOLS = {"Write", "Edit", "Bash", "MultiEdit"}
+
+
+def get_project_name():
+    try:
+        config_path = os.path.join(os.getcwd(), ".claude", "project-config.json")
+        with open(config_path) as f:
+            return json.load(f).get("project_name", "unknown")
+    except Exception:
+        return os.path.basename(os.getcwd())
+
+
+def build_observation(tool_name, tool_input):
+    if tool_name == "Write":
+        return f"Wrote file: {tool_input.get('file_path', '')}"
+    if tool_name == "Edit":
+        return f"Edited file: {tool_input.get('file_path', '')} — {str(tool_input.get('old_string', ''))[:60]}"
+    if tool_name == "MultiEdit":
+        paths = [e.get("file_path", "") for e in tool_input.get("edits", [])]
+        return f"Multi-edited: {', '.join(set(paths))}"
+    if tool_name == "Bash":
+        cmd = str(tool_input.get("command", ""))[:120]
+        return f"Ran command: {cmd}"
+    return None
+
+
+def post_observation(project, content, obs_type="tool_use"):
+    payload = json.dumps({
+        "project": project,
+        "type": obs_type,
+        "content": content
+    }).encode()
+    req = urllib.request.Request(
+        f"{WORKER_URL}/memory/observe",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    urllib.request.urlopen(req, timeout=2)
+
+
+def main():
+    try:
+        raw = sys.stdin.read()
+        data = json.loads(raw)
+    except Exception:
+        sys.exit(0)
+
+    tool_name = data.get("tool_name", "")
+    if tool_name not in TRACKED_TOOLS:
+        sys.exit(0)
+
+    observation = build_observation(tool_name, data.get("tool_input", {}))
+    if not observation:
+        sys.exit(0)
+
+    project = get_project_name()
+    try:
+        post_observation(project, observation)
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()

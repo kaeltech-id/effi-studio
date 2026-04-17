@@ -9,6 +9,15 @@ Read:
 - `.claude/context/conventions.md`
 - `CLAUDE.md`
 
+Check worker: `curl -s http://localhost:37777/health`
+
+If worker is running:
+- Load relevant memory for this feature:
+  `curl -s "http://localhost:37777/memory/search?q={feature_name}&project={project_name}&limit=5"`
+- Load docs for libraries used in this feature:
+  `curl -s "http://localhost:37777/docs/search?q={feature_keywords}&project={project_name}&limit=5"`
+- Pass relevant memory + docs snippets into each subagent's context.
+
 ## Step 2 — Pre-flight Check
 Before executing, verify:
 - All files referenced in the plan exist (if modifying existing files)
@@ -38,6 +47,8 @@ Spawn one subagent per task simultaneously. Each subagent prompt must include:
 - Clean code rules: readable, best practices, no unnecessary comments
 - ⚠️ Breaking change note if flagged in plan
 - The verify step from the plan
+- Relevant memory snippets (if any)
+- Relevant docs snippets (if any — ensures correct API usage)
 
 ### Evidence Rule — mandatory for every subagent
 Each subagent MUST prove completion before claiming done:
@@ -55,7 +66,20 @@ If a subagent fails or cannot verify:
 - Ask user: "Retry / Skip / Fix manually?"
 - Do not continue to dependent tasks until resolved
 
-## Step 5 — Report
+## Step 5 — Save Execution Memory (if worker running)
+After all tasks complete, save what was built:
+```
+curl -s -X POST http://localhost:37777/memory/observe \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project": "{project_name}",
+    "type": "execution",
+    "content": "Executed feature: {feature_name}. Created/modified: {files_list}. {n} tasks completed.",
+    "metadata": {"source": "execute", "feature": "{feature_name}"}
+  }'
+```
+
+## Step 6 — Report
 ```
 ## Execution Complete
 

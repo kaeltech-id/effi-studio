@@ -1,0 +1,118 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+from flask import Flask, request, jsonify
+from memory import MemoryEngine
+from docs import DocsEngine
+
+app = Flask(__name__)
+
+BASE_DIR = os.path.expanduser("~/.efficlaude")
+DB_PATH = os.path.join(BASE_DIR, "efficlaude.db")
+CHROMA_PATH = os.path.join(BASE_DIR, "chroma")
+
+os.makedirs(BASE_DIR, exist_ok=True)
+os.makedirs(CHROMA_PATH, exist_ok=True)
+
+memory = MemoryEngine(DB_PATH, CHROMA_PATH)
+docs = DocsEngine(DB_PATH, CHROMA_PATH)
+
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "ok", "version": "1.0.0"})
+
+
+# ── Memory endpoints ──────────────────────────────────────────────────────────
+
+@app.route('/memory/observe', methods=['POST'])
+def observe():
+    data = request.json or {}
+    project = data.get('project', '')
+    content = data.get('content', '')
+    if not project or not content:
+        return jsonify({"error": "project and content required"}), 400
+    memory.save_observation(
+        project=project,
+        obs_type=data.get('type', 'general'),
+        content=content,
+        metadata=data.get('metadata', {})
+    )
+    return jsonify({"status": "saved"})
+
+
+@app.route('/memory/search')
+def memory_search():
+    q = request.args.get('q', '')
+    project = request.args.get('project', '')
+    limit = int(request.args.get('limit', 5))
+    if not q or not project:
+        return jsonify([])
+    return jsonify(memory.search(project, q, limit))
+
+
+@app.route('/memory/context')
+def memory_context():
+    project = request.args.get('project', '')
+    limit = int(request.args.get('limit', 20))
+    if not project:
+        return jsonify([])
+    return jsonify(memory.get_recent(project, limit))
+
+
+@app.route('/memory/summarize', methods=['POST'])
+def summarize():
+    data = request.json or {}
+    project = data.get('project', '')
+    if not project:
+        return jsonify({"error": "project required"}), 400
+    summary = memory.summarize_session(project, data.get('session_id', ''))
+    return jsonify({"summary": summary})
+
+
+# ── Docs endpoints ────────────────────────────────────────────────────────────
+
+@app.route('/docs/register', methods=['POST'])
+def docs_register():
+    data = request.json or {}
+    name = data.get('name', '')
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    docs.register_library(
+        name=name,
+        project=data.get('project', ''),
+        source_type=data.get('source_type')
+    )
+    return jsonify({"status": "registered", "library": name})
+
+
+@app.route('/docs/search')
+def docs_search():
+    q = request.args.get('q', '')
+    project = request.args.get('project', '')
+    limit = int(request.args.get('limit', 5))
+    if not q:
+        return jsonify([])
+    return jsonify(docs.search(project, q, limit))
+
+
+@app.route('/docs/refresh', methods=['POST'])
+def docs_refresh():
+    data = request.json or {}
+    name = data.get('name', '')
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    count = docs.fetch_and_cache(name)
+    return jsonify({"library": name, "chunks_cached": count})
+
+
+@app.route('/docs/list')
+def docs_list():
+    project = request.args.get('project', '')
+    return jsonify(docs.list_libraries(project))
+
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=37777, debug=False)

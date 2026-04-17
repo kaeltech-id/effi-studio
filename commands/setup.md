@@ -1,5 +1,13 @@
 Run interactive project setup. Follow these steps strictly.
 
+## Step 0 — Check Worker
+Before starting, silently check if the EffiClaude worker is running:
+```
+curl -s http://localhost:37777/health
+```
+- If running: proceed normally. Memory + docs features will be active.
+- If not running: note it quietly as "(worker offline — memory/docs unavailable)" and continue setup without those features.
+
 ## Step 1 — Silent Scan
 Scan all repos/folders in this project directory. Detect:
 - Tech stack per repo (framework, language, libraries, versions)
@@ -25,7 +33,6 @@ Ask ONE question at a time. Wait for user response before proceeding.
 8. "Anything else I should know about this project?"
 
 ## Step 3 — Save Files
-After all answers collected, create/overwrite these files:
 
 ### CLAUDE.md
 ```
@@ -66,5 +73,33 @@ Naming conventions & clean code rules.
 ### .gitignore
 Add `.claude/project-config.json` to gitignore.
 
-## Step 4 — Confirm
+## Step 4 — Register Docs Libraries (if worker running)
+If the worker is online, detect which libraries from the stack are supported and register them:
+
+Supported libraries: react, next, nextjs, tailwindcss, typescript, vue, nuxt, svelte, express, prisma, zod, axios, fastapi, django, flask, sqlalchemy, pydantic
+
+For each detected library, call:
+```
+curl -s -X POST http://localhost:37777/docs/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "{library}", "project": "{project_name}"}'
+```
+
+Show: "Registered docs: react, next, tailwindcss ..." (only the ones actually registered)
+This runs in the background — do not wait for confirmation before moving on.
+
+## Step 5 — Initialize Project Memory (if worker running)
+If the worker is online, save initial project context as a memory observation:
+```
+curl -s -X POST http://localhost:37777/memory/observe \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project": "{project_name}",
+    "type": "setup",
+    "content": "Project initialized. Stack: {stack_summary}. Structure: {structure_summary}.",
+    "metadata": {"source": "setup"}
+  }'
+```
+
+## Step 6 — Confirm
 Show full summary of saved config. Ask: "Setup complete. Anything you'd like to change?"

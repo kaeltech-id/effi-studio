@@ -8,11 +8,19 @@ Built for developers who want to move fast without cutting corners. Works with a
 
 ## Install
 
-Run once. Commands are available globally across all your projects.
+Run once. Commands and memory service are installed globally.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/install.sh | bash
 ```
+
+**Requirements:** Python 3.8+, [Claude Code](https://claude.ai/code)
+
+The installer will:
+- Install all slash commands to `~/.claude/commands/`
+- Set up the EffiClaude worker service (memory + docs engine)
+- Register Claude Code hooks for automatic context capture
+- Start the worker as a background daemon (auto-starts on login)
 
 ---
 
@@ -24,7 +32,7 @@ In every new project folder, run once:
 /setup
 ```
 
-Claude will scan your existing code, ask you to confirm what it found, collect your credentials, and save everything. You never have to explain your project again.
+Claude will scan your existing code, ask you to confirm what it found, collect your credentials, and save everything — including registering your stack's libraries for docs lookup.
 
 > `.claude/project-config.json` is automatically added to `.gitignore`
 
@@ -34,10 +42,10 @@ Claude will scan your existing code, ask you to confirm what it found, collect y
 
 | Command | What it does |
 |---|---|
-| `/setup` | Scans your codebase, learns your stack & conventions, stores config for future sessions |
-| `/feature` | Gathers your ticket, design, and API contract — then writes a granular execution plan |
-| `/execute` | Runs the plan using parallel subagents — every task must be verified before marked done |
-| `/review` | Two-stage review: spec compliance first, then code quality — auto-fixes all issues |
+| `/setup` | Scans your codebase, learns your stack & conventions, registers docs libraries, initializes project memory |
+| `/feature` | Gathers your ticket, design, and API contract — plans with memory context + up-to-date docs |
+| `/execute` | Runs the plan using parallel subagents — every task verified with memory + docs context |
+| `/review` | Two-stage review: spec compliance first, then code quality + API correctness — auto-fixes all issues |
 | `/git` | The **only** way Claude can touch git. No surprise commits, ever |
 
 ---
@@ -53,6 +61,38 @@ Claude will scan your existing code, ask you to confirm what it found, collect y
 
 ---
 
+## Memory Engine
+
+EffiClaude runs a local worker service (`localhost:37777`) that gives Claude persistent memory and up-to-date docs across every session.
+
+```
+~/.efficlaude/
+├── efficlaude.db       ← SQLite: observations, summaries, docs cache
+├── chroma/             ← ChromaDB: semantic search index
+├── server/             ← Worker service source
+│   ├── worker.py
+│   ├── memory.py
+│   └── docs.py
+└── hooks/              ← Claude Code hooks
+    ├── post_tool_use.py    ← captures every Write/Edit/Bash
+    ├── session_stop.py     ← summarizes session on stop
+    └── prompt_submit.py    ← injects relevant context per prompt
+```
+
+### How it works
+
+**Memory** — every file write, edit, and command is silently captured as an observation. At session end, observations are summarized. At the start of each prompt, the most relevant memories are injected as context — so Claude always knows what was built before, what decisions were made, and what patterns are in use.
+
+**Docs** — when you run `/setup`, EffiClaude detects your stack and caches docs from npm/PyPI for your libraries (React, Next.js, Tailwind, TypeScript, FastAPI, and more). When planning or reviewing, Claude searches these cached docs to ensure correct, up-to-date API usage.
+
+**Progressive disclosure** — context is injected in compact form first. Claude only expands what's relevant, keeping token usage minimal.
+
+### Supported libraries (auto-detected from stack)
+
+`react` · `next` · `tailwindcss` · `typescript` · `vue` · `nuxt` · `svelte` · `express` · `prisma` · `zod` · `axios` · `fastapi` · `django` · `flask` · `sqlalchemy` · `pydantic`
+
+---
+
 ## /setup — Project Configuration
 
 Interactive onboarding. Claude scans your code first, then confirms with you:
@@ -61,6 +101,10 @@ Interactive onboarding. Claude scans your code first, then confirms with you:
 - Project management tool *(Jira / Linear / GitHub Issues / Notion / Trello / none)*
 - Design tool *(Figma / Sketch / screenshots / none)*
 - Backend API base URL
+
+Then automatically:
+- Registers detected libraries for docs caching
+- Initializes project memory with stack context
 
 Everything is saved to the project. Run once, works forever.
 
@@ -80,6 +124,10 @@ You:    https://figma.com/...
 Claude: Any API contract? (paste or skip)
 You:    skip
 ```
+
+Before writing the plan, Claude:
+- **Loads project memory** — knows what was built before, avoids duplicating work
+- **Searches cached docs** — ensures planned API calls match current library versions
 
 Every plan includes:
 
@@ -114,6 +162,11 @@ Runs your approved plan using one subagent per task, simultaneously.
 - No two tasks write to the same file
 - Task dependencies are correctly ordered
 
+Each subagent receives:
+- The task specification
+- Relevant memory snippets (past decisions, patterns)
+- Relevant docs snippets (correct API usage)
+
 **Evidence rule** — every subagent must prove completion:
 1. Run the verify step from the task
 2. Read the actual output
@@ -136,6 +189,7 @@ Verifies the implementation matches the approved plan exactly:
 - All edge cases handled as specified
 - Correct existing code reused as planned
 - No over-building, no under-building
+- No contradictions with past architectural decisions (from memory)
 
 ### Stage 2 — Code Quality
 
@@ -146,6 +200,7 @@ Verifies the implementation matches the approved plan exactly:
 | **Performance** | Unnecessary re-renders, missing memoization, N+1 patterns |
 | **Security** | Hardcoded secrets, XSS risks, exposed sensitive data |
 | **Accessibility** | Missing `alt`, `aria-label`, keyboard navigation *(UI only)* |
+| **API correctness** | Deprecated or incorrect API usage vs. cached docs |
 
 Claude fixes all issues directly — not just reports them.
 
@@ -169,7 +224,7 @@ Claude: Confirm? → execute
 
 ---
 
-## Project Memory
+## Project Memory Files
 
 EffiClaude stores project knowledge so Claude stays consistent across every session:
 
@@ -200,10 +255,34 @@ my-project/        ← run /setup here
 
 ---
 
-## Requirements
+## Worker Service
 
-- [Claude Code](https://claude.ai/code) installed
-- Jira / Linear / GitHub / Figma credentials *(optional — only needed if you use them)*
+The worker runs at `localhost:37777`. You can interact with it directly:
+
+```bash
+# Check status
+curl http://localhost:37777/health
+
+# Search project memory
+curl "http://localhost:37777/memory/search?q=auth+flow&project=my-app"
+
+# Search cached docs
+curl "http://localhost:37777/docs/search?q=useRouter&project=my-app"
+
+# List registered libraries
+curl "http://localhost:37777/docs/list?project=my-app"
+
+# Manually register a library
+curl -X POST http://localhost:37777/docs/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "prisma", "project": "my-app"}'
+```
+
+Start/stop manually:
+```bash
+bash ~/.efficlaude/server/start.sh
+bash ~/.efficlaude/server/stop.sh
+```
 
 ---
 

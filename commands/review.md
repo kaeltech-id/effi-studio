@@ -3,6 +3,16 @@ Review all code changes from the last execution. Two-stage review: spec complian
 ## Step 1 — Load Context
 Read `.claude/current-plan.md`, `.claude/context/conventions.md`, `.claude/context/stack.md`.
 
+Check worker: `curl -s http://localhost:37777/health`
+
+If worker is running:
+- Load memory for consistency check:
+  `curl -s "http://localhost:37777/memory/search?q={feature_name}&project={project_name}&limit=5"`
+- Load docs for libraries used:
+  `curl -s "http://localhost:37777/docs/search?q={feature_keywords}&project={project_name}&limit=3"`
+- Use memory to flag: if this feature contradicts past decisions or patterns.
+- Use docs to verify: API usage matches current library versions.
+
 ---
 
 ## Stage 1 — Spec Compliance Review
@@ -16,6 +26,7 @@ Check:
 - Were file paths created/modified exactly as planned?
 - Any over-building (added unrequested features)?
 - Any under-building (missing required behavior)?
+- (If memory available) Does implementation contradict past architectural decisions?
 
 For each mismatch: fix it directly. Do not ask for permission.
 
@@ -54,6 +65,10 @@ After spec compliance is confirmed, review code quality on all modified files.
 - Keyboard navigation works
 - Semantic HTML used correctly
 
+### API Correctness (if docs available)
+- Compare implemented API calls against cached docs
+- Flag any usage of deprecated or incorrect APIs
+
 Fix all issues found directly. Do not ask for permission to fix — fix and note what changed.
 
 ---
@@ -72,7 +87,22 @@ If yes: run the tests and report results with evidence (actual output, not assum
 
 ---
 
-## Step 3 — Report
+## Step 3 — Save Review Memory (if worker running)
+After review is complete, save outcome:
+```
+curl -s -X POST http://localhost:37777/memory/observe \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project": "{project_name}",
+    "type": "review",
+    "content": "Reviewed feature: {feature_name}. Issues fixed: {issues_count}. Files reviewed: {files_list}.",
+    "metadata": {"source": "review", "feature": "{feature_name}"}
+  }'
+```
+
+---
+
+## Step 4 — Report
 
 ```
 ## Review Summary
@@ -86,6 +116,7 @@ If yes: run the tests and report results with evidence (actual output, not assum
 - Performance:     ✓/✗
 - Security:        ✓/✗
 - Accessibility:   ✓/✗ (UI only)
+- API correctness: ✓/✗ (if docs available)
 
 ### Fixes Applied
 - {file}:{line} — {issue} → {what was fixed}

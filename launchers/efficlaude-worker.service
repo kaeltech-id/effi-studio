@@ -1,0 +1,15 @@
+[Unit]
+Description=EffiClaude Worker Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 EFFICLAUDE_HOME/server/worker.py
+Restart=always
+RestartSec=5
+StandardOutput=append:EFFICLAUDE_HOME/worker.log
+StandardError=append:EFFICLAUDE_HOME/worker.log
+WorkingDirectory=EFFICLAUDE_HOME
+
+[Install]
+WantedBy=default.target
