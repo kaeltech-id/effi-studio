@@ -1,6 +1,6 @@
 Run interactive feature planning. Read .claude/project-config.json and CLAUDE.md first.
 
-## Step 0 — Load Memory & Check Worker
+## Step 0 — Load Context & Memory
 Silently check worker: `curl -s http://localhost:37777/health`
 
 If worker is running:
@@ -11,6 +11,12 @@ If worker is running:
 
 If worker is offline:
 - Continue without memory. Read .claude/context/ files for context.
+
+**Check for brainstorm decision:** If `.claude/decision.md` exists, read it silently.
+- Pre-fill the feature description from the decision's "Chosen Approach" section
+- Skip asking about approach — user already decided
+- Note: "(decision.md loaded — using chosen approach from brainstorm)"
+- After planning is complete, delete `.claude/decision.md` so it doesn't carry over to next feature
 
 ## Step 1 — Gather Input
 Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.

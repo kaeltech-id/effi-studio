@@ -10,7 +10,7 @@ HOOKS_DIR="$HOME/.efficlaude/hooks"
 SERVER_DIR="$HOME/.efficlaude/server"
 BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
-COMMANDS=("setup" "feature" "execute" "review" "git")
+COMMANDS=("setup" "feature" "brainstorm" "execute" "review" "git")
 SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py")
 

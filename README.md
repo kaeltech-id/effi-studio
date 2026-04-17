@@ -48,6 +48,7 @@ Claude will scan your existing code, ask you to confirm what it found, collect y
 | Command | What it does |
 |---|---|
 | `/setup` | Scans your codebase, learns your stack & conventions, registers docs libraries, initializes project memory |
+| `/brainstorm` | Explore solution approaches before committing — generates 2–3 options with pros/cons, saves decision for `/feature` |
 | `/feature` | Gathers your ticket, design, and API contract — plans with memory context + up-to-date docs |
 | `/execute` | Runs the plan using parallel subagents — indexes modified files into the code graph |
 | `/review` | Blast radius analysis first, then two-stage review: spec compliance + code quality + API correctness |
@@ -58,10 +59,10 @@ Claude will scan your existing code, ask you to confirm what it found, collect y
 ## Full Workflow
 
 ```
-┌─────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐     ┌──────┐
-│ /setup  │────▶│ /feature │────▶│ /execute │────▶│ /review │────▶│ /git │
-│  once   │     │  plan    │     │  build   │     │  check  │     │ push │
-└─────────┘     └──────────┘     └──────────┘     └─────────┘     └──────┘
+┌─────────┐     ┌────────────┐     ┌──────────┐     ┌──────────┐     ┌─────────┐     ┌──────┐
+│ /setup  │────▶│ /brainstorm│────▶│ /feature │────▶│ /execute │────▶│ /review │────▶│ /git │
+│  once   │     │  (optional)│     │  plan    │     │  build   │     │  check  │     │ push │
+└─────────┘     └────────────┘     └──────────┘     └──────────┘     └─────────┘     └──────┘
 ```
 
 ---
@@ -127,6 +128,36 @@ Then automatically:
 - Initializes project memory with stack context
 
 Everything is saved to the project. Run once, works forever.
+
+---
+
+## /brainstorm — Pre-Feature Solution Exploration
+
+Use this before `/feature` when the approach is unclear. Claude explores the problem space and presents distinct options — you pick one, then `/feature` loads the decision automatically.
+
+```
+Claude: What problem are you trying to solve?
+You:    Users can't reset their password without contacting support
+
+Claude: ## Option 1: Email Reset Flow
+        Approach: Standard email-based token reset
+        Pros: familiar UX, stateless, widely understood
+        Cons: depends on email delivery reliability
+        Effort: M · Risk: Low
+
+        ## Option 2: SMS OTP Reset
+        Approach: One-time code via SMS
+        Pros: faster, no email required
+        Cons: phone number required, SMS cost
+        Effort: M · Risk: Medium
+
+        ## Option 3: Magic Link + Fallback
+        ...
+
+You:    Option 1
+```
+
+Once you choose, Claude saves the decision to `.claude/decision.md`. When you run `/feature` next, it loads that decision automatically — no need to re-describe the approach.
 
 ---
 
