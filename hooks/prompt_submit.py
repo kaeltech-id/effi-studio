@@ -95,6 +95,23 @@ def check_update():
     return None
 
 
+def check_context_staleness():
+    try:
+        stack_path = os.path.join(os.getcwd(), ".claude", "context", "stack.md")
+        with open(stack_path) as f:
+            first_line = f.readline().strip()
+        if not first_line.startswith("<!-- last_updated:"):
+            return None
+        date_str = first_line.replace("<!-- last_updated:", "").replace("-->", "").strip()
+        last_ts = time.mktime(time.strptime(date_str, "%Y-%m-%d"))
+        days = int((time.time() - last_ts) / 86400)
+        if days > 30:
+            return f"⚠️ Context files last updated {days} days ago. Consider running /ec-setup to refresh."
+    except Exception:
+        pass
+    return None
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -111,6 +128,7 @@ def main():
 
     project = get_project_name()
     update_msg = check_update()
+    staleness_msg = check_context_staleness()
 
     memory_items = get_memory_context(project, prompt)
     docs_items = get_docs_context(project, prompt)
@@ -130,6 +148,9 @@ def main():
 
     if update_msg:
         parts.insert(0, f"**{update_msg}**")
+
+    if staleness_msg:
+        parts.insert(0, f"**{staleness_msg}**")
 
     if not parts:
         sys.exit(0)

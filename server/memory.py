@@ -47,6 +47,13 @@ class MemoryEngine:
                     created_at TEXT NOT NULL
                 )
             ''')
+            try:
+                conn.execute('''
+                    CREATE VIRTUAL TABLE IF NOT EXISTS obs_fts
+                    USING fts5(content, tokenize="porter ascii")
+                ''')
+            except Exception:
+                pass
             conn.commit()
 
     def _migrate(self):
@@ -156,6 +163,29 @@ class MemoryEngine:
         except Exception:
             pass
 
+    def _fts_search(self, project: str, query: str, limit: int) -> list:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                rows = conn.execute(
+                    '''SELECT o.id, o.type, o.content, o.metadata, o.created_at
+                       FROM obs_fts f
+                       JOIN observations o ON f.rowid = o.id
+                       WHERE f.content MATCH ? AND o.project = ?
+                       ORDER BY o.created_at DESC
+                       LIMIT ?''',
+                    (query, project, limit)
+                ).fetchall()
+            return [
+                {
+                    "content": r[2],
+                    "metadata": {**json.loads(r[3] or '{}'), "type": r[1], "created_at": r[4]},
+                    "distance": 0.5
+                }
+                for r in rows
+            ]
+        except Exception:
+            return []
+
     def save_observation(self, project, obs_type, content, metadata=None):
         now = datetime.utcnow().isoformat()
         with sqlite3.connect(self.db_path) as conn:
@@ -165,6 +195,13 @@ class MemoryEngine:
             )
             obs_id = cursor.lastrowid
             conn.commit()
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute('INSERT INTO obs_fts(rowid, content) VALUES (?, ?)', (obs_id, content))
+                conn.commit()
+        except Exception:
+            pass
 
         collection = self._get_collection(project)
         collection.add(
@@ -181,12 +218,12 @@ class MemoryEngine:
         try:
             count = collection.count()
             if count == 0:
-                return []
+                return self._fts_search(project, query, limit)
             results = collection.query(
                 query_texts=[query],
                 n_results=min(limit, count)
             )
-            return [
+            items = [
                 {"content": doc, "metadata": meta, "distance": dist}
                 for doc, meta, dist in zip(
                     results['documents'][0],
@@ -194,8 +231,13 @@ class MemoryEngine:
                     results['distances'][0]
                 )
             ]
+            if all(item['distance'] > 1.5 for item in items):
+                fts = self._fts_search(project, query, limit)
+                if fts:
+                    return fts
+            return items
         except Exception:
-            return []
+            return self._fts_search(project, query, limit)
 
     def get_recent(self, project, limit=20):
         with sqlite3.connect(self.db_path) as conn:

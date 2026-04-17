@@ -7,6 +7,10 @@ Check worker status: `curl -s http://localhost:37777/health`
   Use memory to understand: what files have been touched recently, past decisions, patterns used. Do not dump raw memory.
 - If offline: show "(worker OFFLINE ⚠️ — memory unavailable)" and continue. Read .claude/context/ files for context.
 
+**Onboarding check:** Verify `.claude/context/stack.md`, `.claude/context/structure.md`, and `.claude/context/conventions.md` all exist and are non-empty.
+- If all present: proceed normally
+- If any are missing or empty: show "(context incomplete — run /ec-setup first to configure this project)" and stop
+
 **Check for brainstorm decision:** If `.claude/decision.md` exists, read it silently.
 - Look for `_Created: {YYYY-MM-DD}_` on the last non-empty line. If found, parse the date.
   - If older than 7 days: skip this decision entirely. Note: "(decision.md expired — created {n} days ago, ignoring)". Do NOT delete it.
@@ -15,13 +19,6 @@ Check worker status: `curl -s http://localhost:37777/health`
 - Skip asking about approach — user already decided
 - Note: "(decision.md loaded — using chosen approach from brainstorm)"
 - After planning is complete, delete `.claude/decision.md` so it doesn't carry over to next feature
-
-**Check context freshness:**
-Read the first line of `.claude/context/stack.md`.
-If it matches `<!-- last_updated: {date} -->`, parse the date and compare to today.
-If more than 30 days have passed, show:
-"⚠️ Context files last updated {n} days ago. Consider running /ec-setup to refresh stack, structure, and conventions."
-If the tag is absent, the file doesn't exist, or date parsing fails — skip silently.
 
 ## Step 1 — Gather Input
 Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.

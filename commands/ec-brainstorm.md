@@ -8,6 +8,10 @@ Check worker status: `curl -s http://localhost:37777/health`
   `curl -s "http://localhost:37777/memory/search?q={problem_keywords}&project={project_name}&limit=5"`
 - If offline: show "(worker OFFLINE ⚠️ — memory unavailable)" and continue without memory
 
+**Onboarding check:** Verify `.claude/context/stack.md`, `.claude/context/structure.md`, and `.claude/context/conventions.md` all exist and are non-empty.
+- If all present: proceed normally
+- If any are missing or empty: show "(context incomplete — run /ec-setup first to configure this project)" and stop
+
 Use memory to surface: past decisions, similar problems solved before, patterns already in use. Do not dump raw memory — silently inform your suggestions.
 
 ## Step 1 — Understand the Problem

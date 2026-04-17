@@ -56,6 +56,17 @@ For each mismatch: fix it directly. Do not ask for permission.
 
 ---
 
+## Stage 1.5 — Template Drift Check
+If `commands/ec-setup.md` exists in this project:
+- Read `CLAUDE.md` and extract all lines inside the `## GIT RULES` block
+- Read `commands/ec-setup.md` and extract the `## GIT RULES` block from the CLAUDE.md template section (between `## GIT RULES` and `## WORKFLOW RULES`)
+- Compare both lists line by line
+- If any rule is in CLAUDE.md but missing from the template: fix `commands/ec-setup.md` directly and note "Fixed template drift: added {rule}"
+- If all rules match: note "Template drift check: ✓ GIT RULES in sync"
+If `commands/ec-setup.md` does not exist: skip this check silently.
+
+---
+
 ## Stage 2 — Code Quality Review
 
 After spec compliance is confirmed, review code quality on all modified files.
