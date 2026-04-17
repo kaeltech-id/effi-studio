@@ -212,8 +212,11 @@ else
   echo "    Start manually with: python3 ~/.efficlaude/server/worker.py &"
 fi
 
-# ── 10. Start worker now ──────────────────────────────────────────────────────
+# ── 10. Restart worker (stop + start to load new code) ───────────────────────
 echo ""
+echo "Restarting worker..."
+bash "$SERVER_DIR/stop.sh" 2>/dev/null || true
+sleep 1
 bash "$SERVER_DIR/start.sh"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
