@@ -9,7 +9,19 @@ Options: commit / push / pull / branch / merge / status / log / lainnya
 **commit:**
 - Show `git status` and `git diff --staged` first
 - Ask: "Commit message?"
+- If the message has no conventional prefix (`feat`/`fix`/`docs`/`test`/`chore`/`refactor`/`style`/`perf`), ask:
+  "Pesan commit ini tidak ada conventional prefix. Tipe apa? (feat / fix / docs / chore / refactor / test)"
+  Apply the answer as the prefix before proceeding.
+- **VERSION auto-bump** — inspect prefix after it's confirmed:
+  - `feat!:` or message body contains `BREAKING CHANGE` → bump **major** (1.1.0 → 2.0.0)
+  - `feat:` → bump **minor** (1.1.0 → 1.2.0)
+  - `fix:` → bump **patch** (1.1.0 → 1.1.1)
+  - `docs:` / `test:` / `chore:` / `refactor:` / `style:` / `perf:` → **no bump**
+  - If VERSION file missing → create it as `1.0.0` first, then bump
+  - To bump: read `VERSION`, split on `.`, increment the right segment (reset lower segments to 0 for major/minor), write back with `echo "X.Y.Z" > VERSION`, stage it
+  - Show: "VERSION bumped: 1.1.0 → 1.2.0" (or "VERSION not bumped (docs: commit)")
 - Ask: "Ada file spesifik yang mau di-stage? (atau 'semua')"
+  - If bumped: always include `VERSION` in staged files
 - Confirm before executing
 
 **push:**
