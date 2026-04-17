@@ -45,6 +45,7 @@ Context: .claude/context/
 - NEVER perform any git operation autonomously
 - NEVER commit, push, pull, merge, branch, stash without /ec-git command
 - Git ONLY allowed when user explicitly runs /ec-git
+- NEVER add Co-Authored-By to commit messages
 
 ## WORKFLOW RULES
 - After /ec-brainstorm completes → always suggest running /ec-feature
