@@ -5,6 +5,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 from logger import warn
+import threading
+
+_lock = threading.Lock()
 
 EXTENSION_TO_LANG = {
     'py': 'python',
@@ -132,23 +135,24 @@ class GraphEngine:
         nodes = self._extract_nodes(source, lang, str(abs_path))
         imports = self._extract_imports(source, lang, str(abs_path), root_dir)
 
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute('DELETE FROM graph_nodes WHERE project=? AND file_path=?', (project, rel_path))
-            conn.execute('DELETE FROM graph_edges WHERE project=? AND source_file=?', (project, rel_path))
+        with _lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute('DELETE FROM graph_nodes WHERE project=? AND file_path=?', (project, rel_path))
+                conn.execute('DELETE FROM graph_edges WHERE project=? AND source_file=?', (project, rel_path))
 
-            for node in nodes:
-                conn.execute(
-                    'INSERT INTO graph_nodes (project, file_path, name, node_type, start_line, end_line, language, updated_at) VALUES (?,?,?,?,?,?,?,?)',
-                    (project, rel_path, node['name'], node['type'], node['start'], node['end'], lang, now)
-                )
+                for node in nodes:
+                    conn.execute(
+                        'INSERT INTO graph_nodes (project, file_path, name, node_type, start_line, end_line, language, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+                        (project, rel_path, node['name'], node['type'], node['start'], node['end'], lang, now)
+                    )
 
-            for imp in imports:
-                conn.execute(
-                    'INSERT INTO graph_edges (project, source_file, target_ref, edge_type, updated_at) VALUES (?,?,?,?,?)',
-                    (project, rel_path, imp, 'imports', now)
-                )
+                for imp in imports:
+                    conn.execute(
+                        'INSERT INTO graph_edges (project, source_file, target_ref, edge_type, updated_at) VALUES (?,?,?,?,?)',
+                        (project, rel_path, imp, 'imports', now)
+                    )
 
-            conn.commit()
+                conn.commit()
 
     # ── Extraction ────────────────────────────────────────────────────────────
 

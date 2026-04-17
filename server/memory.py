@@ -6,7 +6,9 @@ import hashlib
 import chromadb
 from datetime import datetime
 from logger import warn
+import threading
 
+_lock = threading.Lock()
 
 SCHEMA_VERSION = 1
 TYPE_CAPS: dict[str, int] = {
@@ -195,33 +197,30 @@ class MemoryEngine:
 
     def save_observation(self, project, obs_type, content, metadata=None):
         now = datetime.utcnow().isoformat()
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                'INSERT INTO observations (project, type, content, metadata, created_at) VALUES (?,?,?,?,?)',
-                (project, obs_type, content, json.dumps(metadata or {}), now)
-            )
-            obs_id = cursor.lastrowid
-            conn.commit()
-
-        try:
+        with _lock:
             with sqlite3.connect(self.db_path) as conn:
-                conn.execute('INSERT INTO obs_fts(rowid, content) VALUES (?, ?)', (obs_id, content))
-                conn.commit()
-        except Exception:
-            pass
-
-        collection = self._get_collection(project)
-        for attempt in range(2):
-            try:
-                collection.add(
-                    documents=[content],
-                    metadatas=[{"type": obs_type, "created_at": now, **(metadata or {})}],
-                    ids=[str(obs_id)]
+                cursor = conn.execute(
+                    'INSERT INTO observations (project, type, content, metadata, created_at) VALUES (?,?,?,?,?)',
+                    (project, obs_type, content, json.dumps(metadata or {}), now)
                 )
-                break
-            except Exception as e:
-                if attempt == 1:
-                    warn("memory", f"chromadb add failed: {e}")
+                obs_id = cursor.lastrowid
+                try:
+                    conn.execute('INSERT INTO obs_fts(rowid, content) VALUES (?, ?)', (obs_id, content))
+                except Exception:
+                    pass
+                conn.commit()
+            collection = self._get_collection(project)
+            for attempt in range(2):
+                try:
+                    collection.add(
+                        documents=[content],
+                        metadatas=[{"type": obs_type, "created_at": now, **(metadata or {})}],
+                        ids=[str(obs_id)]
+                    )
+                    break
+                except Exception as e:
+                    if attempt == 1:
+                        warn("memory", f"chromadb add failed: {e}")
         cap = TYPE_CAPS.get(obs_type)
         if cap is not None:
             self._prune_type(project, obs_type, cap)

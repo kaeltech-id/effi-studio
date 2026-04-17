@@ -1,237 +1,118 @@
-# Feature: Brainstorm Backlog + Confirm (y/n) Standardization
+# Feature: High Priority Fixes Group 1 — Data Integrity
 
 ## Impact Analysis
-- Files affected: `commands/ec-brainstorm.md`, `commands/ec-feature.md`, `commands/ec-git.md`, `commands/ec-execute.md`, `commands/ec-import.md`, `commands/ec-review.md`, `commands/ec-setup.md`
-- ⚠️ Breaking change risk: none — additive UX changes only
+- Files affected: `server/memory.py`, `server/graph.py`
+- ⚠️ Breaking change risk: none — same public API, only internal write serialization added
 
 ## Reusable Existing Code
-- Step 5 decision.md template in `ec-brainstorm.md` — reused as-is for both save paths
-- Step 0 decision.md check block in `ec-feature.md` — brainstorm picker inserted after it
+- `from logger import warn` already imported in both files — no new imports beyond `threading`
 
 ## Tasks
-- [ ] Task 1: brainstorm-save-choice [S] — add (now/save) prompt in ec-brainstorm Steps 5-6; save to .claude/brainstorms/ if "save"
-- [ ] Task 2: feature-brainstorm-picker [S] — Step 0: list .claude/brainstorms/ files with numbered menu; Step 6: (y/n) confirm
-- [ ] Task 3: git-confirm-yn [S] — replace all "Confirm before executing" and "Lanjut?" in ec-git with (y/n) format
-- [ ] Task 4: execute-confirm-yn [S] — pre-flight issue prompt → (y/n)
-- [ ] Task 5: import-confirm-yn [S] — import anyway prompt → (y/n)
-- [ ] Task 6: review-confirm-yn [S] — unit tests prompt → (y/n)
-- [ ] Task 7: setup-confirm-yn [S] — Step 6 setup confirm → (y/n)
+- [ ] Task 1: fix-memory-integrity [S] — add threading lock + merge FTS INSERT into main transaction in save_observation()
+- [ ] Task 2: fix-graph-lock [S] — add threading lock around DELETE+INSERT block in index_file()
 
 ---
 
 ## Per Task Detail
 
-**Task 1 — brainstorm-save-choice** `S`
-- File: `commands/ec-brainstorm.md`
-- Reuse: existing decision.md template in Step 5 — used for both "now" and "save" paths
+**Task 1 — fix-memory-integrity** `S`
+- File: `server/memory.py`
+- Reuse: existing `warn` import — already in place
 - Code sample:
 
-  Replace **Step 5 — Save Decision** entirely with:
-  ```markdown
-  ## Step 5 — Save
-
-  Ask: "Lanjut ke /ec-feature sekarang atau simpan untuk nanti? (now/save):"
-
-  **If "now":**
-  Save to `.claude/decision.md`. Replace `{YYYY-MM-DD}` with today's date (use `currentDate` context variable if available, otherwise `date +%Y-%m-%d`):
-
-  ```markdown
-  # Decision: {problem_title}
-
-  ## Problem
-  {problem statement in one paragraph}
-
-  ## Options Explored
-  - **Option 1 — {name}**: {one-line summary} → not chosen because: {reason}
-  - **Option 2 — {name}**: {one-line summary} → not chosen because: {reason}
-  - **Option 3 — {name}**: {one-line summary} → CHOSEN
-
-  ## Chosen Approach
-  {2-3 paragraph description of the chosen approach}
-
-  ## Key Assumptions
-  - {assumption 1}
-  - {assumption 2}
-
-  ## Risks & Mitigations
-  - {risk} → {mitigation}
-
-  ## Out of Scope
-  - {what was explicitly not addressed}
-
-  _Created: {YYYY-MM-DD}_
+  Add after existing imports (line 8, after `from logger import warn`):
+  ```python
+  import threading
+  
+  _lock = threading.Lock()
   ```
 
-  **If "save":**
-  Generate a slug from the problem title: lowercase, spaces→hyphens, max 5 words (e.g. "race-condition-memory-fix").
-  Save to `.claude/brainstorms/{YYYY-MM-DD}-{slug}.md` using the exact same format as the decision.md template above.
-  Create `.claude/brainstorms/` directory if it doesn't exist.
-  Show: "Saved: .claude/brainstorms/{YYYY-MM-DD}-{slug}.md"
-
-  **Both paths** — if worker running, save to memory:
+  Replace `save_observation()` body (lines 196-227) with:
+  ```python
+  def save_observation(self, project, obs_type, content, metadata=None):
+      now = datetime.utcnow().isoformat()
+      with _lock:
+          with sqlite3.connect(self.db_path) as conn:
+              cursor = conn.execute(
+                  'INSERT INTO observations (project, type, content, metadata, created_at) VALUES (?,?,?,?,?)',
+                  (project, obs_type, content, json.dumps(metadata or {}), now)
+              )
+              obs_id = cursor.lastrowid
+              try:
+                  conn.execute('INSERT INTO obs_fts(rowid, content) VALUES (?, ?)', (obs_id, content))
+              except Exception:
+                  pass
+              conn.commit()
+          collection = self._get_collection(project)
+          for attempt in range(2):
+              try:
+                  collection.add(
+                      documents=[content],
+                      metadatas=[{"type": obs_type, "created_at": now, **(metadata or {})}],
+                      ids=[str(obs_id)]
+                  )
+                  break
+              except Exception as e:
+                  if attempt == 1:
+                      warn("memory", f"chromadb add failed: {e}")
+      cap = TYPE_CAPS.get(obs_type)
+      if cap is not None:
+          self._prune_type(project, obs_type, cap)
   ```
-  curl -s -X POST http://localhost:37777/memory/observe \
-    -H "Content-Type: application/json" \
-    -d '{
-      "project": "{project_name}",
-      "type": "decision",
-      "content": "Brainstorm: {problem_title}. Chose: {chosen_option}. Because: {reason}.",
-      "metadata": {"source": "brainstorm"}
-    }'
-  ```
-  ```
 
-  Replace **Step 6 — Hand Off** entirely with:
-  ```markdown
-  ## Step 6 — Hand Off
-  Show summary of the decision.
+  Key changes:
+  - `import threading` + `_lock = threading.Lock()` added at module level
+  - Entire SQLite + ChromaDB block wrapped in `with _lock:`
+  - FTS INSERT moved inside the first `sqlite3.connect()` block (before `conn.commit()`), removing the second separate connection
+  - FTS exception still silent (fire-and-forget as before)
+  - `_prune_type()` call stays outside the lock (read-heavy, not a race target)
 
-  **If "now":**
-  Next: run `/ec-feature` — it will load this decision automatically.
-
-  **If "save":**
-  Run `/ec-feature` when ready — it will show a numbered list of saved brainstorms to pick from.
-  ```
-
-- Edge cases: `.claude/brainstorms/` does not exist → create with `mkdir -p` before writing
-- ⚠️ Breaking change: none — "now" path is identical to old behavior
-- Verify: `grep -n "now/save\|brainstorms/" commands/ec-brainstorm.md` → returns both lines
+- Edge cases: FTS table may not exist — `try/except` around FTS INSERT is kept, same as before
+- ⚠️ Breaking change: none
+- Verify: `grep -n "_lock" server/memory.py` → returns 2 lines (declaration + usage); `grep -n "sqlite3.connect" server/memory.py | grep -c "save_observation" || python3 -c "import ast, sys; src=open('server/memory.py').read(); print('ok')"` — check there's only one connect block in save_observation
 - Dependencies: none
 
 ---
 
-**Task 2 — feature-brainstorm-picker** `S`
-- File: `commands/ec-feature.md`
-- Reuse: existing Step 0 decision.md block — brainstorm picker inserted directly after it
+**Task 2 — fix-graph-lock** `S`
+- File: `server/graph.py`
+- Reuse: existing `warn` import — already in place
 - Code sample:
 
-  Change 1 — In **Step 0**, after the existing `**Check for brainstorm decision:**` block (which ends with "After planning is complete, delete `.claude/decision.md`..."), add:
-
-  ```markdown
-  **Check for saved brainstorms:** If no `decision.md` was found:
-  - Check if `.claude/brainstorms/` exists and contains `.md` files
-  - If files found, list them numbered (read the `# Title` line from each file):
-    ```
-    Saved brainstorms:
-    1. {filename} — {title}
-    2. {filename} — {title}
-    Pick a number to use, or 'skip' for a new feature:
-    ```
-  - If user picks a number: load that file as the decision source, pre-fill Chosen Approach, note "(brainstorm loaded: {filename})", delete the picked file after plan is complete
-  - If user types 'skip' or no files exist: proceed to Step 1 normally
+  Add after existing imports (line 6, after `from logger import warn`):
+  ```python
+  import threading
+  
+  _lock = threading.Lock()
   ```
 
-  Change 2 — Replace **Step 6 — Confirm**:
-  ```markdown
-  ## Step 6 — Confirm
-  Ask: "Plan sudah benar? Confirm (y/n):"
-  - If y: proceed
-  - If n: ask "Apa yang perlu diubah?" → revise plan → re-confirm
-  Next: run `/ec-execute` to implement this plan.
+  Wrap the write block in `index_file()` (lines 135-151):
+  ```python
+  with _lock:
+      with sqlite3.connect(self.db_path) as conn:
+          conn.execute('DELETE FROM graph_nodes WHERE project=? AND file_path=?', (project, rel_path))
+          conn.execute('DELETE FROM graph_edges WHERE project=? AND source_file=?', (project, rel_path))
+
+          for node in nodes:
+              conn.execute(
+                  'INSERT INTO graph_nodes (project, file_path, name, node_type, start_line, end_line, language, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+                  (project, rel_path, node['name'], node['type'], node['start'], node['end'], lang, now)
+              )
+
+          for imp in imports:
+              conn.execute(
+                  'INSERT INTO graph_edges (project, source_file, target_ref, edge_type, updated_at) VALUES (?,?,?,?,?)',
+                  (project, rel_path, imp, 'imports', now)
+              )
+
+          conn.commit()
   ```
 
-- Edge cases: `.claude/brainstorms/` exists but empty → treat as "no files", proceed to Step 1
+  Key changes:
+  - `import threading` + `_lock = threading.Lock()` added at module level
+  - Existing `with sqlite3.connect()` block wrapped in `with _lock:`
+
+- Edge cases: none — lock just serializes writes, logic unchanged
 - ⚠️ Breaking change: none
-- Verify: `grep -n "brainstorms/\|Confirm (y/n)" commands/ec-feature.md` → returns both lines
-- Dependencies: none (but logically after Task 1 since Task 1 creates the brainstorms/ files)
-
----
-
-**Task 3 — git-confirm-yn** `S`
-- File: `commands/ec-git.md`
-- Reuse: none
-- Code sample — four targeted replacements:
-
-  Change 1 — commit section, replace `- Confirm before executing` with:
-  ```
-  - Ask: "Confirm (y/n):" before executing
-  ```
-
-  Change 2 — push section, replace:
-  `Confirm: "Push ke {remote}/{branch}. Lanjut?"`
-  with:
-  `Ask: "Push ke {remote}/{branch}. Confirm (y/n):"`
-
-  Change 3 — pull, branch, merge sections, replace each `- Confirm before executing` with:
-  `- Ask: "Confirm (y/n):" before executing`
-
-  Change 4 — lainnya section, replace `- Confirm exact command before executing` with:
-  `- Show exact command to user, then ask: "Confirm (y/n):"`
-
-- Edge cases: Safety checklist in Step 2.5 already handles destructive ops — leave "user typed explicit 'yes'" wording unchanged for destructive ops only
-- ⚠️ Breaking change: none
-- Verify: `grep "Confirm (y/n)" commands/ec-git.md | wc -l` → returns 5 or more lines; `grep "Lanjut" commands/ec-git.md` → returns 0 matches
-- Dependencies: none
-
----
-
-**Task 4 — execute-confirm-yn** `S`
-- File: `commands/ec-execute.md`
-- Reuse: none
-- Code sample — replace in Step 2 Pre-flight Check:
-
-  Change:
-  `"Found pre-flight issue: {issue}. Continue anyway or adjust the plan?"`
-  To:
-  `"Found pre-flight issue: {issue}. Continue anyway? (y/n):"`
-
-- Edge cases: none
-- ⚠️ Breaking change: none
-- Verify: `grep "y/n" commands/ec-execute.md` → returns the line; `grep "Continue anyway or" commands/ec-execute.md` → returns 0
-- Dependencies: none
-
----
-
-**Task 5 — import-confirm-yn** `S`
-- File: `commands/ec-import.md`
-- Reuse: none
-- Code sample — replace in Step 2:
-
-  Change:
-  `Import anyway? (yes/no)`
-  To:
-  `Import anyway? (y/n):`
-
-- Edge cases: none
-- ⚠️ Breaking change: none
-- Verify: `grep "y/n" commands/ec-import.md` → returns the line; `grep "yes/no" commands/ec-import.md` → returns 0
-- Dependencies: none
-
----
-
-**Task 6 — review-confirm-yn** `S`
-- File: `commands/ec-review.md`
-- Reuse: none
-- Code sample — replace in Step 2 Testing section:
-
-  Change:
-  `Ask: "Do you want to add unit tests for this feature? (yes/no)"`
-  To:
-  `Ask: "Add unit tests for this feature? (y/n):"`
-
-- Edge cases: "Any existing test suite to run? (provide path or skip)" — not a y/n, leave unchanged
-- ⚠️ Breaking change: none
-- Verify: `grep "y/n" commands/ec-review.md` → returns the line; `grep "yes/no" commands/ec-review.md` → returns 0
-- Dependencies: none
-
----
-
-**Task 7 — setup-confirm-yn** `S`
-- File: `commands/ec-setup.md`
-- Reuse: none
-- Code sample — replace Step 6 — Confirm:
-
-  Change:
-  `Show full summary of saved config. Ask: "Setup complete. Anything you'd like to change?"`
-  To:
-  ```
-  Show full summary of saved config.
-  Ask: "Setup complete. Confirm (y/n):"
-  - If y: done
-  - If n: ask "Apa yang perlu diubah?" and loop back to update the relevant config
-  ```
-
-- Edge cases: none
-- ⚠️ Breaking change: none
-- Verify: `grep "Confirm (y/n)" commands/ec-setup.md` → returns the line; `grep "Anything you'd like" commands/ec-setup.md` → returns 0
-- Dependencies: none
+- Verify: `grep -n "_lock" server/graph.py` → returns 2 lines (declaration + usage)
+- Dependencies: none (different file from Task 1 — both run in parallel)
