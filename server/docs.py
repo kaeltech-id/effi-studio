@@ -5,6 +5,9 @@ import requests
 import chromadb
 from datetime import datetime
 from logger import warn
+import threading
+
+_lock = threading.Lock()
 
 
 LIBRARY_SOURCES = {
@@ -114,33 +117,34 @@ class DocsEngine:
                 return 0
 
             chunks = self._chunk_markdown(content, name)
-
             now = datetime.utcnow().isoformat()
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute('DELETE FROM docs_chunks WHERE library=?', (name,))
-                for i, (heading, chunk) in enumerate(chunks):
+
+            with _lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.execute('DELETE FROM docs_chunks WHERE library=?', (name,))
+                    for i, (heading, chunk) in enumerate(chunks):
+                        conn.execute(
+                            'INSERT INTO docs_chunks (library, chunk_index, content, heading, created_at) VALUES (?,?,?,?,?)',
+                            (name, i, chunk, heading, now)
+                        )
                     conn.execute(
-                        'INSERT INTO docs_chunks (library, chunk_index, content, heading, created_at) VALUES (?,?,?,?,?)',
-                        (name, i, chunk, heading, now)
+                        'UPDATE docs_libraries SET last_fetched=? WHERE name=?', (now, name)
                     )
-                conn.execute(
-                    'UPDATE docs_libraries SET last_fetched=? WHERE name=?', (now, name)
+                    conn.commit()
+
+                collection = self._get_collection(name)
+                existing_ids = set(collection.get()['ids']) if collection.count() > 0 else set()
+                new_ids = [f"{name}_{i}" for i in range(len(chunks))]
+
+                ids_to_delete = [eid for eid in existing_ids if not eid.startswith(name + '_')]
+                if ids_to_delete:
+                    collection.delete(ids=ids_to_delete)
+
+                collection.upsert(
+                    documents=[c for _, c in chunks],
+                    metadatas=[{"library": name, "heading": h} for h, _ in chunks],
+                    ids=new_ids
                 )
-                conn.commit()
-
-            collection = self._get_collection(name)
-            existing_ids = {r['id'] for r in collection.get()['ids']} if collection.count() > 0 else set()
-            new_ids = [f"{name}_{i}" for i in range(len(chunks))]
-
-            ids_to_delete = [eid for eid in existing_ids if not eid.startswith(name + '_')]
-            if ids_to_delete:
-                collection.delete(ids=ids_to_delete)
-
-            collection.upsert(
-                documents=[c for _, c in chunks],
-                metadatas=[{"library": name, "heading": h} for h, _ in chunks],
-                ids=new_ids
-            )
             return len(chunks)
 
         except Exception as e:
@@ -186,7 +190,7 @@ class DocsEngine:
         all_results = []
         for (lib_name,) in rows:
             if self._is_stale(lib_name):
-                self.fetch_and_cache(lib_name)
+                threading.Thread(target=self.fetch_and_cache, args=(lib_name,), daemon=True).start()
             collection = self._get_collection(lib_name)
             try:
                 count = collection.count()

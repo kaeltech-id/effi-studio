@@ -103,15 +103,18 @@ class MemoryEngine:
 
             for project in projects:
                 collection = self._get_collection(project)
-                chroma_count = collection.count()
 
-                with sqlite3.connect(self.db_path) as conn:
-                    sqlite_count = conn.execute(
-                        'SELECT COUNT(*) FROM observations WHERE project=?', (project,)
-                    ).fetchone()[0]
-
-                if chroma_count >= sqlite_count:
-                    continue
+                chroma_ids = set()
+                offset = 0
+                BATCH = 500
+                while True:
+                    batch = collection.get(limit=BATCH, offset=offset)['ids']
+                    if not batch:
+                        break
+                    chroma_ids.update(batch)
+                    offset += len(batch)
+                    if len(batch) < BATCH:
+                        break
 
                 with sqlite3.connect(self.db_path) as conn:
                     rows = conn.execute(
@@ -119,15 +122,19 @@ class MemoryEngine:
                         (project,)
                     ).fetchall()
 
-                existing_ids = set(collection.get()['ids']) if chroma_count > 0 else set()
-                missing = [r for r in rows if str(r[0]) not in existing_ids]
+                sqlite_ids = {str(r[0]) for r in rows}
+                missing = [r for r in rows if str(r[0]) not in chroma_ids]
+                orphans = [cid for cid in chroma_ids if cid not in sqlite_ids]
 
-                if missing:
-                    collection.add(
-                        documents=[r[2] for r in missing],
-                        metadatas=[{"type": r[1], "created_at": r[4], **json.loads(r[3] or '{}')} for r in missing],
-                        ids=[str(r[0]) for r in missing]
-                    )
+                with _lock:
+                    if missing:
+                        collection.add(
+                            documents=[r[2] for r in missing],
+                            metadatas=[{"type": r[1], "created_at": r[4], **json.loads(r[3] or '{}')} for r in missing],
+                            ids=[str(r[0]) for r in missing]
+                        )
+                    if orphans:
+                        collection.delete(ids=orphans)
         except Exception as e:
             warn("memory", f"chromadb reconcile error: {e}")
 

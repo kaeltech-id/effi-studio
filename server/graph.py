@@ -391,27 +391,43 @@ class GraphEngine:
         imported_edges = 0
         with sqlite3.connect(self.db_path) as conn:
             for node in nodes:
-                exists = conn.execute(
-                    'SELECT id FROM graph_nodes WHERE project=? AND file_path=? AND name=? AND node_type=?',
-                    (project, node['file_path'], node['name'], node['node_type'])
-                ).fetchone()
-                if not exists:
-                    conn.execute(
-                        'INSERT INTO graph_nodes (project, file_path, name, node_type, start_line, end_line, language, updated_at) VALUES (?,?,?,?,?,?,?,?)',
-                        (project, node['file_path'], node['name'], node['node_type'],
-                         node.get('start_line', 0), node.get('end_line', 0), node.get('language', ''), now)
-                    )
-                    imported_nodes += 1
+                try:
+                    fp = node.get('file_path', '')
+                    name = node.get('name', '')
+                    node_type = node.get('node_type', '')
+                    if not fp or not name or not node_type:
+                        continue
+                    exists = conn.execute(
+                        'SELECT id FROM graph_nodes WHERE project=? AND file_path=? AND name=? AND node_type=?',
+                        (project, fp, name, node_type)
+                    ).fetchone()
+                    if not exists:
+                        conn.execute(
+                            'INSERT INTO graph_nodes (project, file_path, name, node_type, start_line, end_line, language, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+                            (project, fp, name, node_type,
+                             node.get('start_line', 0), node.get('end_line', 0), node.get('language', ''), now)
+                        )
+                        imported_nodes += 1
+                except Exception:
+                    pass
             for edge in edges:
-                exists = conn.execute(
-                    'SELECT id FROM graph_edges WHERE project=? AND source_file=? AND target_ref=? AND edge_type=?',
-                    (project, edge['source_file'], edge['target_ref'], edge.get('edge_type', 'imports'))
-                ).fetchone()
-                if not exists:
-                    conn.execute(
-                        'INSERT INTO graph_edges (project, source_file, target_ref, edge_type, updated_at) VALUES (?,?,?,?,?)',
-                        (project, edge['source_file'], edge['target_ref'], edge.get('edge_type', 'imports'), now)
-                    )
-                    imported_edges += 1
+                try:
+                    source = edge.get('source_file', '')
+                    target = edge.get('target_ref', '')
+                    if not source or not target:
+                        continue
+                    edge_type = edge.get('edge_type', 'imports')
+                    exists = conn.execute(
+                        'SELECT id FROM graph_edges WHERE project=? AND source_file=? AND target_ref=? AND edge_type=?',
+                        (project, source, target, edge_type)
+                    ).fetchone()
+                    if not exists:
+                        conn.execute(
+                            'INSERT INTO graph_edges (project, source_file, target_ref, edge_type, updated_at) VALUES (?,?,?,?,?)',
+                            (project, source, target, edge_type, now)
+                        )
+                        imported_edges += 1
+                except Exception:
+                    pass
             conn.commit()
         return {'nodes_imported': imported_nodes, 'edges_imported': imported_edges}
