@@ -119,6 +119,9 @@ PYEOF
 echo ""
 echo "Installing token optimizer (etok)..."
 
+# Source cargo env so rustup-installed cargo is visible in non-interactive shells
+[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+
 PLATFORM="$(uname -s)-$(uname -m)"
 ETOK_INSTALLED=false
 
