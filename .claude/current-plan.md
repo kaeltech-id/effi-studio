@@ -1,121 +1,115 @@
-## Feature: Flat Task Execution + Resumable State
+## Feature: Post-Review Summary Doc + Setup Project Overview Doc
 
 ### Impact Analysis
-- Files affected: commands/ec-execute.md, commands/ec-feature.md, commands/ec-brainstorm.md
-- ⚠️ Breaking change risk: none — plan lama tanpa format checkbox sudah selesai semua
+- Files affected: `commands/ec-setup.md`, `commands/ec-review.md`
+- New runtime files: `docs/PROJECT.md` (created by ec-setup), `.claude/review-summary.md` (created by ec-review)
+- ⚠️ Breaking change risk: none — additive steps only, no existing behavior removed
 
 ### Reusable Existing Code
-- Format `- [ ] Task N` sudah ada di ec-feature.md — diperkuat, tidak diubah
-- Pola `Read .claude/current-plan.md` sudah ada di ec-execute Step 1 — diperluas
+- `<!-- last_updated: {date} -->` pattern at `commands/ec-setup.md` (Step 3) — reuse same header pattern in docs/PROJECT.md
+- Step numbering pattern in `commands/ec-review.md` — new step follows existing Step 4
 
 ### Tasks
-- [x] Task 1: ec-execute sequential loop [M] — hapus Step 3 "Group Tasks", ganti dengan sequential loop + tandai [x] per task selesai
-- [x] Task 2: ec-execute resume logic [S] — di Step 1, count [x] vs [ ], skip yang sudah [x], mulai dari [ ] pertama
-- [x] Task 3: ec-execute progress display [S] — tampilkan "▶ Task N/Total: name" sebelum dan "✓ Task N/Total" sesudah tiap task
-- [x] Task 4: ec-feature incomplete guard [S] — cek current-plan.md ada [ ] sebelum overwrite, minta konfirmasi y/n
-- [x] Task 5: ec-feature flat format enforcement [S] — tambah Format Rules: no batch headers, no grouping, strict - [ ] format
-- [x] Task 6: ec-brainstorm no-batch rule [S] — tambah constraint di Step 3: NEVER recommend batching/phasing, ONE complete approach
+- [x] Task 1: Add docs/PROJECT.md template + write instruction to ec-setup.md Step 3 [S] — write full project overview during setup
+- [x] Task 2: Add .claude/review-summary.md write step to ec-review.md [S] — generate review output doc after Step 4
+- [x] Task 3: Add docs/PROJECT.md update step to ec-review.md (same new Step 5) [S] — append changelog row + refresh last_updated
 
 ### Per Task Detail
 
-**Task 1 — ec-execute sequential loop** `M`
-- File: commands/ec-execute.md
-- Reuse: none
-- Code sample:
-  Replace current Step 3 "Group Tasks" dengan:
+**Task 1 — Add docs/PROJECT.md to ec-setup.md** `S`
+- File: `commands/ec-setup.md`
+- Reuse: `<!-- last_updated: {YYYY-MM-DD} -->` header pattern already in Step 3
+- Code sample: add `### docs/PROJECT.md` block inside Step 3, after the conventions.md section:
   ```
-  ## Step 3 — Execute Sequentially
-  Read all tasks from `.claude/current-plan.md`. Find all lines matching `- [ ]`.
-  total = count of all task lines (both [x] and [ ]).
-  For each `- [ ]` task in document order:
-    1. Show: "▶ Task {current}/{total}: {task name} [{size}]"
-    2. Spawn one subagent with full task context (file path, code sample, verify step, relevant memory/docs)
-    3. Subagent MUST run verify step and confirm output before claiming done
-    4. After subagent confirms complete: edit `.claude/current-plan.md`, replace `- [ ] Task N` with `- [x] Task N` for this task only
-    5. Show: "✓ Task {current}/{total}: {task name} — verified"
-  Repeat until no `- [ ]` lines remain.
+  ### docs/PROJECT.md
+  Create `docs/` directory if it doesn't exist, then write `docs/PROJECT.md`:
+
+  <!-- last_updated: {YYYY-MM-DD} -->
+  # {project_name}
+
+  ## Overview
+  {one-paragraph description based on scan + user answers}
+
+  ## Stack
+  {tech stack from stack.md}
+
+  ## Project Structure
+  {structure from structure.md}
+
+  ## Commands
+  | Command | Description |
+  |---------|-------------|
+  | /ec-setup | Initialize or update project configuration |
+  | /ec-brainstorm | Explore solution approaches before planning |
+  | /ec-feature | Plan a feature with tasks and file targets |
+  | /ec-execute | Implement the current plan sequentially |
+  | /ec-review | Review spec compliance and code quality |
+  | /ec-git | Commit and push changes |
+
+  ## Conventions
+  {conventions from conventions.md}
+
+  ## Changelog
+  | Date | Feature | Summary |
+  |------|---------|---------|
+  | {date} | Initial setup | Project configured via /ec-setup |
   ```
-- ⚠️ Breaking change: hapus "parallel group" logic — tasks jalan satu per satu
-- Verify: grep "Group Tasks\|parallel" commands/ec-execute.md returns no matches in Step 3; grep "\- \[x\]" commands/ec-execute.md returns a match
+- Edge cases: `docs/` may not exist — mkdir before write; if PROJECT.md already exists (re-run setup), overwrite it fully
+- ⚠️ Breaking change: none
+- Verify: after running /ec-setup, `cat docs/PROJECT.md` shows all sections with real content
 - Dependencies: none
 
-**Task 2 — ec-execute resume logic** `S`
-- File: commands/ec-execute.md
-- Reuse: none
-- Code sample:
-  Tambah di Step 1, setelah baca current-plan.md:
+**Task 2 — Add .claude/review-summary.md write step to ec-review.md** `S`
+- File: `commands/ec-review.md`
+- Reuse: feature name parsed from `## Feature:` line in current-plan.md
+- Code sample: add new `## Step 5 — Write Review Docs` section after the existing Step 4 clean/delete block, before "Next: run /ec-git":
   ```
-  Count lines in current-plan.md:
-  - done = count of lines matching `- [x]`
-  - remaining = count of lines matching `- [ ]`
+  ## Step 5 — Write Review Docs
 
-  If remaining == 0 and done > 0:
-    Show: "All {done} tasks already complete — run /ec-review."
-    Stop.
-  If remaining == 0 and done == 0:
-    Show: "No tasks found in current-plan.md. Run /ec-feature first."
-    Stop.
-  If done > 0 and remaining > 0:
-    Show: "Resuming: {done} tasks already done, {remaining} remaining."
-  ```
-- Verify: ec-execute.md Step 1 mengandung tiga kondisi (all done / no tasks / resume) dengan string "Resuming:"
-- Dependencies: Task 1
+  Write `.claude/review-summary.md` (overwrite if exists):
 
-**Task 3 — ec-execute progress display** `S`
-- File: commands/ec-execute.md
-- Reuse: none
-- Code sample:
-  Di dalam loop Step 3, format wajib:
-  ```
-  Before spawn: "▶ Task {current}/{total}: {task_name} [{size}]"
-  After verify: "✓ Task {current}/{total}: {task_name} — verified"
-  ```
-- Verify: ec-execute.md mengandung format string "▶ Task {current}/{total}" dan "✓ Task {current}/{total}"
-- Dependencies: Task 1
+  # Review Summary — {feature_name}
+  _Date: {date}_
 
-**Task 4 — ec-feature incomplete guard** `S`
-- File: commands/ec-feature.md
-- Reuse: none
-- Code sample:
-  Tambah di Step 0, sebelum input gathering:
+  ## Feature
+  {feature name from `## Feature:` line in current-plan.md}
+
+  ## Tasks Completed
+  {all [x] task lines from current-plan.md, verbatim}
+
+  ## Files Modified
+  {list from blast radius scope + manually scoped files}
+
+  ## Issues Fixed During Review
+  {Stage 1 compliance fixes listed here}
+  {Stage 2 quality fixes listed here}
+  (If none: "No issues found.")
+
+  ## Review Result
+  | Check | Status |
+  |-------|--------|
+  | Spec compliance | ✓ |
+  | Code quality | ✓ |
+  | Tests | {added / skipped} |
   ```
-  **Incomplete plan guard:** Before proceeding, check if `.claude/current-plan.md` exists.
-  If it exists, count lines matching `- [ ]`.
-  If count > 0:
-    Show: "⚠️ current-plan.md has {n} incomplete task(s). Overwrite and start fresh? (y/n):"
-    If n: Stop — "Run /ec-execute to finish the current plan, or manually delete .claude/current-plan.md."
-    If y: continue normally — plan will be overwritten at Step 3.
-  ```
-- Verify: ec-feature.md Step 0 mengandung "Incomplete plan guard" dengan count `- [ ]` dan y/n prompt
+- Edge cases: overwrite on each review cycle — one file, always latest feature; if no issues fixed, write "No issues found"
+- ⚠️ Breaking change: none
+- Verify: after /ec-review, `cat .claude/review-summary.md` shows complete feature summary
 - Dependencies: none
 
-**Task 5 — ec-feature flat format enforcement** `S`
-- File: commands/ec-feature.md
-- Reuse: none
-- Code sample:
-  Tambah di Step 3 Task Granularity Rules section:
+**Task 3 — Add docs/PROJECT.md update step to ec-review.md** `S`
+- File: `commands/ec-review.md`
+- Reuse: same Step 5 from Task 2 — append instructions after review-summary write
+- Code sample: append to Step 5 body after the review-summary block:
   ```
-  ### Flat Format Rules (mandatory — no exceptions)
-  - Task list MUST be flat — no batch headers, no phase labels, no grouping of any kind
-  - NEVER write: "## Batch A", "### Phase 1", "#### Group:", "**Wave 1**", or any grouping construct
-  - Every task MUST use exact format: `- [ ] Task N: {name} [{size}] — {description}`
-  - Task numbers are sequential integers 1 to N, no gaps, no sub-numbering (1.1, 1.2, etc.)
-  - Size of the feature does not affect format — 3 tasks or 50 tasks use identical flat structure
-  ```
-- Verify: ec-feature.md Step 3 mengandung "Flat Format Rules" section dengan "NEVER write" list
-- Dependencies: none
+  Then update `docs/PROJECT.md` (if it exists):
+  1. Replace `<!-- last_updated: {old_date} -->` with `<!-- last_updated: {today} -->`
+  2. Find the `## Changelog` table and append a new row:
+     `| {date} | {feature_name} | {one-line summary of what was built} |`
 
-**Task 6 — ec-brainstorm no-batch rule** `S`
-- File: commands/ec-brainstorm.md
-- Reuse: none
-- Code sample:
-  Tambah di Step 3 Present the Recommendation, setelah format block:
+  If `docs/PROJECT.md` does not exist: show "(docs/PROJECT.md not found — run /ec-setup to generate it)" and skip.
   ```
-  ### Recommendation Constraints (non-negotiable)
-  - NEVER recommend batching, phasing, or splitting implementation into multiple /ec-execute cycles
-  - The recommendation describes ONE complete approach, implemented in ONE /ec-feature + /ec-execute cycle
-  - If scope seems large: that is fine — /ec-feature handles any number of tasks in a flat list
-  - "Start with X, then do Y later" is not a recommendation — it is two recommendations. Pick one complete solution.
-  ```
-- Verify: ec-brainstorm.md Step 3 mengandung "NEVER recommend batching" dan "ONE complete approach"
-- Dependencies: none
+- Edge cases: PROJECT.md not found → warn and skip, don't fail; feature_name taken from `## Feature:` line in current-plan.md; one-line summary = shortest description of the feature
+- ⚠️ Breaking change: none
+- Verify: after /ec-review, `tail -5 docs/PROJECT.md` shows new changelog row with today's date and feature name
+- Dependencies: Task 1 (PROJECT.md must exist from ec-setup), Task 2 (same step in ec-review)

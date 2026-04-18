@@ -168,5 +168,41 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 **If review is clean**, delete `.claude/decision.md` if it exists (run `rm -f .claude/decision.md`), so it doesn't carry over to the next feature.
 
+## Step 5 — Write Review Docs
+
+Write `.claude/review-summary.md` (overwrite if it already exists):
+
+```markdown
+# Review Summary — {feature_name}
+_Date: {date}_
+
+## Feature
+{feature name from the `## Feature:` line in .claude/current-plan.md}
+
+## Tasks completed
+{copy all `- [x]` task lines from .claude/current-plan.md verbatim, one per line}
+
+## Files modified
+{list all files from blast radius scope + any manually scoped files reviewed}
+
+## Issues fixed during review
+{list Stage 1 compliance fixes and Stage 2 quality fixes here}
+If none: "No issues found."
+
+## Review result
+| Check | Status |
+|-------|--------|
+| Spec compliance | ✓ |
+| Code quality | ✓ |
+| Tests | {added / skipped} |
+```
+
+Then update `docs/PROJECT.md` if it exists:
+1. Replace `<!-- last_updated: {old_date} -->` on the first line with `<!-- last_updated: {today} -->`
+2. Find the `## Changelog` table and append a new row:
+   `| {date} | {feature_name} | {one-line summary of what was built} |`
+
+If `docs/PROJECT.md` does not exist: show "(docs/PROJECT.md not found — run /ec-setup to generate it)" and skip.
+
 If everything is clean: "No issues found. Ready to commit."
 Next: run `/ec-git` to commit and push.

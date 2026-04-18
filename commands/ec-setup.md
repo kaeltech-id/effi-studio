@@ -83,6 +83,43 @@ Folder structure & architecture detail.
 ### .claude/context/conventions.md
 Naming conventions & clean code rules.
 
+### docs/PROJECT.md
+Create the `docs/` directory if it doesn't exist, then write `docs/PROJECT.md`:
+
+```markdown
+<!-- last_updated: {YYYY-MM-DD} -->
+# {project_name}
+
+## Overview
+{one-paragraph description of what this project does, based on scan results and user answers}
+
+## Stack
+{tech stack content from .claude/context/stack.md}
+
+## Project Structure
+{structure content from .claude/context/structure.md}
+
+## Commands
+| Command | Description |
+|---------|-------------|
+| /ec-setup | Initialize or update project configuration |
+| /ec-brainstorm | Explore solution approaches before planning |
+| /ec-feature | Plan a feature with tasks and file targets |
+| /ec-execute | Implement the current plan sequentially |
+| /ec-review | Review spec compliance and code quality |
+| /ec-git | Commit and push changes |
+
+## Conventions
+{conventions content from .claude/context/conventions.md}
+
+## Changelog
+| Date | Feature | Summary |
+|------|---------|---------|
+| {YYYY-MM-DD} | Initial setup | Project configured via /ec-setup |
+```
+
+If `docs/PROJECT.md` already exists (re-run of /ec-setup): overwrite it fully with fresh content.
+
 ### .gitignore
 Add `.claude/project-config.json` to gitignore.
 
