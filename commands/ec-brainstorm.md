@@ -15,56 +15,90 @@ Check worker status: `curl -s http://localhost:37777/health`
 Use memory to surface: past decisions, similar problems solved before, patterns already in use. Do not dump raw memory — silently inform your suggestions.
 
 ## Step 1 — Understand the Problem
-Ask: "What problem are you trying to solve? (describe freely — no need to have a solution yet)"
+Ask: "Ceritain problemnya — bebas, nggak perlu tau solusinya dulu."
 
 Accept any form: vague idea, user complaint, business requirement, technical pain point.
 
-Follow up only if needed:
-- "Who experiences this problem?"
-- "What does success look like?"
-- "Any constraints I should know? (time, tech, compatibility)"
+Follow up with **at most 2 targeted questions** — only if the answer would meaningfully change the recommendation:
+- "Siapa yang paling kena dampaknya?"
+- "Apa definisi 'berhasil' menurut kamu?"
+- "Ada constraint yang harus saya tahu? (waktu, tech stack, kompatibilitas)"
 
-## Step 2 — Silent Analysis
-Before generating options, silently analyze:
-- Existing code patterns relevant to this problem (from context + memory)
-- Potential breaking changes or risks
-- Over-engineering traps to avoid
-- Quick wins vs. proper solutions
+Do NOT ask questions just to seem thorough. If the problem is clear enough to analyze, skip directly to Step 2.
 
-## Step 3 — Present Options
-Generate **2–3 distinct approaches**. Each option must be meaningfully different — not variations of the same idea.
+## Step 2 — Silent Deep Analysis
+Before responding, silently work through ALL of this internally — never show this process to the user:
+
+**Root cause check (5 Whys):** Ask "why" up to 5 times on the stated problem. Are we solving the right problem?
+
+**JTBD reframe:** What is the user actually trying to accomplish? Strip the solution framing.
+
+**Generate all plausible approaches** (as many as needed, internally).
+
+**SCAMPER pass** — for each candidate approach, run through:
+- **Substitute**: Bisa ganti komponen mana yang bikin lebih simple?
+- **Combine**: Bisa digabung dengan pattern yang sudah ada di codebase?
+- **Adapt**: Ada solusi dari domain lain yang bisa dipinjam?
+- **Modify**: Bisa di-scale down/up? Versi minimal yang cukup?
+- **Put to other uses**: Bisa leverage tool/system yang sudah ada dengan cara baru?
+- **Eliminate**: Apa yang bisa dihapus tanpa mengurangi hasil?
+- **Reverse**: Kalau dibalik asumsinya — apakah ada solusi yang lebih baik?
+
+**Six Thinking Hats pass** — evaluasi approach terpilih dari 6 sudut pandang:
+- **White Hat** (facts): Data apa yang kita punya? Apa yang masih unknown?
+- **Red Hat** (gut): Apakah ini terasa benar secara intuitif?
+- **Black Hat** (risks): Apa yang paling mungkin gagal? Apa hidden coupling-nya?
+- **Yellow Hat** (benefits): Apa upside terbesar? Kenapa ini worth doing?
+- **Green Hat** (creative): Ada angle lain yang belum dipikirkan?
+- **Blue Hat** (process): Apakah urutan implementasinya masuk akal?
+
+**Score each approach:**
+- Effort (1–5), Reversibility (1–5), Risk (1–5), Fit to existing patterns (1–5)
+- Run a pre-mortem: "If we shipped this and it failed, why?"
+
+**Pick the single best approach** — highest composite score AND survives pre-mortem AND passes Black Hat. If two tie, prefer the simpler/more reversible one.
+
+## Step 3 — Present the Recommendation
+Present exactly **one recommendation**. No option list. No "you could also...".
 
 Format:
 ```
-## Option {n}: {short name}
+## Rekomendasi: {short name}
 
-**Approach:** {1-2 sentence description}
+**Pendekatan:** {2-3 sentence clear description of exactly what to build/do}
 
-**Pros:**
-- {concrete advantage}
-- {concrete advantage}
+**Kenapa ini yang terbaik:**
+- {concrete reason — beats alternative A because...}
+- {concrete reason — beats alternative B because...}
 
-**Cons:**
-- {concrete risk or downside}
-- {concrete risk or downside}
+**Pre-mortem — kalau ini gagal, penyebabnya:**
+- {most likely failure mode} → {mitigation already baked in}
+- {second failure mode} → {mitigation already baked in}
 
-**Best when:** {specific scenario where this shines}
-**Effort:** S / M / L
-**Risk:** Low / Medium / High
+**Effort:** S / M / L  
+**Reversibility:** Easy / Medium / Hard  
+**Key assumption:** {the one thing that must be true for this to work}
 ```
 
-After presenting all options:
-Give one recommendation: "Rekomendasiku: Option {n} — {one-line reason specific to this problem}. Setuju? (y/n):"
-- If y: proceed directly to Step 4 with that option
-- If n: ask "Pilih option mana? (atau describe mix):" — accept any answer and proceed to Step 4
+After presenting:
+"Setuju lanjut dengan ini? (y/n — atau describe apa yang kurang):"
+- If y: proceed to Step 4
+- If n or feedback: adjust the recommendation based on feedback, re-present, ask again. Do not revert to showing multiple options.
 
-Note: recommendation may say "mix of Option 1+2" if that is genuinely the best fit. If only 1 option was generated, skip the recommendation and proceed to Step 4 directly.
+## Step 4 — Sharpen the Recommendation
+Present the deepening in **sections of 200-300 words each**. After each section, ask: "Bagian ini sudah oke? (y/lanjut/revisi)" — wait for confirmation before continuing to the next.
 
-## Step 4 — Deepen the Chosen Option
-Once user picks an option:
-- Ask any remaining open questions specific to that approach
-- Identify the 2–3 biggest unknowns or assumptions
-- Flag any dependencies on other parts of the system
+**Section order:**
+
+1. **Scope & Boundaries** — What's in and explicitly out of scope. Define "done" in one sentence.
+
+2. **Key Assumptions** — The 1–2 things that must be true for this approach to work. Flag if any are unverified.
+
+3. **Dependencies & Impact** — What other parts of the system need to change. Any required migrations, config changes, or breaking changes.
+
+4. **Implementation Order** — High-level sequence: what gets built first, what unlocks what. No task breakdown yet (that's /ec-feature's job).
+
+Only present sections that add value — skip any section where the answer is obvious or already covered in Step 3.
 
 ## Step 5 — Save
 
