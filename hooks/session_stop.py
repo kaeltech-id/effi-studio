@@ -4,6 +4,7 @@
 import sys
 import json
 import os
+import shutil
 import subprocess
 import time
 import urllib.request
@@ -80,6 +81,7 @@ def auto_export(project):
         if os.path.exists(export_path):
             if time.time() - os.path.getmtime(export_path) < 3600:
                 return
+            shutil.copy2(export_path, export_path + '.bak')
         mem_req = urllib.request.Request(
             f"{WORKER_URL}/memory/export?project={urllib.parse.quote(project)}"
         )

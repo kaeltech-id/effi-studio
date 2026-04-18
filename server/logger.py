@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 LOG_PATH = Path.home() / ".efficlaude" / "efficlaude.log"
-MAX_LOG_LINES = 1000
+MAX_LOG_LINES = int(os.getenv('EFFICLAUDE_MAX_LOG_LINES', '1000'))
 _error_counts: dict[str, int] = {}
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 import json
 import hashlib
@@ -23,6 +24,7 @@ TYPE_CAPS: dict[str, int] = {
 _MIGRATIONS: dict[int, list[str]] = {
     # 1 = baseline — no DDL changes needed, just establishes the versioning system
 }
+_CHROMA_FALLBACK_THRESHOLD = float(os.getenv('EFFICLAUDE_FTS_THRESHOLD', '1.2'))
 
 
 class MemoryEngine:
@@ -34,8 +36,10 @@ class MemoryEngine:
         self._reconcile_chromadb()
         threading.Thread(target=self._prune_on_startup, daemon=True).start()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS observations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,11 +64,11 @@ class MemoryEngine:
                     CREATE VIRTUAL TABLE IF NOT EXISTS obs_fts
                     USING fts5(content, tokenize="porter ascii")
                 ''')
-            except Exception:
-                pass
+            except Exception as e:
+                warn("memory", f"fts init error: {e}")
             conn.commit()
 
-    def _migrate(self):
+    def _migrate(self) -> None:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute('''
@@ -94,39 +98,33 @@ class MemoryEngine:
         except Exception as e:
             warn("memory", f"migration error: {e}")
 
-    def _reconcile_chromadb(self):
+    def _reconcile_chromadb(self) -> None:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 projects = [r[0] for r in conn.execute(
                     'SELECT DISTINCT project FROM observations'
                 ).fetchall()]
-
             for project in projects:
-                collection = self._get_collection(project)
-
-                chroma_ids = set()
-                offset = 0
-                BATCH = 500
-                while True:
-                    batch = collection.get(limit=BATCH, offset=offset)['ids']
-                    if not batch:
-                        break
-                    chroma_ids.update(batch)
-                    offset += len(batch)
-                    if len(batch) < BATCH:
-                        break
-
-                with sqlite3.connect(self.db_path) as conn:
-                    rows = conn.execute(
-                        'SELECT id, type, content, metadata, created_at FROM observations WHERE project=?',
-                        (project,)
-                    ).fetchall()
-
-                sqlite_ids = {str(r[0]) for r in rows}
-                missing = [r for r in rows if str(r[0]) not in chroma_ids]
-                orphans = [cid for cid in chroma_ids if cid not in sqlite_ids]
-
                 with _lock:
+                    collection = self._get_collection(project)
+                    chroma_ids: set = set()
+                    offset, BATCH = 0, 500
+                    while True:
+                        batch = collection.get(limit=BATCH, offset=offset)['ids']
+                        if not batch:
+                            break
+                        chroma_ids.update(batch)
+                        offset += len(batch)
+                        if len(batch) < BATCH:
+                            break
+                    with sqlite3.connect(self.db_path) as conn:
+                        rows = conn.execute(
+                            'SELECT id, type, content, metadata, created_at FROM observations WHERE project=?',
+                            (project,)
+                        ).fetchall()
+                    sqlite_ids = {str(r[0]) for r in rows}
+                    missing = [r for r in rows if str(r[0]) not in chroma_ids]
+                    orphans = [cid for cid in chroma_ids if cid not in sqlite_ids]
                     if missing:
                         collection.add(
                             documents=[r[2] for r in missing],
@@ -144,24 +142,24 @@ class MemoryEngine:
 
     def _prune_type(self, project: str, obs_type: str, cap: int) -> None:
         try:
+            excess_int_ids: list = []
             with sqlite3.connect(self.db_path) as conn:
+                conn.execute("BEGIN EXCLUSIVE")
                 rows = conn.execute(
                     'SELECT id FROM observations WHERE project=? AND type=? ORDER BY created_at ASC',
                     (project, obs_type)
                 ).fetchall()
-            if len(rows) <= cap:
-                return
-            excess_int_ids = [r[0] for r in rows[:-cap]]
-            excess_str_ids = [str(i) for i in excess_int_ids]
-            placeholders = ','.join('?' * len(excess_int_ids))
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute(
-                    f'DELETE FROM observations WHERE id IN ({placeholders})',
-                    excess_int_ids
-                )
+                if len(rows) > cap:
+                    excess_int_ids = [r[0] for r in rows[:-cap]]
+                    placeholders = ','.join('?' * len(excess_int_ids))
+                    conn.execute(
+                        f'DELETE FROM observations WHERE id IN ({placeholders})',
+                        excess_int_ids
+                    )
                 conn.commit()
-            collection = self._get_collection(project)
-            collection.delete(ids=excess_str_ids)
+            if excess_int_ids:
+                collection = self._get_collection(project)
+                collection.delete(ids=[str(i) for i in excess_int_ids])
         except Exception as e:
             warn("memory", f"prune error (type={obs_type}): {e}")
 
@@ -202,7 +200,7 @@ class MemoryEngine:
             warn("memory", f"fts search error: {e}")
             return []
 
-    def save_observation(self, project, obs_type, content, metadata=None):
+    def save_observation(self, project: str, obs_type: str, content: str, metadata=None) -> None:
         now = datetime.utcnow().isoformat()
         with _lock:
             with sqlite3.connect(self.db_path) as conn:
@@ -213,10 +211,11 @@ class MemoryEngine:
                 obs_id = cursor.lastrowid
                 try:
                     conn.execute('INSERT INTO obs_fts(rowid, content) VALUES (?, ?)', (obs_id, content))
-                except Exception:
-                    pass
+                except Exception as e:
+                    warn("memory", f"fts insert failed (id={obs_id}): {e}")
                 conn.commit()
             collection = self._get_collection(project)
+            chroma_ok = False
             for attempt in range(2):
                 try:
                     collection.add(
@@ -224,15 +223,21 @@ class MemoryEngine:
                         metadatas=[{"type": obs_type, "created_at": now, **(metadata or {})}],
                         ids=[str(obs_id)]
                     )
+                    chroma_ok = True
                     break
                 except Exception as e:
                     if attempt == 1:
                         warn("memory", f"chromadb add failed: {e}")
+            if not chroma_ok:
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.execute('DELETE FROM observations WHERE id=?', (obs_id,))
+                    conn.execute('DELETE FROM obs_fts WHERE rowid=?', (obs_id,))
+                    conn.commit()
         cap = TYPE_CAPS.get(obs_type)
         if cap is not None:
             self._prune_type(project, obs_type, cap)
 
-    def search(self, project, query, limit=5):
+    def search(self, project: str, query: str, limit: int = 5) -> list:
         collection = self._get_collection(project)
         try:
             count = collection.count()
@@ -250,7 +255,7 @@ class MemoryEngine:
                     results['distances'][0]
                 )
             ]
-            if all(item['distance'] > 1.5 for item in items):
+            if all(item['distance'] > _CHROMA_FALLBACK_THRESHOLD for item in items):
                 fts = self._fts_search(project, query, limit)
                 if fts:
                     return fts
@@ -259,7 +264,7 @@ class MemoryEngine:
             warn("memory", f"chromadb search error: {e}")
             return self._fts_search(project, query, limit)
 
-    def get_recent(self, project, limit=20):
+    def get_recent(self, project: str, limit: int = 20) -> list:
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 'SELECT type, content, metadata, created_at FROM observations '
@@ -276,7 +281,7 @@ class MemoryEngine:
             for r in rows
         ]
 
-    def summarize_session(self, project, session_id=''):
+    def summarize_session(self, project: str, session_id: str = '') -> str:
         recent = self.get_recent(project, 50)
         if not recent:
             return "No observations recorded."
@@ -320,15 +325,21 @@ class MemoryEngine:
                     ).fetchone()
                 if not exists:
                     meta = obs.get('metadata', '{}')
+                    try:
+                        meta_dict = json.loads(meta) if isinstance(meta, str) else meta
+                        if not isinstance(meta_dict, dict):
+                            meta_dict = {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta_dict = {}
                     self.save_observation(
                         project,
                         obs.get('type', 'general'),
                         obs.get('content', ''),
-                        json.loads(meta) if isinstance(meta, str) else meta
+                        meta_dict
                     )
                     imported_obs += 1
-            except Exception:
-                pass
+            except Exception as e:
+                warn("memory", f"import error: {e}")
         for s in sums_list:
             try:
                 with sqlite3.connect(self.db_path) as conn:
@@ -344,6 +355,6 @@ class MemoryEngine:
                         )
                         conn.commit()
                     imported_sums += 1
-            except Exception:
-                pass
+            except Exception as e:
+                warn("memory", f"import error: {e}")
         return {'observations_imported': imported_obs, 'summaries_imported': imported_sums}

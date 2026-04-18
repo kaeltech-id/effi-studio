@@ -61,6 +61,8 @@ class GraphEngine:
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS graph_nodes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

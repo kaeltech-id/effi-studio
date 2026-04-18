@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sqlite3
 import json
 import re
@@ -39,8 +41,10 @@ class DocsEngine:
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)
         self._init_db()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS docs_libraries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +71,7 @@ class DocsEngine:
         safe = re.sub(r'[^a-z0-9]', '_', library.lower())[:40]
         return self.chroma_client.get_or_create_collection(f"docs_{safe}")
 
-    def _is_stale(self, name):
+    def _is_stale(self, name: str) -> bool:
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
                 'SELECT last_fetched FROM docs_libraries WHERE name=?', (name,)
@@ -76,7 +80,7 @@ class DocsEngine:
             return True
         return (datetime.utcnow() - datetime.fromisoformat(row[0])).days >= DOC_TTL_DAYS
 
-    def register_library(self, name, project='', source_type=None):
+    def register_library(self, name: str, project: str = '', source_type=None) -> None:
         name = name.lower()
         if source_type is None:
             source_type = LIBRARY_SOURCES.get(name, ('npm',))[0]
@@ -86,9 +90,9 @@ class DocsEngine:
                 (name, project, source_type)
             )
             conn.commit()
-        self.fetch_and_cache(name)
+        threading.Thread(target=self.fetch_and_cache, args=(name,), daemon=True).start()
 
-    def fetch_and_cache(self, name):
+    def fetch_and_cache(self, name: str) -> int:
         name = name.lower()
         source_info = LIBRARY_SOURCES.get(name)
         if not source_info:
@@ -96,7 +100,7 @@ class DocsEngine:
 
         source_type, url = source_info
         try:
-            resp = requests.get(url, timeout=15, headers={'Accept': 'application/json'})
+            resp = requests.get(url, timeout=5, headers={'Accept': 'application/json'})
             if resp.status_code != 200:
                 return 0
             data = resp.json()
@@ -151,7 +155,7 @@ class DocsEngine:
             warn("docs", f"fetch failed ({name}): {e}")
             return 0
 
-    def _chunk_markdown(self, content, library, max_chars=600):
+    def _chunk_markdown(self, content: str, library: str, max_chars: int = 600) -> list:
         chunks = []
         current_heading = library
         current_lines = []
@@ -177,7 +181,7 @@ class DocsEngine:
 
         return chunks or [(library, content[:600])]
 
-    def search(self, project, query, limit=5):
+    def search(self, project: str, query: str, limit: int = 5) -> list:
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 "SELECT name FROM docs_libraries WHERE project=? OR project=''",
@@ -218,7 +222,7 @@ class DocsEngine:
         all_results.sort(key=lambda x: x['distance'])
         return all_results[:limit]
 
-    def list_libraries(self, project=''):
+    def list_libraries(self, project: str = '') -> list:
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 "SELECT name, source_type, last_fetched FROM docs_libraries WHERE project=? OR project=''",

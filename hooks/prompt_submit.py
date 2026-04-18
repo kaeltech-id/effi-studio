@@ -4,6 +4,7 @@
 import sys
 import json
 import os
+import re
 import subprocess
 import time
 import urllib.request
@@ -118,10 +119,11 @@ def check_context_staleness():
     try:
         stack_path = os.path.join(os.getcwd(), ".claude", "context", "stack.md")
         with open(stack_path) as f:
-            first_line = f.readline().strip()
-        if not first_line.startswith("<!-- last_updated:"):
+            header = f.read(300)
+        match = re.search(r'<!--\s*last_updated:\s*(\d{4}-\d{2}-\d{2})\s*-->', header)
+        if not match:
             return None
-        date_str = first_line.replace("<!-- last_updated:", "").replace("-->", "").strip()
+        date_str = match.group(1)
         last_ts = time.mktime(time.strptime(date_str, "%Y-%m-%d"))
         days = int((time.time() - last_ts) / 86400)
         if days > 30:
