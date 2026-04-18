@@ -35,7 +35,9 @@ Built for developers who want Claude to remember everything, plan precisely, and
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/install.sh | bash
+git clone git@github.com:kaeltech-id/EffiClaude.git
+cd EffiClaude
+bash install.sh
 ```
 
 **Requirements:** Python 3.8+ · [Claude Code](https://claude.ai/code)  

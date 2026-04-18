@@ -1,115 +1,152 @@
-## Feature: Post-Review Summary Doc + Setup Project Overview Doc
+## Feature: local-install-mode
 
 ### Impact Analysis
-- Files affected: `commands/ec-setup.md`, `commands/ec-review.md`
-- New runtime files: `docs/PROJECT.md` (created by ec-setup), `.claude/review-summary.md` (created by ec-review)
-- ⚠️ Breaking change risk: none — additive steps only, no existing behavior removed
+- Files affected: `install.sh`, `README.md`
+- ⚠️ Breaking change risk: none — existing remote install behavior unchanged when running outside repo
 
 ### Reusable Existing Code
-- `<!-- last_updated: {date} -->` pattern at `commands/ec-setup.md` (Step 3) — reuse same header pattern in docs/PROJECT.md
-- Step numbering pattern in `commands/ec-review.md` — new step follows existing Step 4
+- `SCRIPT_DIR` pattern (Bash `${BASH_SOURCE[0]}`) — standard portable script self-detection
+- All source files already present at `$SCRIPT_DIR/{commands,server,hooks,launchers,shell,token-optimizer}/`
 
 ### Tasks
-- [x] Task 1: Add docs/PROJECT.md template + write instruction to ec-setup.md Step 3 [S] — write full project overview during setup
-- [x] Task 2: Add .claude/review-summary.md write step to ec-review.md [S] — generate review output doc after Step 4
-- [x] Task 3: Add docs/PROJECT.md update step to ec-review.md (same new Step 5) [S] — append changelog row + refresh last_updated
+- [x] Task 1: Add SCRIPT_DIR and LOCAL_INSTALL detection [S] — detect if install.sh runs from within the repo
+- [x] Task 2: Add fetch_file helper function [S] — cp vs curl routing based on LOCAL_INSTALL flag
+- [x] Task 3: Refactor commands + VERSION download [S] — replace curl with fetch_file in Step 3
+- [x] Task 4: Refactor server files download [S] — replace curl with fetch_file in Step 4
+- [x] Task 5: Refactor hooks download [S] — replace curl with fetch_file in Step 5
+- [x] Task 6: Refactor launchers download [S] — replace curl with fetch_file in Step 9
+- [x] Task 7: Refactor etok build section [S] — local install builds directly from SCRIPT_DIR, skip temp dir
+- [x] Task 8: Refactor shell/effi-shell.sh download [S] — replace curl with fetch_file
+- [x] Task 9: Update README Install section [S] — replace curl|bash with clone-then-install instructions
 
 ### Per Task Detail
 
-**Task 1 — Add docs/PROJECT.md to ec-setup.md** `S`
-- File: `commands/ec-setup.md`
-- Reuse: `<!-- last_updated: {YYYY-MM-DD} -->` header pattern already in Step 3
-- Code sample: add `### docs/PROJECT.md` block inside Step 3, after the conventions.md section:
+**Task 1 — Add SCRIPT_DIR and LOCAL_INSTALL detection** `S`
+- File: `install.sh`
+- Reuse: none
+- Code sample: add after line 16 (after arrays, before BASE_URL):
+  ```bash
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  LOCAL_INSTALL=false
+  [ -f "$SCRIPT_DIR/commands/ec-setup.md" ] && LOCAL_INSTALL=true
   ```
-  ### docs/PROJECT.md
-  Create `docs/` directory if it doesn't exist, then write `docs/PROJECT.md`:
-
-  <!-- last_updated: {YYYY-MM-DD} -->
-  # {project_name}
-
-  ## Overview
-  {one-paragraph description based on scan + user answers}
-
-  ## Stack
-  {tech stack from stack.md}
-
-  ## Project Structure
-  {structure from structure.md}
-
-  ## Commands
-  | Command | Description |
-  |---------|-------------|
-  | /ec-setup | Initialize or update project configuration |
-  | /ec-brainstorm | Explore solution approaches before planning |
-  | /ec-feature | Plan a feature with tasks and file targets |
-  | /ec-execute | Implement the current plan sequentially |
-  | /ec-review | Review spec compliance and code quality |
-  | /ec-git | Commit and push changes |
-
-  ## Conventions
-  {conventions from conventions.md}
-
-  ## Changelog
-  | Date | Feature | Summary |
-  |------|---------|---------|
-  | {date} | Initial setup | Project configured via /ec-setup |
+  Add after `echo "Installing EffiClaude..."`:
+  ```bash
+  [ "$LOCAL_INSTALL" = true ] && echo "  (local install — copying from repo)"
   ```
-- Edge cases: `docs/` may not exist — mkdir before write; if PROJECT.md already exists (re-run setup), overwrite it fully
+- Edge cases: symlinked install.sh — `${BASH_SOURCE[0]}` resolves correctly
 - ⚠️ Breaking change: none
-- Verify: after running /ec-setup, `cat docs/PROJECT.md` shows all sections with real content
+- Verify: `LOCAL_INSTALL` is `true` when run from `/Users/admin/EffiClaude/`
 - Dependencies: none
 
-**Task 2 — Add .claude/review-summary.md write step to ec-review.md** `S`
-- File: `commands/ec-review.md`
-- Reuse: feature name parsed from `## Feature:` line in current-plan.md
-- Code sample: add new `## Step 5 — Write Review Docs` section after the existing Step 4 clean/delete block, before "Next: run /ec-git":
+**Task 2 — Add fetch_file helper function** `S`
+- File: `install.sh`
+- Reuse: none
+- Code sample: add after LOCAL_INSTALL block, before `echo "Installing EffiClaude..."`:
+  ```bash
+  fetch_file() {
+    local rel="$1" dest="$2"
+    if [ "$LOCAL_INSTALL" = true ]; then
+      cp "$SCRIPT_DIR/$rel" "$dest"
+    else
+      curl -fsSL "$BASE_URL/$rel" -o "$dest"
+    fi
+  }
   ```
-  ## Step 5 — Write Review Docs
-
-  Write `.claude/review-summary.md` (overwrite if exists):
-
-  # Review Summary — {feature_name}
-  _Date: {date}_
-
-  ## Feature
-  {feature name from `## Feature:` line in current-plan.md}
-
-  ## Tasks Completed
-  {all [x] task lines from current-plan.md, verbatim}
-
-  ## Files Modified
-  {list from blast radius scope + manually scoped files}
-
-  ## Issues Fixed During Review
-  {Stage 1 compliance fixes listed here}
-  {Stage 2 quality fixes listed here}
-  (If none: "No issues found.")
-
-  ## Review Result
-  | Check | Status |
-  |-------|--------|
-  | Spec compliance | ✓ |
-  | Code quality | ✓ |
-  | Tests | {added / skipped} |
-  ```
-- Edge cases: overwrite on each review cycle — one file, always latest feature; if no issues fixed, write "No issues found"
 - ⚠️ Breaking change: none
-- Verify: after /ec-review, `cat .claude/review-summary.md` shows complete feature summary
+- Verify: function defined in script — no syntax error on `bash -n install.sh`
+- Dependencies: Task 1
+
+**Task 3 — Refactor commands + VERSION download** `S`
+- File: `install.sh`, Step 3 (lines 53–58)
+- Code sample:
+  ```bash
+  fetch_file "commands/$cmd.md" "$COMMANDS_DIR/$cmd.md"
+  ...
+  fetch_file "VERSION" "$EFFICLAUDE_HOME/VERSION"
+  ```
+- ⚠️ Breaking change: none
+- Verify: run install.sh locally → `ls ~/.claude/commands/ec-setup.md` exists
+- Dependencies: Task 2
+
+**Task 4 — Refactor server files download** `S`
+- File: `install.sh`, Step 4 (lines 63–66)
+- Code sample: `fetch_file "server/$file" "$SERVER_DIR/$file"`
+- ⚠️ Breaking change: none
+- Verify: `ls ~/.efficlaude/server/worker.py` exists after install
+- Dependencies: Task 2
+
+**Task 5 — Refactor hooks download** `S`
+- File: `install.sh`, Step 5 (lines 72–76)
+- Code sample: `fetch_file "hooks/$file" "$HOOKS_DIR/$file"`
+- ⚠️ Breaking change: none
+- Verify: `ls ~/.efficlaude/hooks/post_tool_use.py` exists after install
+- Dependencies: Task 2
+
+**Task 6 — Refactor launchers download** `S`
+- File: `install.sh`, Step 9 (lines 195–215)
+- Code sample:
+  ```bash
+  # macOS:
+  fetch_file "launchers/com.efficlaude.worker.plist" "$HOME/.efficlaude/com.efficlaude.worker.plist"
+  # Linux:
+  fetch_file "launchers/efficlaude-worker.service" "$HOME/.efficlaude/efficlaude-worker.service"
+  ```
+- ⚠️ Breaking change: none
+- Verify: `ls ~/.efficlaude/com.efficlaude.worker.plist` exists after install on macOS
+- Dependencies: Task 2
+
+**Task 7 — Refactor etok build section** `S`
+- File: `install.sh`, lines 148–161
+- Code sample: replace internals of `if command -v cargo` block:
+  ```bash
+  if command -v cargo &>/dev/null; then
+    if [ "$LOCAL_INSTALL" = true ]; then
+      (cd "$SCRIPT_DIR/token-optimizer" && cargo build --release -q && cp target/release/etok "$BIN_DIR/etok")
+    else
+      TMPDIR_ETOK=$(mktemp -d)
+      curl -fsSL "$BASE_URL/token-optimizer/Cargo.toml" -o "$TMPDIR_ETOK/Cargo.toml"
+      mkdir -p "$TMPDIR_ETOK/src/filters"
+      for f in main.rs; do
+        curl -fsSL "$BASE_URL/token-optimizer/src/$f" -o "$TMPDIR_ETOK/src/$f"
+      done
+      for f in mod.rs generic.rs git.rs npm.rs docker.rs cargo.rs; do
+        curl -fsSL "$BASE_URL/token-optimizer/src/filters/$f" -o "$TMPDIR_ETOK/src/filters/$f"
+      done
+      (cd "$TMPDIR_ETOK" && cargo build --release -q && cp target/release/etok "$BIN_DIR/etok")
+      rm -rf "$TMPDIR_ETOK"
+    fi
+    ETOK_INSTALLED=true
+    echo "  ✓ etok built from source"
+  ```
+- ⚠️ Breaking change: none — remote path unchanged
+- Verify: `~/.efficlaude/bin/etok` exists after local install with Rust
+- Dependencies: Task 1
+
+**Task 8 — Refactor shell/effi-shell.sh download** `S`
+- File: `install.sh`, line 175
+- Code sample: `fetch_file "shell/effi-shell.sh" "$SHELL_DIR/effi-shell.sh"`
+- ⚠️ Breaking change: none
+- Verify: `ls ~/.efficlaude/shell/effi-shell.sh` exists after install
+- Dependencies: Task 2
+
+**Task 9 — Update README Install section** `S`
+- File: `README.md`
+- Code sample: replace current Install section (curl|bash one-liner) with:
+  ```markdown
+  ## Install
+
+  ```bash
+  git clone git@github.com:kaeltech-id/EffiClaude.git
+  cd EffiClaude
+  bash install.sh
+  ```
+
+  **Requirements:** Python 3.8+ · [Claude Code](https://claude.ai/code)
+  **Optional:** Rust (token optimizer) · Node.js (Figma MCP) — auto-detected
+
+  Installs commands to `~/.claude/commands/`, starts worker daemon, registers hooks, builds `etok`.
+  ```
+- ⚠️ Breaking change: removes curl|bash one-liner — correct since repo is private and that one-liner fails
+- Verify: README renders correctly with new install steps
 - Dependencies: none
-
-**Task 3 — Add docs/PROJECT.md update step to ec-review.md** `S`
-- File: `commands/ec-review.md`
-- Reuse: same Step 5 from Task 2 — append instructions after review-summary write
-- Code sample: append to Step 5 body after the review-summary block:
-  ```
-  Then update `docs/PROJECT.md` (if it exists):
-  1. Replace `<!-- last_updated: {old_date} -->` with `<!-- last_updated: {today} -->`
-  2. Find the `## Changelog` table and append a new row:
-     `| {date} | {feature_name} | {one-line summary of what was built} |`
-
-  If `docs/PROJECT.md` does not exist: show "(docs/PROJECT.md not found — run /ec-setup to generate it)" and skip.
-  ```
-- Edge cases: PROJECT.md not found → warn and skip, don't fail; feature_name taken from `## Feature:` line in current-plan.md; one-line summary = shortest description of the feature
-- ⚠️ Breaking change: none
-- Verify: after /ec-review, `tail -5 docs/PROJECT.md` shows new changelog row with today's date and feature name
-- Dependencies: Task 1 (PROJECT.md must exist from ec-setup), Task 2 (same step in ec-review)

@@ -14,10 +14,24 @@ COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-g
 SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py" "commit-msg")
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_INSTALL=false
+[ -f "$SCRIPT_DIR/commands/ec-setup.md" ] && LOCAL_INSTALL=true
+
+fetch_file() {
+  local rel="$1" dest="$2"
+  if [ "$LOCAL_INSTALL" = true ]; then
+    cp "$SCRIPT_DIR/$rel" "$dest"
+  else
+    curl -fsSL "$BASE_URL/$rel" -o "$dest"
+  fi
+}
+
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 
 echo "Installing EffiClaude..."
 echo ""
+[ "$LOCAL_INSTALL" = true ] && echo "  (local install — copying from repo)"
 
 # ── 1. Check Python ───────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
@@ -51,17 +65,17 @@ mkdir -p "$COMMANDS_DIR" "$HOOKS_DIR" "$SERVER_DIR" "$BIN_DIR" "$SHELL_DIR" "$EF
 echo ""
 echo "Installing commands..."
 for cmd in "${COMMANDS[@]}"; do
-  curl -fsSL "$BASE_URL/commands/$cmd.md" -o "$COMMANDS_DIR/$cmd.md"
+  fetch_file "commands/$cmd.md" "$COMMANDS_DIR/$cmd.md"
   echo "  ✓ /$cmd"
 done
-curl -fsSL "$BASE_URL/VERSION" -o "$EFFICLAUDE_HOME/VERSION"
+fetch_file "VERSION" "$EFFICLAUDE_HOME/VERSION"
 echo "  ✓ VERSION"
 
 # ── 4. Install server files ───────────────────────────────────────────────────
 echo ""
 echo "Installing worker service..."
 for file in "${SERVER_FILES[@]}"; do
-  curl -fsSL "$BASE_URL/server/$file" -o "$SERVER_DIR/$file"
+  fetch_file "server/$file" "$SERVER_DIR/$file"
   echo "  ✓ server/$file"
 done
 chmod +x "$SERVER_DIR/start.sh" "$SERVER_DIR/stop.sh" "$SERVER_DIR/watchdog.sh"
@@ -70,7 +84,7 @@ chmod +x "$SERVER_DIR/start.sh" "$SERVER_DIR/stop.sh" "$SERVER_DIR/watchdog.sh"
 echo ""
 echo "Installing hooks..."
 for file in "${HOOK_FILES[@]}"; do
-  curl -fsSL "$BASE_URL/hooks/$file" -o "$HOOKS_DIR/$file"
+  fetch_file "hooks/$file" "$HOOKS_DIR/$file"
   chmod +x "$HOOKS_DIR/$file"
   echo "  ✓ hooks/$file"
 done
@@ -146,17 +160,21 @@ PLATFORM="$(uname -s)-$(uname -m)"
 ETOK_INSTALLED=false
 
 if command -v cargo &>/dev/null; then
-  TMPDIR_ETOK=$(mktemp -d)
-  curl -fsSL "$BASE_URL/token-optimizer/Cargo.toml" -o "$TMPDIR_ETOK/Cargo.toml"
-  mkdir -p "$TMPDIR_ETOK/src/filters"
-  for f in main.rs; do
-    curl -fsSL "$BASE_URL/token-optimizer/src/$f" -o "$TMPDIR_ETOK/src/$f"
-  done
-  for f in mod.rs generic.rs git.rs npm.rs docker.rs cargo.rs; do
-    curl -fsSL "$BASE_URL/token-optimizer/src/filters/$f" -o "$TMPDIR_ETOK/src/filters/$f"
-  done
-  (cd "$TMPDIR_ETOK" && cargo build --release -q && cp target/release/etok "$BIN_DIR/etok")
-  rm -rf "$TMPDIR_ETOK"
+  if [ "$LOCAL_INSTALL" = true ]; then
+    (cd "$SCRIPT_DIR/token-optimizer" && cargo build --release -q && cp target/release/etok "$BIN_DIR/etok")
+  else
+    TMPDIR_ETOK=$(mktemp -d)
+    curl -fsSL "$BASE_URL/token-optimizer/Cargo.toml" -o "$TMPDIR_ETOK/Cargo.toml"
+    mkdir -p "$TMPDIR_ETOK/src/filters"
+    for f in main.rs; do
+      curl -fsSL "$BASE_URL/token-optimizer/src/$f" -o "$TMPDIR_ETOK/src/$f"
+    done
+    for f in mod.rs generic.rs git.rs npm.rs docker.rs cargo.rs; do
+      curl -fsSL "$BASE_URL/token-optimizer/src/filters/$f" -o "$TMPDIR_ETOK/src/filters/$f"
+    done
+    (cd "$TMPDIR_ETOK" && cargo build --release -q && cp target/release/etok "$BIN_DIR/etok")
+    rm -rf "$TMPDIR_ETOK"
+  fi
   ETOK_INSTALLED=true
   echo "  ✓ etok built from source"
 else
@@ -172,7 +190,7 @@ fi
 
 if [ "$ETOK_INSTALLED" = true ]; then
   chmod +x "$BIN_DIR/etok"
-  curl -fsSL "$BASE_URL/shell/effi-shell.sh" -o "$SHELL_DIR/effi-shell.sh"
+  fetch_file "shell/effi-shell.sh" "$SHELL_DIR/effi-shell.sh"
 
   for RC in "$HOME/.zshrc" "$HOME/.bashrc"; do
     if [ -f "$RC" ] && ! grep -q "effi-shell.sh" "$RC"; then
@@ -189,11 +207,9 @@ echo ""
 echo "Registering auto-start daemon..."
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  PLIST_SRC="$HOME/.efficlaude/server/../launchers/com.efficlaude.worker.plist"
   PLIST_DEST="$HOME/Library/LaunchAgents/com.efficlaude.worker.plist"
 
-  curl -fsSL "$BASE_URL/launchers/com.efficlaude.worker.plist" \
-    -o "$HOME/.efficlaude/com.efficlaude.worker.plist"
+  fetch_file "launchers/com.efficlaude.worker.plist" "$HOME/.efficlaude/com.efficlaude.worker.plist"
 
   sed "s|EFFICLAUDE_HOME|$EFFICLAUDE_HOME|g" \
     "$HOME/.efficlaude/com.efficlaude.worker.plist" > "$PLIST_DEST"
@@ -206,8 +222,7 @@ elif command -v systemctl &>/dev/null; then
   SERVICE_DEST="$HOME/.config/systemd/user/efficlaude-worker.service"
   mkdir -p "$(dirname "$SERVICE_DEST")"
 
-  curl -fsSL "$BASE_URL/launchers/efficlaude-worker.service" \
-    -o "$HOME/.efficlaude/efficlaude-worker.service"
+  fetch_file "launchers/efficlaude-worker.service" "$HOME/.efficlaude/efficlaude-worker.service"
 
   sed "s|EFFICLAUDE_HOME|$EFFICLAUDE_HOME|g" \
     "$HOME/.efficlaude/efficlaude-worker.service" > "$SERVICE_DEST"
