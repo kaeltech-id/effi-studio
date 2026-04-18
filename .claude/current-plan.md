@@ -1,150 +1,121 @@
-## Feature: Medium Issues Batch — All 5 Fixes
+## Feature: Flat Task Execution + Resumable State
 
 ### Impact Analysis
-- Files affected: install.sh, commands/ec-feature.md, commands/ec-review.md,
-  server/worker.py, hooks/post_tool_use.py, hooks/prompt_submit.py,
-  hooks/session_stop.py, server/memory.py, server/graph.py
-- ⚠️ Breaking change risk: none — all fallbacks preserved, no API changes
+- Files affected: commands/ec-execute.md, commands/ec-feature.md, commands/ec-brainstorm.md
+- ⚠️ Breaking change risk: none — plan lama tanpa format checkbox sudah selesai semua
 
 ### Reusable Existing Code
-- `threading.Thread(target=..., daemon=True).start()` pattern — already in docs.py:193
-- `os.environ.get('KEY', default)` pattern — already in worker.py for BASE_DIR
-- `|| { echo "..."; exit 1; }` pattern — already in install.sh lines 25, 34
+- Format `- [ ] Task N` sudah ada di ec-feature.md — diperkuat, tidak diubah
+- Pola `Read .claude/current-plan.md` sudah ada di ec-execute Step 1 — diperluas
 
 ### Tasks
-- [ ] Task 1: install.sh pip verify [S] — add exit code check after pip3 install
-- [ ] Task 2: ec-feature.md remove delete [S] — remove decision.md delete instruction
-- [ ] Task 3: ec-review.md add delete [S] — add decision.md delete after clean review
-- [ ] Task 4: worker.py port env var [S] — replace 37777 with EFFICLAUDE_PORT env var
-- [ ] Task 5: post_tool_use.py port env var [S] — replace WORKER_URL hardcoded port
-- [ ] Task 6: prompt_submit.py port env var [S] — replace WORKER_URL hardcoded port
-- [ ] Task 7: session_stop.py port env var [S] — replace WORKER_URL hardcoded port
-- [ ] Task 8: memory.py async prune [S] — wrap _prune_on_startup in thread
-- [ ] Task 9: graph.py export* pattern [S] — add export * from pattern to JS/TS
+- [x] Task 1: ec-execute sequential loop [M] — hapus Step 3 "Group Tasks", ganti dengan sequential loop + tandai [x] per task selesai
+- [x] Task 2: ec-execute resume logic [S] — di Step 1, count [x] vs [ ], skip yang sudah [x], mulai dari [ ] pertama
+- [x] Task 3: ec-execute progress display [S] — tampilkan "▶ Task N/Total: name" sebelum dan "✓ Task N/Total" sesudah tiap task
+- [x] Task 4: ec-feature incomplete guard [S] — cek current-plan.md ada [ ] sebelum overwrite, minta konfirmasi y/n
+- [x] Task 5: ec-feature flat format enforcement [S] — tambah Format Rules: no batch headers, no grouping, strict - [ ] format
+- [x] Task 6: ec-brainstorm no-batch rule [S] — tambah constraint di Step 3: NEVER recommend batching/phasing, ONE complete approach
 
 ### Per Task Detail
 
-**Task 1 — install.sh pip verify** `S`
-- File: `install.sh`
-- Reuse: `|| { echo "..."; exit 1; }` pattern (lines 25, 34)
-- Code sample — replace lines 88-90:
-  ```bash
-  echo "Installing Python dependencies..."
-  pip3 install -q -r "$SERVER_DIR/requirements.txt" \
-    || { echo "  ✗ Failed to install Python dependencies. Check requirements.txt."; exit 1; }
-  echo "  ✓ Python dependencies installed"
-  ```
-- Edge cases: pip3 not found → already fails with exit 1 from shell
-- ⚠️ Breaking change: none
-- Verify: `grep -A2 "pip3 install" /Users/admin/EffiClaude/install.sh` → must show `|| {` on next line
-- Dependencies: none
-
-**Task 2 — ec-feature.md remove delete instruction** `S`
-- File: `commands/ec-feature.md`
+**Task 1 — ec-execute sequential loop** `M`
+- File: commands/ec-execute.md
 - Reuse: none
-- Code sample — replace this exact line:
-  `- After planning is complete, delete \`.claude/decision.md\` so it doesn't carry over to next feature`
-  with:
-  `- Do NOT delete \`.claude/decision.md\` here — it will be deleted by \`/ec-review\` after a clean review`
-- ⚠️ Breaking change: none
-- Verify: `grep "delete.*decision\|decision.md" /Users/admin/EffiClaude/commands/ec-feature.md` → must NOT show delete instruction, must show "Do NOT delete"
+- Code sample:
+  Replace current Step 3 "Group Tasks" dengan:
+  ```
+  ## Step 3 — Execute Sequentially
+  Read all tasks from `.claude/current-plan.md`. Find all lines matching `- [ ]`.
+  total = count of all task lines (both [x] and [ ]).
+  For each `- [ ]` task in document order:
+    1. Show: "▶ Task {current}/{total}: {task name} [{size}]"
+    2. Spawn one subagent with full task context (file path, code sample, verify step, relevant memory/docs)
+    3. Subagent MUST run verify step and confirm output before claiming done
+    4. After subagent confirms complete: edit `.claude/current-plan.md`, replace `- [ ] Task N` with `- [x] Task N` for this task only
+    5. Show: "✓ Task {current}/{total}: {task name} — verified"
+  Repeat until no `- [ ]` lines remain.
+  ```
+- ⚠️ Breaking change: hapus "parallel group" logic — tasks jalan satu per satu
+- Verify: grep "Group Tasks\|parallel" commands/ec-execute.md returns no matches in Step 3; grep "\- \[x\]" commands/ec-execute.md returns a match
 - Dependencies: none
 
-**Task 3 — ec-review.md add delete instruction** `S`
-- File: `commands/ec-review.md`
+**Task 2 — ec-execute resume logic** `S`
+- File: commands/ec-execute.md
 - Reuse: none
-- Code sample — insert before the line `If everything is clean: "No issues found. Ready to commit."`:
+- Code sample:
+  Tambah di Step 1, setelah baca current-plan.md:
   ```
-  **If review is clean**, delete `.claude/decision.md` if it exists (run `rm -f .claude/decision.md`), so it doesn't carry over to the next feature.
+  Count lines in current-plan.md:
+  - done = count of lines matching `- [x]`
+  - remaining = count of lines matching `- [ ]`
 
+  If remaining == 0 and done > 0:
+    Show: "All {done} tasks already complete — run /ec-review."
+    Stop.
+  If remaining == 0 and done == 0:
+    Show: "No tasks found in current-plan.md. Run /ec-feature first."
+    Stop.
+  If done > 0 and remaining > 0:
+    Show: "Resuming: {done} tasks already done, {remaining} remaining."
   ```
-- Edge cases: decision.md may not exist → `rm -f` is safe (no error)
-- ⚠️ Breaking change: none
-- Verify: `grep -n "decision.md\|rm -f" /Users/admin/EffiClaude/commands/ec-review.md` → must show `rm -f .claude/decision.md`
-- Dependencies: none
+- Verify: ec-execute.md Step 1 mengandung tiga kondisi (all done / no tasks / resume) dengan string "Resuming:"
+- Dependencies: Task 1
 
-**Task 4 — worker.py port env var** `S`
-- File: `server/worker.py`
-- Reuse: `os.environ.get()` already used in file
-- Code sample — replace the last line before `if __name__`:
-  ```python
-  # old:
-  app.run(host='127.0.0.1', port=37777, debug=False, threaded=True)
-  # new:
-  app.run(host='127.0.0.1', port=int(os.environ.get('EFFICLAUDE_PORT', 37777)), debug=False, threaded=True)
-  ```
-- Edge cases: non-numeric env var → int() raises ValueError → acceptable loud failure
-- ⚠️ Breaking change: none (default 37777 unchanged)
-- Verify: `grep "EFFICLAUDE_PORT" /Users/admin/EffiClaude/server/worker.py`
-- Dependencies: none
-
-**Task 5 — post_tool_use.py port env var** `S`
-- File: `hooks/post_tool_use.py`
+**Task 3 — ec-execute progress display** `S`
+- File: commands/ec-execute.md
 - Reuse: none
-- Code sample — replace line with `WORKER_URL = "http://localhost:37777"`:
-  ```python
-  WORKER_URL = f"http://localhost:{os.environ.get('EFFICLAUDE_PORT', '37777')}"
+- Code sample:
+  Di dalam loop Step 3, format wajib:
   ```
-- Edge cases: `os` already imported
-- ⚠️ Breaking change: none
-- Verify: `grep "EFFICLAUDE_PORT" /Users/admin/EffiClaude/hooks/post_tool_use.py`
+  Before spawn: "▶ Task {current}/{total}: {task_name} [{size}]"
+  After verify: "✓ Task {current}/{total}: {task_name} — verified"
+  ```
+- Verify: ec-execute.md mengandung format string "▶ Task {current}/{total}" dan "✓ Task {current}/{total}"
+- Dependencies: Task 1
+
+**Task 4 — ec-feature incomplete guard** `S`
+- File: commands/ec-feature.md
+- Reuse: none
+- Code sample:
+  Tambah di Step 0, sebelum input gathering:
+  ```
+  **Incomplete plan guard:** Before proceeding, check if `.claude/current-plan.md` exists.
+  If it exists, count lines matching `- [ ]`.
+  If count > 0:
+    Show: "⚠️ current-plan.md has {n} incomplete task(s). Overwrite and start fresh? (y/n):"
+    If n: Stop — "Run /ec-execute to finish the current plan, or manually delete .claude/current-plan.md."
+    If y: continue normally — plan will be overwritten at Step 3.
+  ```
+- Verify: ec-feature.md Step 0 mengandung "Incomplete plan guard" dengan count `- [ ]` dan y/n prompt
 - Dependencies: none
 
-**Task 6 — prompt_submit.py port env var** `S`
-- File: `hooks/prompt_submit.py`
-- Reuse: same pattern as Task 5
-- Code sample — replace `WORKER_URL = "http://localhost:37777"`:
-  ```python
-  WORKER_URL = f"http://localhost:{os.environ.get('EFFICLAUDE_PORT', '37777')}"
+**Task 5 — ec-feature flat format enforcement** `S`
+- File: commands/ec-feature.md
+- Reuse: none
+- Code sample:
+  Tambah di Step 3 Task Granularity Rules section:
   ```
-- ⚠️ Breaking change: none
-- Verify: `grep "EFFICLAUDE_PORT" /Users/admin/EffiClaude/hooks/prompt_submit.py`
+  ### Flat Format Rules (mandatory — no exceptions)
+  - Task list MUST be flat — no batch headers, no phase labels, no grouping of any kind
+  - NEVER write: "## Batch A", "### Phase 1", "#### Group:", "**Wave 1**", or any grouping construct
+  - Every task MUST use exact format: `- [ ] Task N: {name} [{size}] — {description}`
+  - Task numbers are sequential integers 1 to N, no gaps, no sub-numbering (1.1, 1.2, etc.)
+  - Size of the feature does not affect format — 3 tasks or 50 tasks use identical flat structure
+  ```
+- Verify: ec-feature.md Step 3 mengandung "Flat Format Rules" section dengan "NEVER write" list
 - Dependencies: none
 
-**Task 7 — session_stop.py port env var** `S`
-- File: `hooks/session_stop.py`
-- Reuse: same pattern as Task 5
-- Code sample — replace `WORKER_URL = "http://localhost:37777"`:
-  ```python
-  WORKER_URL = f"http://localhost:{os.environ.get('EFFICLAUDE_PORT', '37777')}"
+**Task 6 — ec-brainstorm no-batch rule** `S`
+- File: commands/ec-brainstorm.md
+- Reuse: none
+- Code sample:
+  Tambah di Step 3 Present the Recommendation, setelah format block:
   ```
-- ⚠️ Breaking change: none
-- Verify: `grep "EFFICLAUDE_PORT" /Users/admin/EffiClaude/hooks/session_stop.py`
-- Dependencies: none
-
-**Task 8 — memory.py async prune** `S`
-- File: `server/memory.py`
-- Reuse: `threading` already imported (line 9); same Thread pattern as docs.py
-- Code sample — replace `self._prune_on_startup()` in `__init__`:
-  ```python
-  # old:
-  self._prune_on_startup()
-  # new:
-  threading.Thread(target=self._prune_on_startup, daemon=True).start()
+  ### Recommendation Constraints (non-negotiable)
+  - NEVER recommend batching, phasing, or splitting implementation into multiple /ec-execute cycles
+  - The recommendation describes ONE complete approach, implemented in ONE /ec-feature + /ec-execute cycle
+  - If scope seems large: that is fine — /ec-feature handles any number of tasks in a flat list
+  - "Start with X, then do Y later" is not a recommendation — it is two recommendations. Pick one complete solution.
   ```
-- Edge cases: errors inside _prune_on_startup already caught with warn()
-- ⚠️ Breaking change: none (same outcome, non-blocking)
-- Verify: `grep "Thread.*prune\|prune.*Thread" /Users/admin/EffiClaude/server/memory.py`
-- Dependencies: none
-
-**Task 9 — graph.py export* pattern** `S`
-- File: `server/graph.py`
-- Reuse: existing `_extract_imports` patterns dict structure
-- Code sample — add to both `javascript` and `typescript` lists in `_extract_imports`:
-  ```python
-  r'''export\s+\*\s+(?:as\s+\w+\s+)?from\s+['"]([^'"]+)['"]''',
-  ```
-  Final javascript list:
-  ```python
-  'javascript': [
-      r'''import\s+.*?from\s+['"]([^'"]+)['"]''',
-      r'''require\s*\(\s*['"]([^'"]+)['"]\s*\)''',
-      r'''import\s*\(\s*['"]([^'"]+)['"]\s*\)''',
-      r'''export\s+\*\s+(?:as\s+\w+\s+)?from\s+['"]([^'"]+)['"]''',
-  ],
-  ```
-  Same addition for `typescript`.
-- Edge cases: `export * as ns from './foo'` also covered by `(?:as\s+\w+\s+)?` optional group
-- ⚠️ Breaking change: none (additive only)
-- Verify: `python3 -c "import re; s = \"export * from './foo'\"; m = re.search(r'''export\s+\*\s+(?:as\s+\w+\s+)?from\s+['\"]([^'\"]+)['\"]''', s); print(m.group(1))"` → must print `./foo`
+- Verify: ec-brainstorm.md Step 3 mengandung "NEVER recommend batching" dan "ONE complete approach"
 - Dependencies: none

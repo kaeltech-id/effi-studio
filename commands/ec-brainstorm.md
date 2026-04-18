@@ -80,6 +80,12 @@ Format:
 **Key assumption:** {the one thing that must be true for this to work}
 ```
 
+### Recommendation Constraints (non-negotiable)
+- NEVER recommend batching, phasing, or splitting implementation into multiple /ec-execute cycles
+- The recommendation describes ONE complete approach, implemented in ONE /ec-feature + /ec-execute cycle
+- If scope seems large: that is fine — /ec-feature handles any number of tasks in a flat list
+- "Start with X, then do Y later" is not a recommendation — it is two recommendations. Pick one complete solution.
+
 After presenting:
 "Setuju lanjut dengan ini? (y/n — atau describe apa yang kurang):"
 - If y: proceed to Step 4

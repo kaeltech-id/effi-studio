@@ -1,4 +1,4 @@
-Execute the current feature plan using parallel subagents.
+Execute the current feature plan sequentially, one task at a time, with resumable state.
 
 ## Step 1 — Load Context
 Read:
@@ -15,6 +15,19 @@ Check worker status: `curl -s http://localhost:37777/health`
   `curl -s "http://localhost:37777/docs/search?q={feature_keywords}&project={project_name}&limit=5"`
   Pass relevant snippets into each subagent's context.
 - If offline: show "(worker OFFLINE ⚠️ — memory/docs/graph unavailable)" and continue.
+
+**Resume check:** After reading `.claude/current-plan.md`, count:
+- `done` = number of lines matching `- [x]`
+- `remaining` = number of lines matching `- [ ]`
+
+If `remaining == 0` and `done > 0`:
+  Show: "All {done} tasks already complete — run /ec-review."
+  Stop.
+If `remaining == 0` and `done == 0`:
+  Show: "No tasks found in current-plan.md. Run /ec-feature first."
+  Stop.
+If `done > 0` and `remaining > 0`:
+  Show: "Resuming: {done} tasks already done, {remaining} remaining."
 
 ## Step 1.5 — Rollback Snapshot
 Before any task executes, create a safety snapshot:
@@ -37,10 +50,18 @@ Before executing, verify:
 If any issue found, report it and ask:
 "Found pre-flight issue: {issue}. Continue anyway? (y/n):"
 
-## Step 3 — Group Tasks
-From the plan:
-- **Parallel**: tasks with no dependencies → run simultaneously
-- **Sequential**: tasks that depend on others → run after their dependencies complete
+## Step 3 — Execute Sequentially
+Read all tasks from `.claude/current-plan.md`. Find all lines matching `- [ ]`.
+Compute: total = count of ALL task lines (both `[x]` and `[ ]`).
+
+For each `- [ ]` task in document order:
+1. Show: "▶ Task {current}/{total}: {task name} [{size}]"
+2. Spawn one subagent with full task context (file path, code sample, verify step, relevant memory/docs snippets)
+3. Subagent MUST run the verify step and confirm actual output before claiming done
+4. After subagent confirms complete: edit `.claude/current-plan.md` — replace `- [ ] Task N: {name}` with `- [x] Task N: {name}` for this task only
+5. Show: "✓ Task {current}/{total}: {task name} — verified"
+
+Repeat until no `- [ ]` lines remain in `.claude/current-plan.md`.
 
 ## Step 3.5 — Pre-spawn Verification Anchor
 Before spawning any subagent, explicitly confirm each item:
@@ -48,16 +69,11 @@ Before spawning any subagent, explicitly confirm each item:
 - [ ] Every task has an exact file path, code sample, and verify step
 - [ ] No two tasks write to the same file (checked in Step 2)
 - [ ] Rollback snapshot was taken (Step 1.5)
-- [ ] Task dependency order is respected (sequential tasks listed after their dependencies)
+- [ ] `.claude/current-plan.md` will be updated with `[x]` after each task completes
 Only proceed after all items are confirmed. If any item fails, report and ask user before continuing.
 
 ## Step 4 — Execute with Evidence Verification
-For each parallel group, show before starting:
-```
-Running group {n}: {task names} (parallel)
-```
-
-Spawn one subagent per task simultaneously. Each subagent prompt must include:
+For each task, spawn one subagent. Each subagent prompt must include:
 - Task name, description, file path, code sample
 - Only the context relevant to that specific task (stack, structure, conventions)
 - Reuse instructions from plan
@@ -75,8 +91,6 @@ Each subagent MUST prove completion before claiming done:
 3. Read the actual output
 4. Only claim task complete if output confirms success
 5. If verification fails: fix and re-verify — do NOT claim done without evidence
-
-Wait for ALL subagents in the group to finish before starting the next group.
 
 ### Error Recovery
 If a subagent fails or cannot verify:

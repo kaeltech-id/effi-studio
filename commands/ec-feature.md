@@ -11,6 +11,13 @@ Check worker status: `curl -s http://localhost:37777/health`
 - If all present: proceed normally
 - If any are missing or empty: show "(context incomplete — run /ec-setup first to configure this project)" and stop
 
+**Incomplete plan guard:** Before proceeding, check if `.claude/current-plan.md` exists.
+If it exists, count lines matching `- [ ]`.
+If count > 0:
+  Show: "⚠️ current-plan.md has {n} incomplete task(s). Overwrite and start fresh? (y/n):"
+  If n: Stop — "Run /ec-execute to finish the current plan, or manually delete .claude/current-plan.md."
+  If y: continue normally — plan will be overwritten at Step 3.
+
 **Check for brainstorm decision:** If `.claude/decision.md` exists, read it silently.
 - Look for `_Created: {YYYY-MM-DD}_` on the last non-empty line. If found, parse the date.
   - If older than 7 days: skip this decision entirely. Note: "(decision.md expired — created {n} days ago, ignoring)". Do NOT delete it.
@@ -113,6 +120,13 @@ Every task must include:
 - Exact file path to create or modify
 - Concrete code sample or clear expected output (no "fill in details")
 - Specific verification step: how to confirm this task is done
+
+### Flat Format Rules (mandatory — no exceptions)
+- Task list MUST be flat — no batch headers, no phase labels, no grouping of any kind
+- NEVER write: "## Batch A", "### Phase 1", "#### Group:", "**Wave 1**", or any grouping construct
+- Every task MUST use exact format: `- [ ] Task N: {name} [{size}] — {description}`
+- Task numbers are sequential integers 1 to N, no gaps, no sub-numbering (1.1, 1.2, etc.)
+- Size of the feature does not affect format — 3 tasks or 50 tasks use identical flat structure
 
 ```
 ## Feature: {feature_name}
