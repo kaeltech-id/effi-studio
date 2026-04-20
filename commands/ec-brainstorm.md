@@ -18,6 +18,10 @@ Use memory to surface: past decisions, similar problems solved before, patterns 
 - If `vibe`: skip all (y/n) confirmation gates, skip Step 5 memory save (`curl .../memory/observe`), skip Step 6 "Next: run /ec-feature" suggestion
 - If `structured` (or file absent): proceed normally
 
+**No-Code Rule:** This command MUST NOT create, edit, or write any project files.
+Allowed writes: `.claude/decision.md` and `.claude/brainstorms/` only.
+If you find yourself about to write code or modify project files — stop. That belongs in `/ec-execute`.
+
 ## Step 1 — Understand the Problem
 Ask: "Ceritain problemnya — bebas, nggak perlu tau solusinya dulu."
 

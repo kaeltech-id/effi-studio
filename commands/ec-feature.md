@@ -47,6 +47,10 @@ If count > 0:
 - If `vibe`: skip "Plan sudah benar? Confirm (y/n):" gate in Step 6 (auto-proceed), skip Step 5 memory save (`curl .../memory/observe`), skip "Next: run /ec-execute" suggestion
 - If `structured` (or file absent): proceed normally
 
+**No-Code Rule:** This command MUST NOT create, edit, or write any project files.
+Allowed writes: `.claude/current-plan.md` only.
+If you find yourself about to write code or modify project files — stop. That belongs in `/ec-execute`.
+
 ## Step 1 — Gather Input
 Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.
 
@@ -100,6 +104,14 @@ Search memory for anything relevant to this feature:
 curl -s "http://localhost:37777/memory/search?q={feature_keywords}&project={project_name}&limit=5"
 ```
 Use results to: avoid re-creating things that already exist, follow past decisions, flag if this feature was attempted before.
+
+### Agent-Augmented Analysis
+Based on `stack.md`, detect the primary stack(s) and read the relevant agent file(s):
+- Map stack to agent: `.py` → `ec-python`, `.tsx`/`.jsx` → `ec-react`, `.ts` server → `ec-nodejs`, `.vue` → `ec-vue`, `.dart` → `ec-flutter`, `.swift` → `ec-ios`, `.kt` → `ec-android`, `.go` → `ec-golang`, `.java` → `ec-java`, `.php` → `ec-php`
+- Read up to 2 most relevant: `cat ~/.claude/agents/{agent-name}.md`
+- If file not found: skip silently — analysis continues without it
+Apply domain knowledge to: reuse scan (idiomatic patterns/libs for this stack), impact analysis (common coupling risks), and per-task recommendations.
+Do not show agent file content to the user — apply silently.
 
 ### Reuse Scan
 Silently scan existing codebase for:
