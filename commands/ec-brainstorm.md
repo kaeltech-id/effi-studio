@@ -14,6 +14,10 @@ Check worker status: `curl -s http://localhost:37777/health`
 
 Use memory to surface: past decisions, similar problems solved before, patterns already in use. Do not dump raw memory — silently inform your suggestions.
 
+**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
+- If `vibe`: skip all (y/n) confirmation gates, skip Step 5 memory save (`curl .../memory/observe`), skip Step 6 "Next: run /ec-feature" suggestion
+- If `structured` (or file absent): proceed normally
+
 ## Step 1 — Understand the Problem
 Ask: "Ceritain problemnya — bebas, nggak perlu tau solusinya dulu."
 

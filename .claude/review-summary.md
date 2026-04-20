@@ -1,25 +1,35 @@
-# Review Summary — Post-Review Summary Doc + Setup Project Overview Doc
-_Date: 2026-04-18_
+# Review Summary — Vibe vs Structured Mode Toggle
+_Date: 2026-04-20_
 
 ## Feature
-Post-Review Summary Doc + Setup Project Overview Doc
+Vibe vs Structured Mode Toggle
 
 ## Tasks completed
-- [x] Task 1: Add docs/PROJECT.md template + write instruction to ec-setup.md Step 3 [S] — write full project overview during setup
-- [x] Task 2: Add .claude/review-summary.md write step to ec-review.md [S] — generate review output doc after Step 4
-- [x] Task 3: Add docs/PROJECT.md update step to ec-review.md (same new Step 5) [S] — append changelog row + refresh last_updated
+- [x] Task 1: Create ec-mode command [M] — new command file that reads/writes .claude/.mode and displays current mode
+- [x] Task 2: Add mode indicator to prompt_submit.py [S] — inject ⚡ VIBE MODE line at top of context when mode=vibe
+- [x] Task 3: Add mode check to ec-brainstorm.md [S] — skip confirmation gate, memory save, next-step suggestion in vibe mode
+- [x] Task 4: Add mode check to ec-feature.md [S] — skip confirmation gate, memory save, next-step suggestion in vibe mode
+- [x] Task 5: Add mode check to ec-execute.md [S] — skip memory save and next-step suggestion in vibe mode
+- [x] Task 6: Add mode check to ec-review.md [S] — skip next-step suggestion in vibe mode
+- [x] Task 7: Add mode check to ec-git.md [S] — skip next-step suggestion in vibe mode
+- [x] Task 8: Update install.sh [S] — add ec-mode to COMMANDS array and statusCommand to settings.json Python block
 
 ## Files modified
-- `commands/ec-setup.md` — added `### docs/PROJECT.md` section in Step 3
-- `commands/ec-review.md` — added `## Step 5 — Write Review Docs` section
-- `tests/test_command_docs.py` — new file, 17 structural integrity tests
+- commands/ec-mode.md
+- hooks/prompt_submit.py
+- commands/ec-brainstorm.md
+- commands/ec-feature.md
+- commands/ec-execute.md
+- commands/ec-review.md
+- commands/ec-git.md
+- install.sh
 
 ## Issues fixed during review
-- `commands/ec-review.md` heading casing: `Write review docs` → `Write Review Docs` (matches Title Case convention used by Steps 1–4)
+No issues found.
 
 ## Review result
 | Check | Status |
 |-------|--------|
 | Spec compliance | ✓ |
 | Code quality | ✓ |
-| Tests | 17 added — 17/17 passed |
+| Tests | skipped |

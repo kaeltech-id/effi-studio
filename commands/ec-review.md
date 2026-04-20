@@ -10,6 +10,10 @@ Check worker status: `curl -s http://localhost:37777/health`
   Use memory to flag contradictions with past decisions. Use docs to verify API usage.
 - If offline: show "(worker OFFLINE ⚠️ — memory/docs unavailable)" and continue.
 
+**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
+- If `vibe`: skip "Next: run /ec-git" suggestion at end of review
+- If `structured` (or file absent): proceed normally
+
 ## Step 1.5 — Blast Radius Analysis (if worker running)
 Extract all files modified during execution from `.claude/current-plan.md`.
 

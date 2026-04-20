@@ -10,7 +10,7 @@ HOOKS_DIR="$HOME/.efficlaude/hooks"
 SERVER_DIR="$HOME/.efficlaude/server"
 BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
-COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import")
+COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode")
 SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py" "commit-msg")
 
@@ -140,6 +140,7 @@ settings["hooks"]["UserPromptSubmit"] = [
         "hooks": [{"type": "command", "command": f"python3 {hooks_dir}/prompt_submit.py"}]
     }
 ]
+settings["statusCommand"] = "mode=$(cat .claude/.mode 2>/dev/null || echo 'structured'); [ \"$mode\" = 'vibe' ] && echo '⚡ vibe' || echo ''"
 
 os.makedirs(os.path.dirname(settings_path), exist_ok=True)
 with open(settings_path, "w") as f:

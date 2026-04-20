@@ -43,6 +43,10 @@ If count > 0:
 - If user picks a number: load that file as the decision source, pre-fill Chosen Approach, note "(brainstorm loaded: {filename})", delete the picked file after plan is complete
 - If user types 'skip' or no files exist: proceed to Step 1 normally
 
+**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
+- If `vibe`: skip "Plan sudah benar? Confirm (y/n):" gate in Step 6 (auto-proceed), skip Step 5 memory save (`curl .../memory/observe`), skip "Next: run /ec-execute" suggestion
+- If `structured` (or file absent): proceed normally
+
 ## Step 1 — Gather Input
 Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.
 

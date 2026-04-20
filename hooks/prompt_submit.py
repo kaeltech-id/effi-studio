@@ -133,6 +133,16 @@ def check_context_staleness():
     return None
 
 
+def get_mode_indicator():
+    try:
+        mode_file = Path(os.getcwd()) / ".claude" / ".mode"
+        if mode_file.exists() and mode_file.read_text().strip() == "vibe":
+            return "⚡ **VIBE MODE active** — run `/ec-mode structured` to switch back"
+    except Exception:
+        pass
+    return None
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -150,6 +160,7 @@ def main():
     project = get_project_name()
     update_msg = check_update()
     staleness_msg = check_context_staleness()
+    mode_indicator = get_mode_indicator()
 
     memory_items = get_memory_context(project, prompt)
     docs_items = get_docs_context(project, prompt)
@@ -172,6 +183,9 @@ def main():
 
     if staleness_msg:
         parts.insert(0, f"**{staleness_msg}**")
+
+    if mode_indicator:
+        parts.insert(0, mode_indicator)
 
     if not parts:
         sys.exit(0)

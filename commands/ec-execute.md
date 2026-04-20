@@ -29,6 +29,10 @@ If `remaining == 0` and `done == 0`:
 If `done > 0` and `remaining > 0`:
   Show: "Resuming: {done} tasks already done, {remaining} remaining."
 
+**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
+- If `vibe`: skip Step 6 memory save (`curl .../memory/observe`), skip "Next: run /ec-review" in Step 7 report
+- If `structured` (or file absent): proceed normally
+
 ## Step 1.5 — Rollback Snapshot
 Before any task executes, create a safety snapshot:
 ```
