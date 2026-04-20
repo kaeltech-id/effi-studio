@@ -10,7 +10,7 @@ HOOKS_DIR="$HOME/.efficlaude/hooks"
 SERVER_DIR="$HOME/.efficlaude/server"
 BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
-COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode")
+COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode" "ec-design")
 SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py" "commit-msg")
 
