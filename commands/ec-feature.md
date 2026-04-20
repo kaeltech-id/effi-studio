@@ -113,6 +113,46 @@ Identify existing files that will be modified or at risk of breaking.
 ### Breaking Change Detection
 Flag any task that could break existing behavior, APIs, or shared components.
 
+### Agent Detection (per task)
+For each task in the plan, determine the appropriate agent from file path and task description:
+
+| File pattern | Agent |
+|---|---|
+| `*.tsx`, `*.jsx` (component files) | `ec-react` |
+| `*.vue` | `ec-vue` |
+| `pages/**`, `app/**` with `.tsx`/`.ts` | `ec-nextjs` |
+| `*.d.ts`, `types/**`, type-heavy `.ts` | `ec-typescript` |
+| `tailwind.config.*`, utility CSS | `ec-tailwind` |
+| `.native.tsx`, Expo imports | `ec-react-native` |
+| `*.dart` | `ec-flutter` |
+| `*.swift` | `ec-ios` |
+| `*.kt`, Android path `.java` | `ec-android` |
+| mobile perf/profiling tasks | `ec-mobile-perf` |
+| `*.py` | `ec-python` |
+| `*.js`/`*.ts` server-side non-FE | `ec-nodejs` |
+| `*.go` | `ec-golang` |
+| `*.java` Spring/backend | `ec-java` |
+| `*.php` | `ec-php` |
+| `*.sql`, `migrations/` | `ec-sql` or `ec-migration` |
+| `*.test.*`, `*.spec.*` unit | `ec-unit-test` |
+| `e2e/`, `cypress/`, `playwright/` | `ec-e2e` |
+| API test files | `ec-api-test` |
+| `Dockerfile`, `docker-compose*` | `ec-docker` |
+| `.github/workflows/` | `ec-cicd` |
+| `*.tf`, `terraform/`, cloud infra | `ec-cloud` |
+| auth, security-related tasks | `ec-security` |
+| performance/profiling tasks | `ec-performance` |
+| refactoring (no new feature) | `ec-refactor` |
+| code review tasks | `ec-reviewer` |
+| API design, OpenAPI, `.yaml` specs | `ec-api-design` |
+| system design, architecture tasks | `ec-architect` |
+| LLM, AI, RAG, prompt tasks | `ec-llm` |
+| no clear match | (omit tag — do not force) |
+
+Add `[agent: ec-xxx]` after size tag in every task line:
+`- [ ] Task N: {name} [{size}] [agent: ec-xxx] — {description}`
+If no agent clearly matches, omit the tag entirely.
+
 ## Step 3 — Write Plan
 
 ### Task Granularity Rules
@@ -132,7 +172,7 @@ Every task must include:
 ### Flat Format Rules (mandatory — no exceptions)
 - Task list MUST be flat — no batch headers, no phase labels, no grouping of any kind
 - NEVER write: "## Batch A", "### Phase 1", "#### Group:", "**Wave 1**", or any grouping construct
-- Every task MUST use exact format: `- [ ] Task N: {name} [{size}] — {description}`
+- Every task MUST use exact format: `- [ ] Task N: {name} [{size}] [agent: ec-xxx] — {description}` (omit agent tag if no clear match)
 - Task numbers are sequential integers 1 to N, no gaps, no sub-numbering (1.1, 1.2, etc.)
 - Size of the feature does not affect format — 3 tasks or 50 tasks use identical flat structure
 
@@ -147,8 +187,8 @@ Every task must include:
 - {component/hook/util} at {path} — used for {reason}
 
 ### Tasks
-- [ ] Task 1: {name} [S/M/L] — {one-line description}
-- [ ] Task 2: {name} [S/M/L] — {one-line description}
+- [ ] Task 1: {name} [S/M/L] [agent: ec-xxx] — {one-line description}
+- [ ] Task 2: {name} [S/M/L] [agent: ec-xxx] — {one-line description}
 - [ ] Task N: ...
 
 ### Per Task Detail

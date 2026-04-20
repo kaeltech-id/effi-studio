@@ -56,6 +56,17 @@ Before responding, silently work through ALL of this internally — never show t
 - **Green Hat** (creative): Ada angle lain yang belum dipikirkan?
 - **Blue Hat** (process): Apakah urutan implementasinya masuk akal?
 
+**Design Analysis (if UI/frontend problem)**
+Detect UI/frontend context from: problem keywords ("component", "screen", "page", "design", "layout", "frontend", "UX", "user interface") OR target files (.tsx, .vue, .swift, .dart, .kt in Compose context).
+If detected, silently run additional analysis:
+- Visual hierarchy: is information architecture clear? Does the layout guide attention correctly?
+- Interaction patterns: are standard UX conventions followed? (navigation, forms, feedback)
+- Component composition: reusable vs one-off? Does it fit the existing component system?
+- Responsive behavior: mobile-first? Key breakpoints accounted for?
+- Accessibility: WCAG AA minimum — contrast ratio, keyboard navigation, screen reader support
+- Performance budget: LCP < 2.5s, CLS < 0.1, INP < 200ms
+Weave findings into the recommendation description — do not add as a separate section in the output.
+
 **Score each approach:**
 - Effort (1–5), Reversibility (1–5), Risk (1–5), Fit to existing patterns (1–5)
 - Run a pre-mortem: "If we shipped this and it failed, why?"

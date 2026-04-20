@@ -88,6 +88,16 @@ For each task, spawn one subagent. Each subagent prompt must include:
 - Relevant memory snippets (if any)
 - Relevant docs snippets (if any — ensures correct API usage)
 
+### Agent Context Injection
+For each task, before spawning subagent, check for `[agent: ec-xxx]` tag in the task line:
+1. Extract agent name: parse `[agent: (ec-\w+)]` from the task line
+2. Check file exists: `~/.claude/agents/{agent-name}.md`
+3. If found: read the file; extract body after the closing `---` of the YAML frontmatter (everything after the second `---` line)
+4. Prepend to subagent prompt:
+   "You are operating as a specialist with the following expertise:\n{agent_body}\n\n---\nApply this expertise to complete the following task:"
+5. If agent file not found: show `(⚠️ agent {name} not installed — run install.sh to install agents)` and proceed without agent context
+6. If no `[agent:]` tag: proceed normally — no agent context injected
+
 ### Evidence Rule — mandatory for every subagent
 Each subagent MUST prove completion before claiming done:
 1. Identify the verify step from the task

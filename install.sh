@@ -6,11 +6,13 @@ REPO="kaeltech-id/EffiClaude"
 BRANCH="main"
 EFFICLAUDE_HOME="$HOME/.efficlaude"
 COMMANDS_DIR="$HOME/.claude/commands"
+AGENTS_DIR="$HOME/.claude/agents"
 HOOKS_DIR="$HOME/.efficlaude/hooks"
 SERVER_DIR="$HOME/.efficlaude/server"
 BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
-COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode" "ec-design")
+COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode")
+AGENTS=("ec-react" "ec-vue" "ec-nextjs" "ec-typescript" "ec-tailwind" "ec-react-native" "ec-flutter" "ec-ios" "ec-android" "ec-mobile-perf" "ec-python" "ec-nodejs" "ec-golang" "ec-java" "ec-php" "ec-sql" "ec-nosql" "ec-migration" "ec-unit-test" "ec-e2e" "ec-api-test" "ec-docker" "ec-cicd" "ec-cloud" "ec-security" "ec-performance" "ec-refactor" "ec-reviewer" "ec-api-design" "ec-architect" "ec-llm")
 SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py" "commit-msg")
 
@@ -59,7 +61,7 @@ else
 fi
 
 # ── 2. Create directories ─────────────────────────────────────────────────────
-mkdir -p "$COMMANDS_DIR" "$HOOKS_DIR" "$SERVER_DIR" "$BIN_DIR" "$SHELL_DIR" "$EFFICLAUDE_HOME/chroma"
+mkdir -p "$COMMANDS_DIR" "$AGENTS_DIR" "$HOOKS_DIR" "$SERVER_DIR" "$BIN_DIR" "$SHELL_DIR" "$EFFICLAUDE_HOME/chroma"
 
 # ── 3. Install Claude commands ────────────────────────────────────────────────
 echo ""
@@ -70,6 +72,14 @@ for cmd in "${COMMANDS[@]}"; do
 done
 fetch_file "VERSION" "$EFFICLAUDE_HOME/VERSION"
 echo "  ✓ VERSION"
+
+# ── 3b. Install Claude agents ─────────────────────────────────────────────────
+echo ""
+echo "Installing agents..."
+for agent in "${AGENTS[@]}"; do
+  fetch_file "agents/$agent.md" "$AGENTS_DIR/$agent.md"
+  echo "  ✓ @$agent"
+done
 
 # ── 4. Install server files ───────────────────────────────────────────────────
 echo ""
