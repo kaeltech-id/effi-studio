@@ -4,6 +4,8 @@ COMMIT_MSG=$(cat "$1")
 VERSION_FILE="$(git rev-parse --show-toplevel 2>/dev/null)/VERSION"
 [ -f "$VERSION_FILE" ] || exit 0
 read -r CUR < "$VERSION_FILE"
+HEAD_VER=$(git show HEAD:VERSION 2>/dev/null)
+[ -n "$HEAD_VER" ] && [ "$CUR" != "$HEAD_VER" ] && exit 0
 IFS='.' read -r MAJ MIN PAT <<< "$CUR"
 if ! echo "$CUR" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
     echo "WARNING: VERSION '$CUR' is not valid semver — skipping auto-bump" >&2
