@@ -26,7 +26,7 @@ Options: commit / push / pull / branch / merge / status / log / lainnya
   - `fix:` → bump **patch** (1.1.0 → 1.1.1)
   - `docs:` / `test:` / `chore:` / `refactor:` / `style:` / `perf:` → **no bump**
   - If VERSION file missing → create it as `1.0.0` first, then bump
-  - To bump: read `VERSION`, split on `.`, increment the right segment (reset lower segments to 0 for major/minor), write back with `echo "X.Y.Z" > VERSION`, stage it
+  - To bump: read base version via `git show HEAD:VERSION 2>/dev/null || cat VERSION`, split on `.`, increment the right segment (reset lower segments to 0 for major/minor), write back with `echo "X.Y.Z" > VERSION`, stage it
   - Show: "VERSION bumped: 1.1.0 → 1.2.0" (or "VERSION not bumped (docs: commit)")
 - Ask: "Ada file spesifik yang mau di-stage? (atau 'semua')"
   - If bumped: always include `VERSION` in staged files
