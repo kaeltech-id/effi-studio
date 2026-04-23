@@ -101,6 +101,12 @@ def auto_export(project):
         os.makedirs(os.path.dirname(export_path), exist_ok=True)
         with open(export_path, 'w') as f:
             json.dump(export, f)
+        bak = export_path + '.bak'
+        try:
+            if os.path.exists(bak) and time.time() - os.path.getmtime(bak) > 86400 * 7:
+                os.remove(bak)
+        except Exception:
+            pass
     except Exception as e:
         _warn("session_stop", f"auto_export failed: {e}")
 

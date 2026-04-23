@@ -28,7 +28,7 @@ VALID_NODE_TYPES = {"function", "class", "method", "module", "variable"}
 
 
 def _is_safe_path(p: str) -> bool:
-    if not p or '\x00' in p:
+    if not p or '\x00' in p or '\\' in p:
         return False
     try:
         decoded = urllib.parse.unquote(p)
@@ -84,6 +84,7 @@ def _rate_limit() -> None:
 
 @app.route('/health')
 def health() -> Response:
+    """Return worker health status and version."""
     version = "unknown"
     try:
         version_path = os.path.join(os.path.dirname(__file__), '..', 'VERSION')
@@ -103,6 +104,7 @@ def health() -> Response:
 
 @app.route('/memory/observe', methods=['POST'])
 def observe() -> Response:
+    """Save a memory observation for a project."""
     data = request.json or {}
     project = data.get('project', '')
     content = data.get('content', '')
@@ -133,6 +135,7 @@ def observe() -> Response:
 
 @app.route('/memory/search')
 def memory_search() -> Response:
+    """Semantic search over project memory."""
     q = request.args.get('q', '')
     project = request.args.get('project', '')
     limit, _e = _int_param('limit', 5)
@@ -147,6 +150,7 @@ def memory_search() -> Response:
 
 @app.route('/memory/context')
 def memory_context() -> Response:
+    """Return recent memory observations for a project."""
     project = request.args.get('project', '')
     limit, _e = _int_param('limit', 20)
     if _e:
@@ -160,6 +164,7 @@ def memory_context() -> Response:
 
 @app.route('/memory/summarize', methods=['POST'])
 def summarize() -> Response:
+    """Summarize recent observations into a session summary."""
     data = request.json or {}
     project = data.get('project', '')
     if not _valid_project(project):
@@ -170,6 +175,7 @@ def summarize() -> Response:
 
 @app.route('/memory/export')
 def memory_export() -> Response:
+    """Export all memory and summaries for a project."""
     project = request.args.get('project', '')
     if not _valid_project(project):
         return _err("project required")
@@ -178,6 +184,7 @@ def memory_export() -> Response:
 
 @app.route('/memory/import', methods=['POST'])
 def memory_import() -> Response:
+    """Import memory observations into a project."""
     data = request.json or {}
     project = data.get('project', '')
     if not _valid_project(project):
@@ -190,6 +197,7 @@ def memory_import() -> Response:
 
 @app.route('/docs/register', methods=['POST'])
 def docs_register() -> Response:
+    """Register a library for documentation fetching."""
     data = request.json or {}
     name = data.get('name', '')
     if not name:
@@ -204,6 +212,7 @@ def docs_register() -> Response:
 
 @app.route('/docs/search')
 def docs_search() -> Response:
+    """Search cached documentation for a query."""
     q = request.args.get('q', '')
     project = request.args.get('project', '')
     limit, _e = _int_param('limit', 5)
@@ -218,6 +227,7 @@ def docs_search() -> Response:
 
 @app.route('/docs/refresh', methods=['POST'])
 def docs_refresh() -> Response:
+    """Re-fetch and re-cache documentation for a library."""
     data = request.json or {}
     name = data.get('name', '')
     if not name:
@@ -228,6 +238,7 @@ def docs_refresh() -> Response:
 
 @app.route('/docs/list')
 def docs_list() -> Response:
+    """List all registered libraries for a project."""
     project = request.args.get('project', '')
     return jsonify(docs.list_libraries(project))
 
@@ -236,6 +247,7 @@ def docs_list() -> Response:
 
 @app.route('/graph/index', methods=['POST'])
 def graph_index() -> Response:
+    """Index a file or project directory into the dependency graph."""
     data = request.json or {}
     project = data.get('project', '')
     root_dir = data.get('root_dir', '')
@@ -254,7 +266,7 @@ def graph_index() -> Response:
             return jsonify({"status": "error", "error": "indexing timed out", "file": file_path}), 504
         except Exception as e:
             warn("worker", f"graph index failed ({file_path}): {e}")
-            return jsonify({"status": "error", "error": "indexing failed", "file": file_path}), 500
+            return jsonify({"status": "error", "error": str(e), "file": file_path}), 500
 
     if root_dir:
         count = graph.index_project(project, root_dir)
@@ -265,6 +277,7 @@ def graph_index() -> Response:
 
 @app.route('/graph/blast-radius')
 def graph_blast_radius() -> Response:
+    """Return files affected by changes to a set of files."""
     project = request.args.get('project', '')
     files = request.args.getlist('files')
     depth, _e = _int_param('depth', 2)
@@ -282,6 +295,7 @@ def graph_blast_radius() -> Response:
 
 @app.route('/graph/summary')
 def graph_summary() -> Response:
+    """Return a summary of the dependency graph for a project."""
     project = request.args.get('project', '')
     if not _valid_project(project):
         return _err("project required")
@@ -290,6 +304,7 @@ def graph_summary() -> Response:
 
 @app.route('/graph/export')
 def graph_export() -> Response:
+    """Export the dependency graph for a project."""
     project = request.args.get('project', '')
     if not _valid_project(project):
         return _err("project required")
@@ -298,6 +313,7 @@ def graph_export() -> Response:
 
 @app.route('/graph/import', methods=['POST'])
 def graph_import() -> Response:
+    """Import a dependency graph into a project."""
     data = request.json or {}
     project = data.get('project', '')
     if not _valid_project(project):

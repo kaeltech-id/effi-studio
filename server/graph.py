@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sqlite3
 import os
 import re
@@ -43,7 +45,7 @@ class GraphEngine:
         self._ts_available = self._init_tree_sitter()
         self._init_db()
 
-    def _init_tree_sitter(self):
+    def _init_tree_sitter(self) -> bool:
         try:
             from tree_sitter_languages import get_parser
             self._ts_get_parser = get_parser
@@ -51,7 +53,7 @@ class GraphEngine:
         except ImportError:
             return False
 
-    def _get_parser(self, lang):
+    def _get_parser(self, lang: str):
         if lang not in self._parsers:
             try:
                 self._parsers[lang] = self._ts_get_parser(lang)
@@ -59,7 +61,7 @@ class GraphEngine:
                 self._parsers[lang] = None
         return self._parsers.get(lang)
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
@@ -93,7 +95,7 @@ class GraphEngine:
 
     # ── Indexing ──────────────────────────────────────────────────────────────
 
-    def index_project(self, project, root_dir):
+    def index_project(self, project: str, root_dir: str) -> int:
         root = Path(root_dir)
         indexed = 0
         for path in root.rglob('*'):
@@ -108,7 +110,7 @@ class GraphEngine:
                     continue
         return indexed
 
-    def index_file(self, project, file_path, root_dir=None):
+    def index_file(self, project: str, file_path: str, root_dir: str | None = None) -> None:
         if root_dir and not Path(file_path).is_absolute():
             abs_path = Path(root_dir) / file_path
         else:
@@ -158,12 +160,12 @@ class GraphEngine:
 
     # ── Extraction ────────────────────────────────────────────────────────────
 
-    def _extract_nodes(self, source, lang, file_path):
+    def _extract_nodes(self, source: str, lang: str, file_path: str) -> list:
         if self._ts_available:
             return self._extract_nodes_ts(source, lang)
         return self._extract_nodes_regex(source, lang)
 
-    def _extract_nodes_ts(self, source, lang):
+    def _extract_nodes_ts(self, source: str, lang: str) -> list:
         parser = self._get_parser(lang)
         if not parser:
             return self._extract_nodes_regex(source, lang)
@@ -177,7 +179,7 @@ class GraphEngine:
             warn("graph", f"tree-sitter parse error: {e}")
             return self._extract_nodes_regex(source, lang)
 
-    def _walk_tree(self, node, source, lang, results):
+    def _walk_tree(self, node, source: str, lang: str, results: list) -> None:
         FUNCTION_TYPES = {
             'function_definition', 'function_declaration', 'method_definition',
             'arrow_function', 'function_item',
@@ -204,13 +206,13 @@ class GraphEngine:
         for child in node.children:
             self._walk_tree(child, source, lang, results)
 
-    def _get_node_name(self, node, source):
+    def _get_node_name(self, node, source: str) -> str | None:
         for child in node.children:
             if child.type in ('identifier', 'type_identifier', 'property_identifier'):
                 return source[child.start_byte:child.end_byte]
         return None
 
-    def _extract_nodes_regex(self, source, lang):
+    def _extract_nodes_regex(self, source: str, lang: str) -> list:
         nodes = []
         patterns = {
             'python': [

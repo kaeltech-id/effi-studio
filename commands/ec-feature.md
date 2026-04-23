@@ -21,10 +21,10 @@ If count > 0:
 **Check for brainstorm decision:** If `.claude/decision.md` exists, read it silently.
 - Look for `_Created: {YYYY-MM-DD}_` on the last non-empty line. If found, parse the date.
   - If older than 7 days:
-    Show: "(decision.md found but expired — created {n} days ago)"
-    Ask: "Delete and start fresh? (y/n):"
-    - If y: delete `.claude/decision.md`, then proceed to saved brainstorms check
-    - If n: skip this decision, proceed to saved brainstorms check (do NOT delete)
+    Show: "(decision.md found but expired — created {n} days ago: \"{title_from_first_heading_or_filename}\")"
+    Ask: "Use it anyway? (y/n):"
+    - If y: proceed normally using this decision — treat as if within 7 days
+    - If n: delete `.claude/decision.md`, then proceed to saved brainstorms check
   - If within 7 days, or date line absent: proceed normally.
 - Pre-fill the feature description from the decision's "Chosen Approach" section
 - Skip asking about approach — user already decided

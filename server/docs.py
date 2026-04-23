@@ -67,7 +67,7 @@ class DocsEngine:
             ''')
             conn.commit()
 
-    def _get_collection(self, library):
+    def _get_collection(self, library: str):
         safe = re.sub(r'[^a-z0-9]', '_', library.lower())[:40]
         return self.chroma_client.get_or_create_collection(f"docs_{safe}")
 
@@ -80,7 +80,7 @@ class DocsEngine:
             return True
         return (datetime.utcnow() - datetime.fromisoformat(row[0])).days >= DOC_TTL_DAYS
 
-    def register_library(self, name: str, project: str = '', source_type=None) -> None:
+    def register_library(self, name: str, project: str = '', source_type: str | None = None) -> None:
         name = name.lower()
         if source_type is None:
             source_type = LIBRARY_SOURCES.get(name, ('npm',))[0]

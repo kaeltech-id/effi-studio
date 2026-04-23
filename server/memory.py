@@ -100,10 +100,11 @@ class MemoryEngine:
 
     def _reconcile_chromadb(self) -> None:
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                projects = [r[0] for r in conn.execute(
-                    'SELECT DISTINCT project FROM observations'
-                ).fetchall()]
+            with _lock:
+                with sqlite3.connect(self.db_path) as conn:
+                    projects = [r[0] for r in conn.execute(
+                        'SELECT DISTINCT project FROM observations'
+                    ).fetchall()]
             for project in projects:
                 with _lock:
                     collection = self._get_collection(project)
