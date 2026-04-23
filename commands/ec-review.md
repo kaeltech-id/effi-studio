@@ -170,7 +170,7 @@ curl -s -X POST http://localhost:37777/memory/observe \
 {concise list of all files modified during review}
 ```
 
-**If review is clean**, delete `.claude/decision.md` if it exists (run `rm -f .claude/decision.md`), so it doesn't carry over to the next feature.
+**If review is clean**, delete `.claude/decision.md` if it exists (run `rm -f .claude/decision.md`), then write the review-done sentinel: `touch .claude/.review-done` — this lets `/ec-next` detect that review is complete and route to `/ec-git`.
 
 ## Step 5 — Write Review Docs
 

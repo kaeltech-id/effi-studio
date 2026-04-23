@@ -71,6 +71,8 @@ Skip non-applicable items. Only proceed to Step 3 after applicable items are con
 Only execute after explicit user confirmation.
 Show result after done.
 
+If operation was a **commit**: delete `.claude/.review-done` if it exists (`rm -f .claude/.review-done`) — resets routing state for the next feature.
+
 **Next step after each operation:**
 - After commit/push: if this completes a feature → run `/ec-brainstorm` to plan the next one
 - After pull/branch/merge: continue with your current workflow
