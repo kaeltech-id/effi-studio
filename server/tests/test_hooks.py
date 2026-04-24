@@ -42,11 +42,12 @@ class TestContextStaleness(unittest.TestCase):
         with open(os.path.join(ctx, "stack.md"), "w") as f:
             f.write(content)
 
-    def test_no_comment_returns_none(self):
+    def test_no_comment_returns_unknown_message(self):
         with tempfile.TemporaryDirectory() as d:
             self._make_stack(d, "# Stack\nno comment here\n")
             os.chdir(d)
-            self.assertIsNone(check_context_staleness())
+            result = check_context_staleness()
+            self.assertEqual(result, "(context age unknown — run /ec-setup to refresh)")
 
     def test_stale_returns_warning(self):
         with tempfile.TemporaryDirectory() as d:

@@ -99,6 +99,8 @@ class GraphEngine:
         root = Path(root_dir)
         indexed = 0
         for path in root.rglob('*'):
+            if path.is_symlink():
+                continue
             if any(part in IGNORE_DIRS for part in path.parts):
                 continue
             if path.is_file() and path.suffix.lstrip('.') in EXTENSION_TO_LANG:

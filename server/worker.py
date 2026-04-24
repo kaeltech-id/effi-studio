@@ -70,16 +70,20 @@ def _valid_project(p: str) -> bool:
 
 
 @app.before_request
-def _rate_limit() -> None:
+def _rate_limit() -> tuple | None:
     if request.path == '/health':
         return
     ip = request.remote_addr or 'unknown'
     now = _time.time()
     bucket = [t for t in _rate_buckets[ip] if now - t < _RATE_WINDOW]
-    _rate_buckets[ip] = bucket
     if len(bucket) >= _RATE_LIMIT:
+        _rate_buckets[ip] = bucket
         return jsonify({"status": "error", "error": "rate limit exceeded"}), 429
-    _rate_buckets[ip].append(now)
+    bucket.append(now)
+    if bucket:
+        _rate_buckets[ip] = bucket
+    else:
+        _rate_buckets.pop(ip, None)
 
 
 @app.route('/health')
@@ -202,9 +206,12 @@ def docs_register() -> Response:
     name = data.get('name', '')
     if not name:
         return _err("name required")
+    project = data.get('project', '')
+    if project and not _valid_project(project):
+        return _err("invalid project name")
     docs.register_library(
         name=name,
-        project=data.get('project', ''),
+        project=project,
         source_type=data.get('source_type')
     )
     return jsonify({"status": "registered", "library": name})
@@ -269,6 +276,8 @@ def graph_index() -> Response:
             return jsonify({"status": "error", "error": str(e), "file": file_path}), 500
 
     if root_dir:
+        if '\x00' in root_dir or '..' in Path(root_dir).parts:
+            return _err("invalid root_dir")
         count = graph.index_project(project, root_dir)
         return jsonify({"status": "indexed", "files": count, "root": root_dir})
 

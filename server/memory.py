@@ -33,7 +33,7 @@ class MemoryEngine:
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)
         self._init_db()
         self._migrate()
-        self._reconcile_chromadb()
+        threading.Thread(target=self._reconcile_chromadb, daemon=True).start()
         threading.Thread(target=self._prune_on_startup, daemon=True).start()
 
     def _init_db(self) -> None:
@@ -159,8 +159,9 @@ class MemoryEngine:
                     )
                 conn.commit()
             if excess_int_ids:
-                collection = self._get_collection(project)
-                collection.delete(ids=[str(i) for i in excess_int_ids])
+                with _lock:
+                    collection = self._get_collection(project)
+                    collection.delete(ids=[str(i) for i in excess_int_ids])
         except Exception as e:
             warn("memory", f"prune error (type={obs_type}): {e}")
 
@@ -308,7 +309,7 @@ class MemoryEngine:
                 (project,)
             ).fetchall()
         return {
-            'observations': [{'type': r[0], 'content': r[1], 'metadata': r[2], 'created_at': r[3]} for r in obs],
+            'observations': [{'type': r[0], 'content': r[1], 'metadata': json.loads(r[2] or '{}'), 'created_at': r[3]} for r in obs],
             'summaries': [{'session_id': r[0], 'summary': r[1], 'created_at': r[2]} for r in sums],
         }
 
@@ -319,25 +320,26 @@ class MemoryEngine:
         imported_sums = 0
         for obs in obs_list:
             try:
-                with sqlite3.connect(self.db_path) as conn:
-                    exists = conn.execute(
-                        'SELECT id FROM observations WHERE project=? AND type=? AND content=?',
-                        (project, obs.get('type', 'general'), obs.get('content', ''))
-                    ).fetchone()
-                if not exists:
-                    meta = obs.get('metadata', '{}')
-                    try:
-                        meta_dict = json.loads(meta) if isinstance(meta, str) else meta
-                        if not isinstance(meta_dict, dict):
-                            meta_dict = {}
-                    except (json.JSONDecodeError, TypeError):
+                content = obs.get('content', '')
+                obs_type = obs.get('type', 'general')
+                meta = obs.get('metadata', '{}')
+                try:
+                    meta_dict = json.loads(meta) if isinstance(meta, str) else meta
+                    if not isinstance(meta_dict, dict):
                         meta_dict = {}
-                    self.save_observation(
-                        project,
-                        obs.get('type', 'general'),
-                        obs.get('content', ''),
-                        meta_dict
-                    )
+                except (json.JSONDecodeError, TypeError):
+                    meta_dict = {}
+                should_save = False
+                with _lock:
+                    with sqlite3.connect(self.db_path) as conn:
+                        exists = conn.execute(
+                            'SELECT id FROM observations WHERE project=? AND type=? AND content=?',
+                            (project, obs_type, content)
+                        ).fetchone()
+                    if not exists:
+                        should_save = True
+                if should_save:
+                    self.save_observation(project, obs_type, content, meta_dict)
                     imported_obs += 1
             except Exception as e:
                 warn("memory", f"import error: {e}")

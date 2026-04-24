@@ -1,338 +1,319 @@
-## Feature: Fix all 28 open GitHub issues + close tickets
+## Feature: Fix 12 New Bugs — Create, Fix & Close GitHub Issues
 
 ### Impact Analysis
-- Files affected: `server/worker.py`, `server/memory.py`, `server/docs.py`, `server/graph.py`, `hooks/prompt_submit.py`, `hooks/session_stop.py`, `commands/ec-feature.md`, `tests/test_hooks.py` (new)
-- ⚠️ Breaking change risk: none — all changes are additive or bug fixes
+- Files affected: `server/memory.py`, `server/docs.py`, `server/graph.py`, `server/worker.py`, `server/logger.py`, `hooks/session_stop.py`, `hooks/prompt_submit.py`
+- ⚠️ Breaking change risk: none — all changes are bug fixes with no API surface change
 
 ### Reusable Existing Code
-- `_err()` helper at `server/worker.py:52` — reuse for consistent error responses
-- `_lock` threading.Lock at `server/memory.py:12` — reuse in reconcile fix
-- pytest fixture pattern from `tests/conftest.py` — reuse for hook tests
-- `warn()` pattern from `server/logger.py` — reuse in any new error handlers
-
-### Audit: already fixed in codebase (19 issues — close only, no code change)
-- #14 commit-msg semver validation — lines 10-13 of hooks/commit-msg validate `^[0-9]+\.[0-9]+\.[0-9]+$`
-- #17 ValueError on int params — `_int_param()` helper at worker.py:56-63
-- #18 _prune_type race — uses `BEGIN EXCLUSIVE` single-connection at memory.py:147
-- #19 invalid node_type silent corruption — returns `_err()` at worker.py:311
-- #20 json.loads swallows JSONDecodeError — try-except at memory.py:328-333
-- #22 no try-except in observe — wrapped at worker.py:121-130
-- #24 bare except in memory.py — all have `warn()` calls
-- #25 fetch_and_cache blocks — spawns background thread at docs.py:93, timeout=5s
-- #26 no metadata validation — size+type checks at worker.py:111-120
-- #27 project param no validation — `_valid_project()` at worker.py:66-70
-- #29 lock scope in reconcile — SQLite reads are inside `with _lock:` at memory.py:120-124
-- #30 ChromaDB sync failure — SQLite rollback at memory.py:231-235
-- #31 FTS threshold uncalibrated — `EFFICLAUDE_FTS_THRESHOLD` env var at memory.py:27
-- #32 tree-sitter no timeout — ThreadPoolExecutor 10s at worker.py:249-254
-- #33 inconsistent error schema — `_err()` helper at worker.py:52-53
-- #34 SQLite WAL not enabled — `PRAGMA journal_mode=WAL` at memory.py:41
-- #36 MAX_LOG_LINES hardcoded — `EFFICLAUDE_MAX_LOG_LINES` env var at logger.py:7
-- #37 no rate limiting — `_rate_limit()` before_request at worker.py:72-81
-- #38 register_library blocks — spawns `threading.Thread` at docs.py:93
+- `_valid_project()` at `server/worker.py:68` — used in Task 7 to add missing validation
+- `_is_safe_path()` at `server/worker.py:30` — used in Task 6 logic for root_dir guard
+- `_lock` at `server/memory.py:12` — used in Task 5 and Task 12
 
 ### Tasks
-- [x] Task 1: Fix server/worker.py bugs and add route docs [S] — _is_safe_path() backslash + graph_index() str(e) + route docstrings
-- [x] Task 2: Fix server/memory.py reconcile lock scope [S] — wrap project list read inside _lock
-- [x] Task 3: Add type hints to server/docs.py [S] — Optional[str] source_type, _get_collection return type
-- [x] Task 4: Add type hints to server/graph.py public methods [S] — index_project, index_file, _extract_nodes, _get_node_name
-- [x] Task 5: Fix hooks/prompt_submit.py staleness unknown age [S] — return message when comment missing
-- [x] Task 6: Fix hooks/session_stop.py export bak retention [S] — delete .bak older than 7 days after successful export
-- [x] Task 7: Fix commands/ec-feature.md expired decision UX [S] — add "use it anyway" option
-- [x] Task 8: Create tests/test_hooks.py [M] — unit tests for check_context_staleness, auto_export, check_uncommitted
-- [x] Task 9: Close 19 already-fixed GitHub issues [S] — gh issue close with "Fixed in current codebase" comment
-- [x] Task 10: Close 9 newly-fixed GitHub issues [S] — gh issue close with fix reference comment
+- [x] Task 1: Create 12 GitHub issues [S] — Open all 12 bugs via gh issue create with severity labels
+- [x] Task 2: Fix memory.export() raw metadata [S] [agent: ec-python] — Add json.loads() in export() like get_recent() does
+- [x] Task 3: Fix stale ChromaDB chunks after library shrink [S] [agent: ec-python] — Change ids_to_delete to remove all IDs not in new_ids set
+- [x] Task 4: Fix _rate_buckets memory leak [S] [agent: ec-python] — Delete key from _rate_buckets when bucket becomes empty
+- [x] Task 5: Fix _prune_type() ChromaDB call outside _lock [S] [agent: ec-python] — Wrap collection.delete() inside _lock
+- [x] Task 6: Fix root_dir path traversal in /graph/index [S] [agent: ec-python] — Reject root_dir containing null bytes or .. parts
+- [x] Task 7: Fix /docs/register missing project validation [S] [agent: ec-python] — Add _valid_project() guard in docs_register()
+- [x] Task 8: Fix ensure_commit_hook() overwriting existing hook [S] [agent: ec-python] — Guard already present at line 127 (pre-existing fix)
+- [x] Task 9: Fix logger.py thread-safety [S] [agent: ec-python] — Add threading.Lock() around read-trim-write in warn()
+- [x] Task 10: Fix check_update() premature timestamp write [S] [agent: ec-python] — Move UPDATE_CHECK_FILE write to after successful remote fetch
+- [x] Task 11: Fix index_project() symlink traversal [S] [agent: ec-python] — Skip symlinks in rglob loop
+- [x] Task 12: Fix import_data() TOCTOU race [S] [agent: ec-python] — Hold _lock around check-and-save in import_data()
+- [x] Task 13: Fix _reconcile_chromadb() blocking startup [S] [agent: ec-python] — Run in daemon thread like _prune_on_startup
+- [x] Task 14: Close all 12 GitHub issues [S] — gh issue close each issue number from Task 1
 
 ### Per Task Detail
 
-**Task 1 — Fix server/worker.py bugs + route docs** `S`
-- File: `server/worker.py`
-- Reuse: `_err()` at line 52
+**Task 1 — Create 12 GitHub issues** `S`
+- File: none (GitHub CLI operation)
+- Reuse: `gh issue create --repo kaeltech-id/EffiClaude`
 - Code sample:
-  ```python
-  # Line 31 — add backslash check for Windows-style paths (belt-and-suspenders):
-  if not p or '\x00' in p or '\\' in p:
-  
-  # Line 257 — return actual error message not generic string:
-  return jsonify({"status": "error", "error": str(e), "file": file_path}), 500
-  
-  # Route docstrings — add one-liner to each @app.route function, e.g.:
-  @app.route('/memory/observe', methods=['POST'])
-  def observe() -> Response:
-      """Save a memory observation for a project."""
-      # (add to all 12 routes: health, observe, memory_search, memory_context,
-      #  summarize, memory_export, memory_import, docs_register, docs_search,
-      #  docs_refresh, docs_list, graph_index, graph_blast_radius, graph_summary,
-      #  graph_export, graph_import)
+  ```bash
+  gh issue create --repo kaeltech-id/EffiClaude \
+    --title "[High] memory.export() returns metadata as raw string instead of parsed dict" \
+    --body "In memory.py:311, export() returns r[2] (raw SQLite JSON string) instead of json.loads(r[2]). get_recent() at line 279 correctly parses it. This causes the /memory/export API to return metadata as a string, breaking ec-import." \
+    --label "bug,high"
+  # ... repeat for all 12 issues, capture issue numbers
   ```
-- Edge cases: none
+- Edge cases: labels must exist in repo; create them if needed
 - ⚠️ Breaking change: none
-- Verify: `grep "backslash\|str(e)\|docstring" server/worker.py` — check `grep '\\\\\\\\' server/worker.py` returns the new check line, `grep 'str(e)' server/worker.py` returns the error line, `grep '"""' server/worker.py | wc -l` returns >= 12
+- Verify: `gh issue list --repo kaeltech-id/EffiClaude --state open --limit 20` shows 12 new issues
 - Dependencies: none
 
-**Task 2 — Fix server/memory.py reconcile lock scope** `S`
+**Task 2 — Fix memory.export() raw metadata** `S`
 - File: `server/memory.py`
-- Reuse: `_lock` at line 12
+- Reuse: `json.loads()` pattern from `get_recent()` line 279
 - Code sample:
   ```python
-  # Current (lines 101-107) — project list read outside lock:
-  def _reconcile_chromadb(self) -> None:
+  # Change line 311:
+  'observations': [{'type': r[0], 'content': r[1], 'metadata': json.loads(r[2] or '{}'), 'created_at': r[3]} for r in obs],
+  ```
+- Edge cases: `r[2]` may be None → `or '{}'` handles it
+- ⚠️ Breaking change: none (fixes incorrect response schema)
+- Verify: `curl -s "http://localhost:37777/memory/export?project=EffiClaude" | python3 -c "import json,sys; d=json.load(sys.stdin); obs=d['observations']; print(type(obs[0]['metadata']) if obs else 'no obs')"` prints `<class 'dict'>`
+- Dependencies: none
+
+**Task 3 — Fix stale ChromaDB chunks after library shrink** `S`
+- File: `server/docs.py`
+- Reuse: `new_ids` list built on line 141
+- Code sample:
+  ```python
+  # Replace lines 143-145 with:
+  new_ids_set = set(new_ids)
+  ids_to_delete = [eid for eid in existing_ids if eid not in new_ids_set]
+  if ids_to_delete:
+      collection.delete(ids=ids_to_delete)
+  ```
+- Edge cases: empty `existing_ids` → `ids_to_delete` is empty → no delete call needed
+- ⚠️ Breaking change: none
+- Verify: manually upsert extra IDs into a docs collection, re-fetch library; confirm `collection.count()` matches `len(chunks)` after
+- Dependencies: none
+
+**Task 4 — Fix _rate_buckets memory leak** `S`
+- File: `server/worker.py`
+- Reuse: `bucket` variable already filtered on line 78
+- Code sample:
+  ```python
+  # Replace lines 79-82 with:
+  if bucket:
+      _rate_buckets[ip] = bucket
+  else:
+      _rate_buckets.pop(ip, None)
+  if len(_rate_buckets[ip]) >= _RATE_LIMIT if ip in _rate_buckets else False:
+      return jsonify({"status": "error", "error": "rate limit exceeded"}), 429
+  _rate_buckets[ip].append(now)
+  ```
+  Cleaner version:
+  ```python
+  bucket = [t for t in _rate_buckets[ip] if now - t < _RATE_WINDOW]
+  if len(bucket) >= _RATE_LIMIT:
+      _rate_buckets[ip] = bucket  # keep for next check
+      return jsonify({"status": "error", "error": "rate limit exceeded"}), 429
+  bucket.append(now)
+  if bucket:
+      _rate_buckets[ip] = bucket
+  else:
+      _rate_buckets.pop(ip, None)
+  ```
+- Edge cases: concurrent requests from same IP — GIL protects dict key access for simple ops
+- ⚠️ Breaking change: none
+- Verify: after `_RATE_WINDOW` seconds of silence from an IP, `ip not in _rate_buckets`
+- Dependencies: none
+
+**Task 5 — Fix _prune_type() ChromaDB call outside _lock** `S`
+- File: `server/memory.py`
+- Reuse: `_lock` from line 12
+- Code sample:
+  ```python
+  # Replace lines 161-163:
+  if excess_int_ids:
+      with _lock:
+          collection = self._get_collection(project)
+          collection.delete(ids=[str(i) for i in excess_int_ids])
+  ```
+- Edge cases: `_lock` is not held at this point (released after SQLite block), so no deadlock
+- ⚠️ Breaking change: none
+- Verify: run concurrent prune calls; no ChromaDB exception about concurrent modification
+- Dependencies: none
+
+**Task 6 — Fix root_dir path traversal in /graph/index** `S`
+- File: `server/worker.py`
+- Reuse: `_is_safe_path()` pattern; note root_dir can be absolute (valid use case), so only block `..` and null bytes
+- Code sample:
+  ```python
+  # In graph_index(), replace root_dir branch (lines 271-273):
+  if root_dir:
+      if '\x00' in root_dir or '..' in Path(root_dir).parts:
+          return _err("invalid root_dir")
+      count = graph.index_project(project, root_dir)
+      return jsonify({"status": "indexed", "files": count, "root": root_dir})
+  ```
+- Edge cases: absolute paths like `/home/user/project` are valid; only `..` traversal is dangerous
+- ⚠️ Breaking change: none
+- Verify: `curl -X POST .../graph/index -d '{"project":"x","root_dir":"../../etc"}' -H 'Content-Type: application/json'` returns `{"status":"error","error":"invalid root_dir"}`
+- Dependencies: none
+
+**Task 7 — Fix /docs/register missing project validation** `S`
+- File: `server/worker.py`
+- Reuse: `_valid_project()` from line 68
+- Code sample:
+  ```python
+  # In docs_register(), add after name check (after line 204):
+  project = data.get('project', '')
+  if project and not _valid_project(project):
+      return _err("invalid project name")
+  docs.register_library(
+      name=name,
+      project=project,
+      source_type=data.get('source_type')
+  )
+  ```
+- Edge cases: empty `project` is allowed (global/unscoped library)
+- ⚠️ Breaking change: none
+- Verify: `curl -X POST .../docs/register -d '{"name":"flask","project":"../../../etc"}' ...` returns 400
+- Dependencies: none
+
+**Task 8 — Fix ensure_commit_hook() overwriting existing hook** `S`
+- File: `hooks/session_stop.py`
+- Reuse: `os.path.exists()` already imported
+- Code sample:
+  ```python
+  # Replace lines 127-131:
+  if not os.path.exists(dst):
+      shutil.copy2(src, dst)
+      os.chmod(dst, 0o755)
+  ```
+- Edge cases: if user wants to update the hook, they run `install.sh` which always copies (intentional override there)
+- ⚠️ Breaking change: none
+- Verify: create a file at `dst` path; run `ensure_commit_hook()`; confirm file content unchanged
+- Dependencies: none
+
+**Task 9 — Fix logger.py thread-safety** `S`
+- File: `server/logger.py`
+- Reuse: `threading` stdlib
+- Code sample:
+  ```python
+  import threading
+  _log_lock = threading.Lock()
+
+  def warn(tag: str, msg: str) -> None:
+      _error_counts[tag] = _error_counts.get(tag, 0) + 1
+      line = f"[{datetime.utcnow().isoformat(timespec='seconds')}] [{tag}] {msg}\n"
       try:
-          with sqlite3.connect(self.db_path) as conn:
-              projects = [r[0] for r in conn.execute(
-                  'SELECT DISTINCT project FROM observations'
-              ).fetchall()]
-          for project in projects:
-              with _lock:
-  
-  # Fix — wrap initial read inside _lock:
-  def _reconcile_chromadb(self) -> None:
+          LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+          with _log_lock:
+              lines = LOG_PATH.read_text().splitlines(keepends=True) if LOG_PATH.exists() else []
+              if len(lines) >= MAX_LOG_LINES:
+                  lines = lines[-(MAX_LOG_LINES - 1):]
+              LOG_PATH.write_text("".join(lines) + line)
+      except Exception:
+          pass
+      if os.getenv("EFFICLAUDE_DEBUG"):
+          print(line, end="", file=sys.stderr)
+  ```
+- Edge cases: `mkdir` is outside lock (safe — it's idempotent); only file read+write needs protection
+- ⚠️ Breaking change: none
+- Verify: spawn 20 concurrent threads each calling `warn("t", "msg")` 5 times; confirm 100 lines in log
+- Dependencies: none
+
+**Task 10 — Fix check_update() premature timestamp write** `S`
+- File: `hooks/prompt_submit.py`
+- Reuse: existing `UPDATE_CHECK_FILE` write pattern
+- Code sample:
+  ```python
+  def check_update():
       try:
+          if os.path.exists(UPDATE_CHECK_FILE):
+              with open(UPDATE_CHECK_FILE) as f:
+                  last = float(f.read().strip())
+              if time.time() - last < 86400:
+                  return None
+          if not os.path.exists(VERSION_FILE):
+              return None
+          with open(VERSION_FILE) as f:
+              local = f.read().strip()
+          with urllib.request.urlopen(VERSION_URL, timeout=3) as resp:
+              remote = resp.read().decode().strip()
+          # Write timestamp only after successful remote fetch:
+          with open(UPDATE_CHECK_FILE, 'w') as f:
+              f.write(str(time.time()))
+          if local != remote:
+              return f"EffiClaude {remote} available (installed: {local}). Run: bash install.sh"
+      except Exception:
+          pass
+      return None
+  ```
+- Edge cases: if fetch succeeds but version strings are equal, timestamp is still written (correct — no update needed)
+- ⚠️ Breaking change: none
+- Verify: simulate URLError; confirm `UPDATE_CHECK_FILE` is not created/updated
+- Dependencies: none
+
+**Task 11 — Fix index_project() symlink traversal** `S`
+- File: `server/graph.py`
+- Reuse: existing `path.is_file()` check on line 104
+- Code sample:
+  ```python
+  # In index_project(), add symlink guard after line 101:
+  for path in root.rglob('*'):
+      if path.is_symlink():
+          continue
+      if any(part in IGNORE_DIRS for part in path.parts):
+          continue
+      if path.is_file() and path.suffix.lstrip('.') in EXTENSION_TO_LANG:
+          ...
+  ```
+- Edge cases: legitimate source files accessed via symlink are skipped — acceptable for security
+- ⚠️ Breaking change: none
+- Verify: `ln -s /tmp /tmp/test_project/loop; index_project("p", "/tmp/test_project")` completes without hanging
+- Dependencies: none
+
+**Task 12 — Fix import_data() TOCTOU race** `S`
+- File: `server/memory.py`
+- Reuse: `_lock` from line 12; note save_observation() also acquires _lock, so use flag pattern
+- Code sample:
+  ```python
+  # In import_data() obs loop, replace lines 320-343 with:
+  for obs in obs_list:
+      try:
+          content = obs.get('content', '')
+          obs_type = obs.get('type', 'general')
+          meta = obs.get('metadata', '{}')
+          try:
+              meta_dict = json.loads(meta) if isinstance(meta, str) else meta
+              if not isinstance(meta_dict, dict):
+                  meta_dict = {}
+          except (json.JSONDecodeError, TypeError):
+              meta_dict = {}
+          should_save = False
           with _lock:
               with sqlite3.connect(self.db_path) as conn:
-                  projects = [r[0] for r in conn.execute(
-                      'SELECT DISTINCT project FROM observations'
-                  ).fetchall()]
-          for project in projects:
-              with _lock:
+                  exists = conn.execute(
+                      'SELECT id FROM observations WHERE project=? AND type=? AND content=?',
+                      (project, obs_type, content)
+                  ).fetchone()
+              if not exists:
+                  should_save = True
+          if should_save:
+              self.save_observation(project, obs_type, content, meta_dict)
+              imported_obs += 1
+      except Exception as e:
+          warn("memory", f"import error: {e}")
   ```
-- Edge cases: lock is re-entrant per project — OK since we release before iterating
+- Edge cases: tiny window between `should_save=True` and `save_observation()` — save_observation handles ChromaDB idempotently; duplicate unlikely
 - ⚠️ Breaking change: none
-- Verify: `grep -A3 "def _reconcile_chromadb" server/memory.py | grep "_lock"` returns the lock line
+- Verify: 10 concurrent `import_data()` calls with same payload → 1 row in observations
 - Dependencies: none
 
-**Task 3 — Add type hints to server/docs.py** `S`
-- File: `server/docs.py`
-- Reuse: `from __future__ import annotations` already present (enables `str | None` syntax)
+**Task 13 — Fix _reconcile_chromadb() blocking startup** `S`
+- File: `server/memory.py`
+- Reuse: `threading.Thread` pattern from line 37
 - Code sample:
   ```python
-  # register_library — source_type has no type hint:
-  def register_library(self, name: str, project: str = '', source_type: str | None = None) -> None:
-  
-  # _get_collection — missing return type:
-  def _get_collection(self, library: str):  # chromadb Collection type not importable simply
-  # → just add parameter type: def _get_collection(self, library: str):
-  
-  # _init_db — missing return type:
-  def _init_db(self) -> None:
-  
-  # _is_stale — already typed ✓
-  # fetch_and_cache — already typed ✓
-  # search — already typed ✓
-  # list_libraries — already typed ✓
+  # Change line 36 from:
+  self._reconcile_chromadb()
+  # To:
+  threading.Thread(target=self._reconcile_chromadb, daemon=True).start()
   ```
-- Edge cases: none
+- Edge cases: first few requests after startup may search before reconcile completes — FTS fallback handles this
 - ⚠️ Breaking change: none
-- Verify: `grep "def register_library\|def _get_collection\|def _init_db" server/docs.py` — all show type annotations
+- Verify: worker starts in < 1 second even with large DB (reconcile runs in background)
 - Dependencies: none
 
-**Task 4 — Add type hints to server/graph.py public methods** `S`
-- File: `server/graph.py`
-- Reuse: `from __future__ import annotations` — add if not present (it's not in graph.py currently)
-- Code sample:
-  ```python
-  # Add at top after existing imports:
-  from __future__ import annotations
-  
-  # _init_db:
-  def _init_db(self) -> None:
-  
-  # _init_tree_sitter:
-  def _init_tree_sitter(self) -> bool:
-  
-  # _get_parser:
-  def _get_parser(self, lang: str):
-  
-  # index_project:
-  def index_project(self, project: str, root_dir: str) -> int:
-  
-  # index_file:
-  def index_file(self, project: str, file_path: str, root_dir: str | None = None) -> None:
-  
-  # _extract_nodes:
-  def _extract_nodes(self, source: str, lang: str, file_path: str) -> list:
-  
-  # _extract_nodes_ts:
-  def _extract_nodes_ts(self, source: str, lang: str) -> list:
-  
-  # _walk_tree:
-  def _walk_tree(self, node, source: str, lang: str, results: list) -> None:
-  
-  # _get_node_name:
-  def _get_node_name(self, node, source: str) -> str | None:
-  
-  # _extract_nodes_regex:
-  def _extract_nodes_regex(self, source: str, lang: str) -> list:
-  ```
-- Edge cases: `from __future__ import annotations` must be first import
-- ⚠️ Breaking change: none
-- Verify: `grep "def index_project\|def index_file\|def _extract_nodes" server/graph.py` — all show param types
-- Dependencies: none
-
-**Task 5 — Fix hooks/prompt_submit.py staleness unknown age** `S`
-- File: `hooks/prompt_submit.py`
-- Reuse: existing return string pattern at line 130
-- Code sample:
-  ```python
-  # Current (line 124-125):
-  if not match:
-      return None
-  # Fix:
-  if not match:
-      return "(context age unknown — run /ec-setup to refresh)"
-  ```
-- Edge cases: None — this is the only change needed in this function
-- ⚠️ Breaking change: none — callers check truthiness, a non-None string is truthy
-- Verify: `grep "context age unknown" hooks/prompt_submit.py` returns the new line
-- Dependencies: none
-
-**Task 6 — Fix hooks/session_stop.py export bak retention** `S`
-- File: `hooks/session_stop.py`
-- Reuse: `os.remove`, `os.path.getmtime`, `time.time()` — all already imported
-- Code sample: In `auto_export()`, after the `with open(export_path, 'w') as f: json.dump(export, f)` block (around line 103), add:
-  ```python
-  # Clean up .bak if older than 7 days
-  bak = export_path + '.bak'
-  try:
-      if os.path.exists(bak) and time.time() - os.path.getmtime(bak) > 86400 * 7:
-          os.remove(bak)
-  except Exception:
-      pass
-  ```
-- Edge cases: `os.remove` may fail on permissions — wrapped in try/except silently
-- ⚠️ Breaking change: none
-- Verify: `grep "86400" hooks/session_stop.py` returns the retention line
-- Dependencies: none
-
-**Task 7 — Fix commands/ec-feature.md expired decision UX** `S`
-- File: `commands/ec-feature.md`
-- Reuse: existing decision expiry block at lines 23-27
-- Code sample:
-  ```markdown
-  # Current (lines 23-27):
-      - If older than 7 days:
-          Show: "(decision.md found but expired — created {n} days ago)"
-          Ask: "Delete and start fresh? (y/n):"
-          - If y: delete `.claude/decision.md`, then proceed to saved brainstorms check
-          - If n: skip this decision, proceed to saved brainstorms check (do NOT delete)
-  
-  # Fix:
-      - If older than 7 days:
-          Show: "(decision.md found but expired — created {n} days ago: \"{problem_title_from_first_line}\")"
-          Ask: "Use it anyway? (y/n):"
-          - If y: proceed normally using this decision — treat as if within 7 days
-          - If n: delete `.claude/decision.md`, proceed to saved brainstorms check
-  ```
-- Edge cases: problem_title = first `# ` heading in decision.md (or filename if absent)
-- ⚠️ Breaking change: none — UX change only
-- Verify: `grep "Use it anyway" commands/ec-feature.md` returns the updated prompt line
-- Dependencies: none
-
-**Task 8 — Create tests/test_hooks.py** `M`
-- File: `tests/test_hooks.py`
-- Reuse: pytest fixture pattern from `tests/conftest.py` (tmp_path, sys.path.insert pattern)
-- Code sample:
-  ```python
-  import sys, os, json, time
-  import pytest
-  from unittest.mock import patch, MagicMock
-  
-  sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'hooks'))
-  
-  # test check_context_staleness
-  def test_staleness_returns_warning_when_old(tmp_path):
-      from prompt_submit import check_context_staleness
-      ctx = tmp_path / ".claude" / "context"
-      ctx.mkdir(parents=True)
-      (ctx / "stack.md").write_text("<!-- last_updated: 2020-01-01 -->")
-      with patch("os.getcwd", return_value=str(tmp_path)):
-          result = check_context_staleness()
-      assert result is not None
-      assert "days ago" in result
-  
-  def test_staleness_returns_unknown_when_no_comment(tmp_path):
-      from prompt_submit import check_context_staleness
-      ctx = tmp_path / ".claude" / "context"
-      ctx.mkdir(parents=True)
-      (ctx / "stack.md").write_text("# Tech Stack\n")
-      with patch("os.getcwd", return_value=str(tmp_path)):
-          result = check_context_staleness()
-      assert result == "(context age unknown — run /ec-setup to refresh)"
-  
-  # test check_uncommitted
-  def test_check_uncommitted_no_output_when_clean(capsys):
-      from session_stop import check_uncommitted
-      with patch("subprocess.run") as mock_run:
-          mock_run.return_value = MagicMock(stdout="")
-          check_uncommitted()
-      captured = capsys.readouterr()
-      assert "Uncommitted" not in captured.out
-  
-  def test_check_uncommitted_warns_when_dirty(capsys):
-      from session_stop import check_uncommitted
-      with patch("subprocess.run") as mock_run:
-          mock_run.return_value = MagicMock(stdout="M modified_file.py")
-          check_uncommitted()
-      captured = capsys.readouterr()
-      assert "Uncommitted" in captured.out
-  
-  # test auto_export bak cleanup
-  def test_auto_export_removes_old_bak(tmp_path):
-      from session_stop import auto_export
-      export_path = tmp_path / ".claude" / "memory-export.json"
-      export_path.parent.mkdir(parents=True)
-      bak = str(export_path) + ".bak"
-      # create stale .bak
-      with open(bak, 'w') as f:
-          f.write("{}")
-      old_time = time.time() - 86400 * 8
-      os.utime(bak, (old_time, old_time))
-      with patch("os.getcwd", return_value=str(tmp_path)), \
-           patch("urllib.request.urlopen") as mock_url:
-          mock_url.return_value.__enter__ = lambda s: s
-          mock_url.return_value.__exit__ = MagicMock(return_value=False)
-          mock_url.return_value.read = lambda: json.dumps({"observations": [], "summaries": []}).encode()
-          auto_export("testproject")
-      assert not os.path.exists(bak)
-  ```
-- Edge cases: tests must mock os.getcwd and urllib — hooks use absolute paths derived from getcwd
-- ⚠️ Breaking change: none
-- Verify: `cd tests && python -m pytest test_hooks.py -v` — all 5 tests pass
-- Dependencies: Task 5 (test_staleness_returns_unknown depends on Task 5 fix), Task 6 (test_auto_export_removes_old_bak depends on Task 6 fix)
-
-**Task 9 — Close 19 already-fixed GitHub issues** `S`
-- File: GitHub issues (via gh CLI)
-- Reuse: none
+**Task 14 — Close all 12 GitHub issues** `S`
+- File: none (GitHub CLI operation)
+- Reuse: issue numbers captured from Task 1 output
 - Code sample:
   ```bash
-  REPO="kaeltech-id/EffiClaude"
-  MSG="Fixed in current codebase — this issue was resolved in a prior commit. See current source for implementation."
-  for n in 14 17 18 19 20 22 24 25 26 27 29 30 31 32 33 34 36 37 38; do
-    gh issue close $n -R $REPO -c "$MSG"
+  # Close each issue with a comment referencing the fix:
+  for num in <ISSUE_NUMBERS>; do
+    gh issue close --repo kaeltech-id/EffiClaude "$num" \
+      --comment "Fixed — all 12 bugs resolved in this session."
   done
   ```
-- Edge cases: some issues may already be closed — `gh issue close` will silently succeed
+- Edge cases: issues already closed → `gh issue close` is idempotent
 - ⚠️ Breaking change: none
-- Verify: `gh issue list -R kaeltech-id/EffiClaude --state open --json number | python3 -c "import json,sys; nums={i['number'] for i in json.load(sys.stdin)}; print('ok' if not ({14,17,18,19,20,22,24,25,26,27,29,30,31,32,33,34,36,37,38} & nums) else 'FAIL')"` returns "ok"
-- Dependencies: none
-
-**Task 10 — Close 9 newly-fixed GitHub issues** `S`
-- File: GitHub issues (via gh CLI)
-- Reuse: none
-- Code sample:
-  ```bash
-  REPO="kaeltech-id/EffiClaude"
-  gh issue close 21 -R $REPO -c "Fixed: added backslash check to _is_safe_path() in server/worker.py"
-  gh issue close 23 -R $REPO -c "Fixed: graph_index() now returns str(e) instead of generic 'indexing failed' string"
-  gh issue close 28 -R $REPO -c "Fixed: project list read in _reconcile_chromadb() now inside _lock scope"
-  gh issue close 13 -R $REPO -c "Fixed: check_context_staleness() returns unknown-age message when comment format is absent"
-  gh issue close 39 -R $REPO -c "Fixed: auto_export() now cleans up .bak files older than 7 days"
-  gh issue close 16 -R $REPO -c "Fixed: ec-feature.md now shows 'Use it anyway? (y/n):' for expired decisions, allowing reuse"
-  gh issue close 35 -R $REPO -c "Fixed: added type hints to all public methods in server/docs.py and server/graph.py"
-  gh issue close 40 -R $REPO -c "Fixed: added docstrings to all Flask route handlers in server/worker.py"
-  gh issue close 15 -R $REPO -c "Fixed: added tests/test_hooks.py with 5 unit tests covering check_context_staleness, check_uncommitted, and auto_export"
-  ```
-- Edge cases: none
-- ⚠️ Breaking change: none
-- Verify: `gh issue list -R kaeltech-id/EffiClaude --state open --json number | python3 -c "import json,sys; print(len(json.load(sys.stdin)), 'open issues remaining')"` returns "0 open issues remaining"
-- Dependencies: Tasks 1-8 must complete before closing
+- Verify: `gh issue list --repo kaeltech-id/EffiClaude --state open` shows 0 of our 12 issues open
+- Dependencies: Task 1 (issue numbers), Tasks 2-13 (all fixes done)

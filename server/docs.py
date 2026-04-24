@@ -140,7 +140,8 @@ class DocsEngine:
                 existing_ids = set(collection.get()['ids']) if collection.count() > 0 else set()
                 new_ids = [f"{name}_{i}" for i in range(len(chunks))]
 
-                ids_to_delete = [eid for eid in existing_ids if not eid.startswith(name + '_')]
+                new_ids_set = set(new_ids)
+                ids_to_delete = [eid for eid in existing_ids if eid not in new_ids_set]
                 if ids_to_delete:
                     collection.delete(ids=ids_to_delete)
 

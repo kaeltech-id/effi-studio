@@ -100,14 +100,14 @@ def check_update():
                 last = float(f.read().strip())
             if time.time() - last < 86400:
                 return None
-        with open(UPDATE_CHECK_FILE, 'w') as f:
-            f.write(str(time.time()))
         if not os.path.exists(VERSION_FILE):
             return None
         with open(VERSION_FILE) as f:
             local = f.read().strip()
         with urllib.request.urlopen(VERSION_URL, timeout=3) as resp:
             remote = resp.read().decode().strip()
+        with open(UPDATE_CHECK_FILE, 'w') as f:
+            f.write(str(time.time()))
         if local != remote:
             return f"EffiClaude {remote} available (installed: {local}). Run: bash install.sh"
     except Exception:

@@ -53,5 +53,6 @@ def test_reconcile_chromadb_fills_missing(db_path, chroma_path):
         )
         conn.commit()
     engine = MemoryEngine(db_path, chroma_path)
+    engine._reconcile_chromadb()
     results = engine.search("proj", "Orphaned")
     assert len(results) >= 1
