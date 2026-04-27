@@ -33,17 +33,6 @@ If `done > 0` and `remaining > 0`:
 - If `vibe`: skip Step 6 memory save (`curl .../memory/observe`), skip "Next: run /ec-review" in Step 7 report
 - If `structured` (or file absent): proceed normally
 
-## Step 1.5 — Rollback Snapshot
-Before any task executes, create a safety snapshot:
-```
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-git stash push --include-untracked -m "efficlaude-pre-execute-$TIMESTAMP" -- . ':(exclude).claude' 2>/dev/null \
-  && echo "Snapshot saved: efficlaude-pre-execute-$TIMESTAMP" \
-  || echo "(nothing to snapshot — clean working tree)"
-```
-Show the stash label to the user: "To restore if needed: `git stash pop`"
-If nothing to stash (clean tree): note it silently and continue.
-
 ## Step 2 — Pre-flight Check
 Before executing, verify:
 - All files referenced in the plan exist (if modifying existing files)
@@ -72,7 +61,6 @@ Before spawning any subagent, explicitly confirm each item:
 - [ ] `.claude/current-plan.md` is loaded and all tasks are numbered
 - [ ] Every task has an exact file path, code sample, and verify step
 - [ ] No two tasks write to the same file (checked in Step 2)
-- [ ] Rollback snapshot was taken (Step 1.5)
 - [ ] `.claude/current-plan.md` will be updated with `[x]` after each task completes
 Only proceed after all items are confirmed. If any item fails, report and ask user before continuing.
 
