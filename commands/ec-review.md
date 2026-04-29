@@ -1,7 +1,18 @@
 Review all code changes from the last execution. Two-stage review: spec compliance first, then code quality.
 
+**Branch detection:** Run:
+```bash
+BRANCH=$(git branch --show-current 2>/dev/null | sed 's/[^a-zA-Z0-9._-]/-/g')
+[ -z "$BRANCH" ] && BRANCH="default"
+PLAN_FILE=".claude/plans/${BRANCH}.md"
+DECISION_FILE=".claude/decisions/${BRANCH}.md"
+REVIEW_DONE=".claude/.review-done-${BRANCH}"
+REVIEW_SUMMARY=".claude/review-summaries/${BRANCH}.md"
+```
+Note: "(branch: {BRANCH})"
+
 ## Step 1 — Load Context
-Read `.claude/current-plan.md`, `.claude/context/conventions.md`, `.claude/context/stack.md`.
+Read `{PLAN_FILE}`, `.claude/context/conventions.md`, `.claude/context/stack.md`.
 
 Check worker status: `curl -s http://localhost:37777/health`
 - If running: show "(worker online ✓ — memory/docs active)" then load memory and docs:
@@ -15,7 +26,7 @@ Check worker status: `curl -s http://localhost:37777/health`
 - If `structured` (or file absent): proceed normally
 
 ## Step 1.5 — Blast Radius Analysis (if worker running)
-Extract all files modified during execution from `.claude/current-plan.md`.
+Extract all files modified during execution from `{PLAN_FILE}`.
 
 Index changed files into the graph:
 ```
@@ -170,21 +181,21 @@ curl -s -X POST http://localhost:37777/memory/observe \
 {concise list of all files modified during review}
 ```
 
-**If review is clean**, delete `.claude/decision.md` if it exists (run `rm -f .claude/decision.md`), then write the review-done sentinel: `touch .claude/.review-done` — this lets `/ec-next` detect that review is complete and route to `/ec-git`.
+**If review is clean**, delete `{DECISION_FILE}` if it exists (run `rm -f {DECISION_FILE}`), then write the review-done sentinel: `touch {REVIEW_DONE}` — this lets `/ec-next` detect that review is complete and route to `/ec-git`.
 
 ## Step 5 — Write Review Docs
 
-Write `.claude/review-summary.md` (overwrite if it already exists):
+Run `mkdir -p .claude/review-summaries` then write `{REVIEW_SUMMARY}` (overwrite if it already exists):
 
 ```markdown
 # Review Summary — {feature_name}
 _Date: {date}_
 
 ## Feature
-{feature name from the `## Feature:` line in .claude/current-plan.md}
+{feature name from the `## Feature:` line in {PLAN_FILE}}
 
 ## Tasks completed
-{copy all `- [x]` task lines from .claude/current-plan.md verbatim, one per line}
+{copy all `- [x]` task lines from {PLAN_FILE} verbatim, one per line}
 
 ## Files modified
 {list all files from blast radius scope + any manually scoped files reviewed}

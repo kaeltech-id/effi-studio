@@ -1,27 +1,36 @@
 Route to the correct next EffiClaude workflow command by reading current project state.
 
+**Branch detection:** Run:
+```bash
+BRANCH=$(git branch --show-current 2>/dev/null | sed 's/[^a-zA-Z0-9._-]/-/g')
+[ -z "$BRANCH" ] && BRANCH="default"
+PLAN_FILE=".claude/plans/${BRANCH}.md"
+DECISION_FILE=".claude/decisions/${BRANCH}.md"
+REVIEW_DONE=".claude/.review-done-${BRANCH}"
+```
+
 ## Step 1 — Detect State
 
 Run all five checks in order. Collect each result before routing.
 
 **Check 1 — Review sentinel:**
 ```
-ls .claude/.review-done 2>/dev/null && echo "EXISTS" || echo "ABSENT"
+ls {REVIEW_DONE} 2>/dev/null && echo "EXISTS" || echo "ABSENT"
 ```
 
 **Check 2 — Incomplete tasks in plan:**
 ```
-grep -c '- \[ \] Task' .claude/current-plan.md 2>/dev/null || echo "0"
+grep -c '- \[ \] Task' {PLAN_FILE} 2>/dev/null || echo "0"
 ```
 
 **Check 3 — Completed tasks in plan (plan exists at all):**
 ```
-ls .claude/current-plan.md 2>/dev/null && echo "EXISTS" || echo "ABSENT"
+ls {PLAN_FILE} 2>/dev/null && echo "EXISTS" || echo "ABSENT"
 ```
 
 **Check 4 — Decision file:**
 ```
-ls .claude/decision.md 2>/dev/null && echo "EXISTS" || echo "ABSENT"
+ls {DECISION_FILE} 2>/dev/null && echo "EXISTS" || echo "ABSENT"
 ```
 
 **Check 5 — Saved brainstorm files:**

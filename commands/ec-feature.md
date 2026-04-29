@@ -11,27 +11,36 @@ Check worker status: `curl -s http://localhost:37777/health`
 - If all present: proceed normally
 - If any are missing or empty: show "(context incomplete — run /ec-setup first to configure this project)" and stop
 
-**Incomplete plan guard:** Before proceeding, check if `.claude/current-plan.md` exists.
+**Branch detection:** Run:
+```bash
+BRANCH=$(git branch --show-current 2>/dev/null | sed 's/[^a-zA-Z0-9._-]/-/g')
+[ -z "$BRANCH" ] && BRANCH="default"
+PLAN_FILE=".claude/plans/${BRANCH}.md"
+DECISION_FILE=".claude/decisions/${BRANCH}.md"
+```
+Note: "(branch: {BRANCH} → plan: {PLAN_FILE})"
+
+**Incomplete plan guard:** Before proceeding, check if `{PLAN_FILE}` exists.
 If it exists, count lines matching `- [ ]`.
 If count > 0:
-  Show: "⚠️ current-plan.md has {n} incomplete task(s). Overwrite and start fresh? (y/n):"
-  If n: Stop — "Run /ec-execute to finish the current plan, or manually delete .claude/current-plan.md."
+  Show: "⚠️ {PLAN_FILE} has {n} incomplete task(s). Overwrite and start fresh? (y/n):"
+  If n: Stop — "Run /ec-execute to finish the current plan, or manually delete {PLAN_FILE}."
   If y: continue normally — plan will be overwritten at Step 3.
 
-**Check for brainstorm decision:** If `.claude/decision.md` exists, read it silently.
+**Check for brainstorm decision:** If `{DECISION_FILE}` exists, read it silently.
 - Look for `_Created: {YYYY-MM-DD}_` on the last non-empty line. If found, parse the date.
   - If older than 7 days:
-    Show: "(decision.md found but expired — created {n} days ago: \"{title_from_first_heading_or_filename}\")"
+    Show: "({DECISION_FILE} found but expired — created {n} days ago: \"{title_from_first_heading_or_filename}\")"
     Ask: "Use it anyway? (y/n):"
     - If y: proceed normally using this decision — treat as if within 7 days
-    - If n: delete `.claude/decision.md`, then proceed to saved brainstorms check
+    - If n: delete `{DECISION_FILE}`, then proceed to saved brainstorms check
   - If within 7 days, or date line absent: proceed normally.
 - Pre-fill the feature description from the decision's "Chosen Approach" section
 - Skip asking about approach — user already decided
-- Note: "(decision.md loaded — using chosen approach from brainstorm)"
-- Do NOT delete `.claude/decision.md` here — it will be deleted by `/ec-review` after a clean review
+- Note: "({DECISION_FILE} loaded — using chosen approach from brainstorm)"
+- Do NOT delete `{DECISION_FILE}` here — it will be deleted by `/ec-review` after a clean review
 
-**Check for saved brainstorms:** If no `decision.md` was found:
+**Check for saved brainstorms:** If no `{DECISION_FILE}` was found:
 - Check if `.claude/brainstorms/` exists and contains `.md` files
 - If files found, list them numbered (read the `# Title` line from each file):
   ```
@@ -48,7 +57,7 @@ If count > 0:
 - If `structured` (or file absent): proceed normally
 
 **No-Code Rule:** This command MUST NOT create, edit, or write any project files.
-Allowed writes: `.claude/current-plan.md` only.
+Allowed writes: `.claude/plans/` only.
 If you find yourself about to write code or modify project files — stop. That belongs in `/ec-execute`.
 
 ## Step 1 — Gather Input
@@ -219,7 +228,7 @@ Every task must include:
 
 Size guide: S = <1hr · M = 1–3hr · L = >3hr
 
-Save plan to `.claude/current-plan.md`.
+Run `mkdir -p .claude/plans` then save plan to `{PLAN_FILE}`.
 
 ## Step 4 — Self-Review Before Presenting
 Before showing the plan, check:

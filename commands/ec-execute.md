@@ -1,8 +1,21 @@
 Execute the current feature plan sequentially, one task at a time, with resumable state.
 
 ## Step 1 — Load Context
+
+**Branch detection:** Run:
+```bash
+BRANCH=$(git branch --show-current 2>/dev/null | sed 's/[^a-zA-Z0-9._-]/-/g')
+[ -z "$BRANCH" ] && BRANCH="default"
+PLAN_FILE=".claude/plans/${BRANCH}.md"
+```
+Note: "(branch: {BRANCH} → plan: {PLAN_FILE})"
+
+**Migration check:** If `.claude/current-plan.md` exists and `{PLAN_FILE}` does not:
+- Run: `mkdir -p .claude/plans && mv .claude/current-plan.md {PLAN_FILE}`
+- Show: "(migrated .claude/current-plan.md → {PLAN_FILE})"
+
 Read:
-- `.claude/current-plan.md` — the plan to execute
+- `{PLAN_FILE}` — the plan to execute
 - `.claude/project-config.json`
 - `.claude/context/stack.md`
 - `.claude/context/structure.md`
@@ -16,7 +29,7 @@ Check worker status: `curl -s http://localhost:37777/health`
   Pass relevant snippets into each subagent's context.
 - If offline: show "(worker OFFLINE ⚠️ — memory/docs/graph unavailable)" and continue.
 
-**Resume check:** After reading `.claude/current-plan.md`, count:
+**Resume check:** After reading `{PLAN_FILE}`, count:
 - `done` = number of lines matching `- [x]`
 - `remaining` = number of lines matching `- [ ]`
 
@@ -24,7 +37,7 @@ If `remaining == 0` and `done > 0`:
   Show: "All {done} tasks already complete — run /ec-review."
   Stop.
 If `remaining == 0` and `done == 0`:
-  Show: "No tasks found in current-plan.md. Run /ec-feature first."
+  Show: "No tasks found in {PLAN_FILE}. Run /ec-feature first."
   Stop.
 If `done > 0` and `remaining > 0`:
   Show: "Resuming: {done} tasks already done, {remaining} remaining."
@@ -44,24 +57,24 @@ If any issue found, report it and ask:
 "Found pre-flight issue: {issue}. Continue anyway? (y/n):"
 
 ## Step 3 — Execute Sequentially
-Read all tasks from `.claude/current-plan.md`. Find all lines matching `- [ ]`.
+Read all tasks from `{PLAN_FILE}`. Find all lines matching `- [ ]`.
 Compute: total = count of ALL task lines (both `[x]` and `[ ]`).
 
 For each `- [ ]` task in document order:
 1. Show: "▶ Task {current}/{total}: {task name} [{size}]"
 2. Spawn one subagent with full task context (file path, code sample, verify step, relevant memory/docs snippets)
 3. Subagent MUST run the verify step and confirm actual output before claiming done
-4. After subagent confirms complete: edit `.claude/current-plan.md` — replace `- [ ] Task N: {name}` with `- [x] Task N: {name}` for this task only
+4. After subagent confirms complete: edit `{PLAN_FILE}` — replace `- [ ] Task N: {name}` with `- [x] Task N: {name}` for this task only
 5. Show: "✓ Task {current}/{total}: {task name} — verified"
 
-Repeat until no `- [ ]` lines remain in `.claude/current-plan.md`.
+Repeat until no `- [ ]` lines remain in `{PLAN_FILE}`.
 
 ## Step 3.5 — Pre-spawn Verification Anchor
 Before spawning any subagent, explicitly confirm each item:
-- [ ] `.claude/current-plan.md` is loaded and all tasks are numbered
+- [ ] `{PLAN_FILE}` is loaded and all tasks are numbered
 - [ ] Every task has an exact file path, code sample, and verify step
 - [ ] No two tasks write to the same file (checked in Step 2)
-- [ ] `.claude/current-plan.md` will be updated with `[x]` after each task completes
+- [ ] `{PLAN_FILE}` will be updated with `[x]` after each task completes
 Only proceed after all items are confirmed. If any item fails, report and ask user before continuing.
 
 ## Step 4 — Execute with Evidence Verification

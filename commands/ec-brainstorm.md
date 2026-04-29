@@ -18,8 +18,16 @@ Use memory to surface: past decisions, similar problems solved before, patterns 
 - If `vibe`: skip all (y/n) confirmation gates, skip Step 5 memory save (`curl .../memory/observe`), skip Step 6 "Next: run /ec-feature" suggestion
 - If `structured` (or file absent): proceed normally
 
+**Branch detection:** Run:
+```bash
+BRANCH=$(git branch --show-current 2>/dev/null | sed 's/[^a-zA-Z0-9._-]/-/g')
+[ -z "$BRANCH" ] && BRANCH="default"
+DECISION_FILE=".claude/decisions/${BRANCH}.md"
+```
+Note: "(branch: {BRANCH} → decision: {DECISION_FILE})"
+
 **No-Code Rule:** This command MUST NOT create, edit, or write any project files.
-Allowed writes: `.claude/decision.md` and `.claude/brainstorms/` only.
+Allowed writes: `.claude/decisions/` and `.claude/brainstorms/` only.
 If you find yourself about to write code or modify project files — stop. That belongs in `/ec-execute`.
 
 ## Step 1 — Understand the Problem
@@ -130,7 +138,7 @@ Only present sections that add value — skip any section where the answer is ob
 Ask: "Lanjut ke /ec-feature sekarang atau simpan untuk nanti? (now/save):"
 
 **If "now":**
-Save to `.claude/decision.md`. Replace `{YYYY-MM-DD}` with today's date (use `currentDate` context variable if available, otherwise `date +%Y-%m-%d`):
+Run `mkdir -p .claude/decisions` then save to `{DECISION_FILE}`. Replace `{YYYY-MM-DD}` with today's date (use `currentDate` context variable if available, otherwise `date +%Y-%m-%d`):
 
 ```markdown
 # Decision: {problem_title}
