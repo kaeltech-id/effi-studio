@@ -11,9 +11,9 @@ HOOKS_DIR="$HOME/.efficlaude/hooks"
 SERVER_DIR="$HOME/.efficlaude/server"
 BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
-COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode" "ec-next")
+COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode" "ec-next" "ec-selfhealing")
 AGENTS=("ec-react" "ec-vue" "ec-nextjs" "ec-typescript" "ec-tailwind" "ec-react-native" "ec-flutter" "ec-ios" "ec-android" "ec-mobile-perf" "ec-python" "ec-nodejs" "ec-golang" "ec-java" "ec-php" "ec-sql" "ec-nosql" "ec-migration" "ec-unit-test" "ec-e2e" "ec-api-test" "ec-docker" "ec-cicd" "ec-cloud" "ec-security" "ec-performance" "ec-refactor" "ec-reviewer" "ec-api-design" "ec-architect" "ec-llm")
-SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
+SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "file_lock.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py" "commit-msg")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

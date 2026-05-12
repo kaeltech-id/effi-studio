@@ -10,6 +10,32 @@ PLAN_FILE=".claude/plans/${BRANCH}.md"
 ```
 Note: "(branch: {BRANCH} → plan: {PLAN_FILE})"
 
+**Session lock:** Generate a session ID and acquire an exclusive lock on the plan file to prevent concurrent ec-execute runs:
+```bash
+SESSION_ID=$(python3 -c "import uuid; print(str(uuid.uuid4())[:8])")
+LOCK_RESULT=$(python3 ~/.efficlaude/server/file_lock.py acquire "{PLAN_FILE}" "$SESSION_ID" 2>/dev/null \
+  || echo '{"status":"error"}')
+LOCK_STATUS=$(echo "$LOCK_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','error'))" 2>/dev/null)
+```
+- Note SESSION_ID — it will be needed in the release step.
+- If LOCK_STATUS is `"busy"`:
+  - Extract holder info: `echo "$LOCK_RESULT" | python3 -c "import sys,json; h=json.load(sys.stdin).get('holder',{}); print(f\"session {h.get('session_id','?')} (PID {h.get('pid','?')}) since {h.get('acquired_at','?')[:16]}\")"`
+  - Show: "⚠️ Plan locked by another terminal: {holder_info}"
+  - Ask: "Abort or wait for lock to clear? (a/w):"
+    - If `a`: stop — "Run /ec-execute in the other terminal first, or delete `{PLAN_FILE}.lock` manually."
+    - If `w`: run retry loop (10-second intervals, up to 3 minutes):
+      ```bash
+      for i in $(seq 1 18); do
+        sleep 10
+        LOCK_RESULT=$(python3 ~/.efficlaude/server/file_lock.py acquire "{PLAN_FILE}" "$SESSION_ID" 2>/dev/null || echo '{"status":"error"}')
+        LOCK_STATUS=$(echo "$LOCK_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','error'))" 2>/dev/null)
+        [ "$LOCK_STATUS" = "acquired" ] && echo "Lock acquired after ${i}0 seconds." && break
+        echo "Still waiting... attempt $i/18"
+      done
+      [ "$LOCK_STATUS" != "acquired" ] && echo "⚠️ Lock not cleared after 3 minutes. Aborting." && exit 1
+      ```
+- If LOCK_STATUS is `"error"` (file_lock.py not installed): show "(lock unavailable — proceeding without lock)" and continue normally.
+
 **Migration check:** If `.claude/current-plan.md` exists and `{PLAN_FILE}` does not:
 - Run: `mkdir -p .claude/plans && mv .claude/current-plan.md {PLAN_FILE}`
 - Show: "(migrated .claude/current-plan.md → {PLAN_FILE})"
@@ -158,6 +184,12 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 ### Breaking Changes Applied
 - {description or "none"}
+```
+
+**Release lock:** After all tasks complete, release the plan file lock:
+```bash
+python3 ~/.efficlaude/server/file_lock.py release "{PLAN_FILE}" "$SESSION_ID" 2>/dev/null \
+  && echo "(plan lock released)" || echo "(lock already clear)"
 ```
 
 Next: run `/ec-review` to review the results.

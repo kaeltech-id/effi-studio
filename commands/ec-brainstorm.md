@@ -138,6 +138,19 @@ Only present sections that add value — skip any section where the answer is ob
 Ask: "Lanjut ke /ec-feature sekarang atau simpan untuk nanti? (now/save):"
 
 **If "now":**
+**Lock check:** Before writing the decision file, check for a concurrent brainstorm session:
+```bash
+LOCK_CHECK=$(python3 ~/.efficlaude/server/file_lock.py status "{DECISION_FILE}" 2>/dev/null \
+  || echo '{"status":"free"}')
+LOCK_STATUS=$(echo "$LOCK_CHECK" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','free'))" 2>/dev/null)
+```
+- If LOCK_STATUS is `"locked"`:
+  - Extract holder: `echo "$LOCK_CHECK" | python3 -c "import sys,json; h=json.load(sys.stdin).get('holder',{}); print(f\"session {h.get('session_id','?')} (PID {h.get('pid','?')})\")"`
+  - Show: "⚠️ {DECISION_FILE} is locked by another session: {holder_info}"
+  - Ask: "Overwrite or save to brainstorms/ instead? (overwrite/save):"
+    - If `save`: redirect — treat as the "save" path below, save to `.claude/brainstorms/` instead
+    - If `overwrite`: proceed normally to write DECISION_FILE
+
 Run `mkdir -p .claude/decisions` then save to `{DECISION_FILE}`. Replace `{YYYY-MM-DD}` with today's date (use `currentDate` context variable if available, otherwise `date +%Y-%m-%d`):
 
 ```markdown

@@ -132,7 +132,21 @@ def ensure_commit_hook():
         _warn("session_stop", f"commit hook install failed: {e}")
 
 
+def release_stale_locks() -> None:
+    lock_helper = Path.home() / ".efficlaude" / "server" / "file_lock.py"
+    if not lock_helper.exists():
+        return
+    try:
+        subprocess.run(
+            [sys.executable, str(lock_helper), "clean", ".claude"],
+            capture_output=True, timeout=5
+        )
+    except Exception as e:
+        _warn("session_stop", f"lock cleanup failed: {e}")
+
+
 def main():
+    release_stale_locks()
     check_uncommitted()
     if not ensure_worker(wait_secs=3):
         sys.exit(0)

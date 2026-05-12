@@ -228,6 +228,19 @@ Every task must include:
 
 Size guide: S = <1hr · M = 1–3hr · L = >3hr
 
+**Lock check:** Before writing, verify the plan file is not locked by an active ec-execute session:
+```bash
+LOCK_CHECK=$(python3 ~/.efficlaude/server/file_lock.py status "{PLAN_FILE}" 2>/dev/null \
+  || echo '{"status":"free"}')
+LOCK_STATUS=$(echo "$LOCK_CHECK" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','free'))" 2>/dev/null)
+```
+- If LOCK_STATUS is `"locked"`:
+  - Extract holder: `echo "$LOCK_CHECK" | python3 -c "import sys,json; h=json.load(sys.stdin).get('holder',{}); print(f\"session {h.get('session_id','?')} (PID {h.get('pid','?')}) running {h.get('command','ec-execute')}\")"`
+  - Show: "⚠️ {PLAN_FILE} is locked: {holder_info} — ec-execute may be running in another terminal"
+  - Ask: "Overwrite anyway? This will interrupt the other session. (y/n):"
+    - If `n`: stop — "Wait for the other session to finish, then run /ec-feature again."
+    - If `y`: proceed with writing plan.
+
 Run `mkdir -p .claude/plans` then save plan to `{PLAN_FILE}`.
 
 ## Step 4 — Self-Review Before Presenting
