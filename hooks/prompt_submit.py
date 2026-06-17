@@ -9,6 +9,7 @@ import subprocess
 import time
 import urllib.request
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 
@@ -35,6 +36,7 @@ START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
 WORKER_RESTART_WAIT_SECS = 5
 VERSION_FILE = os.path.expanduser("~/.efficlaude/VERSION")
 UPDATE_CHECK_FILE = os.path.expanduser("~/.efficlaude/.last_update_check")
+REMOTE_VERSION_CACHE = os.path.expanduser("~/.efficlaude/.remote_version")
 VERSION_URL = "https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/VERSION"
 
 
@@ -95,24 +97,46 @@ def get_docs_context(project, query):
 
 def check_update():
     try:
-        if os.path.exists(UPDATE_CHECK_FILE):
-            with open(UPDATE_CHECK_FILE) as f:
-                last = float(f.read().strip())
-            if time.time() - last < 86400:
-                return None
-        if not os.path.exists(VERSION_FILE):
+        if not os.path.exists(VERSION_FILE) or not os.path.exists(REMOTE_VERSION_CACHE):
             return None
         with open(VERSION_FILE) as f:
             local = f.read().strip()
-        with urllib.request.urlopen(VERSION_URL, timeout=3) as resp:
-            remote = resp.read().decode().strip()
-        with open(UPDATE_CHECK_FILE, 'w') as f:
-            f.write(str(time.time()))
-        if local != remote:
+        with open(REMOTE_VERSION_CACHE) as f:
+            remote = f.read().strip()
+        if remote and local != remote:
             return f"EffiClaude {remote} available (installed: {local}). Run: bash install.sh"
     except Exception:
         pass
     return None
+
+
+def maybe_refresh_update():
+    try:
+        if os.path.exists(UPDATE_CHECK_FILE):
+            with open(UPDATE_CHECK_FILE) as f:
+                last = float(f.read().strip())
+            if time.time() - last < 86400:
+                return
+        # Stamp the attempt now so a failing fetch can't defeat the 24h throttle.
+        with open(UPDATE_CHECK_FILE, "w") as f:
+            f.write(str(time.time()))
+        subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "--refresh-update"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
+def refresh_update_cache():
+    try:
+        with urllib.request.urlopen(VERSION_URL, timeout=3) as resp:
+            remote = resp.read().decode().strip()
+        with open(REMOTE_VERSION_CACHE, "w") as f:
+            f.write(remote)
+    except Exception:
+        pass
 
 
 def check_context_staleness():
@@ -144,6 +168,10 @@ def get_mode_indicator():
 
 
 def main():
+    if "--refresh-update" in sys.argv[1:]:
+        refresh_update_cache()
+        return
+
     try:
         raw = sys.stdin.read()
         data = json.loads(raw)
@@ -158,12 +186,16 @@ def main():
         sys.exit(0)
 
     project = get_project_name()
+    maybe_refresh_update()
     update_msg = check_update()
     staleness_msg = check_context_staleness()
     mode_indicator = get_mode_indicator()
 
-    memory_items = get_memory_context(project, prompt)
-    docs_items = get_docs_context(project, prompt)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        mem_future = ex.submit(get_memory_context, project, prompt)
+        docs_future = ex.submit(get_docs_context, project, prompt)
+        memory_items = mem_future.result()
+        docs_items = docs_future.result()
 
     parts = []
 

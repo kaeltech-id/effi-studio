@@ -87,6 +87,14 @@ def ensure_worker_quick():
 
 
 def main():
+    if len(sys.argv) >= 4 and sys.argv[1] == "--observe":
+        if ensure_worker_quick():
+            try:
+                post_observation(sys.argv[2], sys.argv[3])
+            except Exception as e:
+                _warn("post_tool_use", f"observe failed: {e}")
+        return
+
     try:
         raw = sys.stdin.read()
         data = json.loads(raw)
@@ -102,11 +110,14 @@ def main():
         sys.exit(0)
 
     project = get_project_name()
-    if ensure_worker_quick():
-        try:
-            post_observation(project, observation)
-        except Exception as e:
-            _warn("post_tool_use", f"observe failed: {e}")
+    try:
+        subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "--observe", project, observation],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
