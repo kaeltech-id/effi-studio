@@ -1,192 +1,255 @@
-## Feature: Slim the interaction critical path
+## Feature: Auto-Flow Mode + Plan Archival
 
 ### Impact Analysis
-- Files affected: `hooks/prompt_submit.py`, `hooks/post_tool_use.py`
-- ⚠️ Breaking change risk: none — stdin input contract and `<efficlaude-context>` output format are unchanged; only execution scheduling changes.
-- Note: hooks are copied to `~/.efficlaude/hooks/` at install time. Changes only take effect after `bash install.sh` (or manual copy). Verification below runs the repo files directly to confirm behavior before reinstall.
+- Files affected: `commands/ec-brainstorm.md`, `commands/ec-feature.md`, `commands/ec-execute.md`, `commands/ec-review.md`
+- ⚠️ Breaking change risk: none — all new behavior is gated behind a `.claude/.autoflow` sentinel that only exists when the user picks `auto`. Without it, every command behaves exactly as today. Archival only adds copies; the active `{BRANCH}.md` slot and resume logic are untouched.
 
 ### Reusable Existing Code
-- Detached `subprocess.Popen(..., stdout=DEVNULL, stderr=DEVNULL)` pattern at `hooks/prompt_submit.py:64-69` (in `ensure_worker()`) and `server/start.sh` — reuse for all fire-and-forget spawns.
-- `_warn(tag, msg)` logger in both hooks — reuse for child-process failure logging.
-- `fetch(url, timeout)` helper in `prompt_submit.py:50` — already returns `None`/`[]` on failure (graceful empty preserved under parallelism).
-- `ensure_worker_quick()` in `post_tool_use.py:72` — moved into the detached child path, off the critical path.
+- Sentinel/state-file pattern at `.claude/.mode` and `.claude/.review-done-{BRANCH}` — reuse the same flat-file convention for `.claude/.autoflow`.
+- `file_lock.py` lock helpers (ec-execute Step 1) — auto-flow must NOT bypass these; left as-is.
+- `vibe` mode gate-skip logic already present in each command's "Mode check" — auto-flow reuses the same "skip gate" branches by treating `AUTO=yes` like vibe for one run.
+
+### Canonical sentinel format (reference for all tasks)
+File `.claude/.autoflow`, two lines:
+```
+branch={BRANCH}
+created={unix_epoch_seconds}
+```
+Read snippet (identical across ec-feature / ec-execute / ec-review — paste verbatim):
+```bash
+AUTOFLOW=".claude/.autoflow"
+AUTO="no"
+if [ -f "$AUTOFLOW" ]; then
+  MTIME=$(stat -f %m "$AUTOFLOW" 2>/dev/null || stat -c %Y "$AUTOFLOW" 2>/dev/null || echo 0)
+  AGE=$(( $(date +%s) - MTIME ))
+  SENT_BRANCH=$(grep '^branch=' "$AUTOFLOW" 2>/dev/null | cut -d= -f2)
+  if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then
+    rm -f "$AUTOFLOW"
+  else
+    AUTO="yes"
+  fi
+fi
+```
 
 ### Tasks
-- [x] Task 1: Add ThreadPoolExecutor import to prompt_submit [S] [agent: ec-python] — import concurrent.futures
-- [x] Task 2: Parallelize memory + docs search in prompt_submit [S] [agent: ec-python] — run both worker calls concurrently
-- [x] Task 3: Make check_update local-only (read cached remote version) [S] [agent: ec-python] — remove network call from prompt path
-- [x] Task 4: Add background update refresh + --refresh-update handler [M] [agent: ec-python] — detached refresh of version cache
-- [x] Task 5: Make post_tool_use observe fire-and-forget [M] [agent: ec-python] — detached self-reinvocation for the POST
-- [x] Task 6: Verify end-to-end hook latency improvement [S] [agent: ec-python] — time both hooks with dummy stdin
+- [x] Task 1: Sentinel read in ec-feature [S] — add Auto-Flow read block to ec-feature Step 0 (after Branch detection), defining AUTO
+- [x] Task 2: Plan archival before overwrite [S] — archive existing plan to `.claude/plans/archive/` in ec-feature Incomplete plan guard
+- [x] Task 3: Honor AUTO in ec-feature gates [S] — auto-overwrite at guard + auto-proceed at Step 6 confirm when AUTO=yes
+- [x] Task 4: Sentinel read in ec-execute [S] — add Auto-Flow read block to ec-execute Step 1, defining AUTO
+- [x] Task 5: Honor AUTO + cleanup in ec-execute [S] — auto-continue pre-flight when AUTO=yes; delete sentinel on abort/fail/timeout
+- [x] Task 6: Sentinel read in ec-review [S] — add Auto-Flow read block to ec-review Step 1, defining AUTO
+- [x] Task 7: Archival + sentinel teardown in ec-review [S] — archive active plan and delete sentinel at end of clean review; always stop before git
+- [x] Task 8: Auto gate + sentinel spec in ec-brainstorm [S] — change Step 3 gate to (y/auto/n) and document the .autoflow format
+- [x] Task 9: Auto-chain in ec-brainstorm [M] — auto branch writes sentinel and invokes /ec-feature → /ec-execute → /ec-review sequentially with fallback
 
 ### Per Task Detail
 
-**Task 1 — Add ThreadPoolExecutor import to prompt_submit** `S`
-- File: `hooks/prompt_submit.py` (modify import block, ~line 5-13)
-- Reuse: none
-- Code sample: add to the imports near the top:
-  ```python
-  from concurrent.futures import ThreadPoolExecutor
-  ```
-- Edge cases: stdlib only (Python 3.8+ per stack.md) — no dependency change.
-- ⚠️ Breaking change: none
-- Verify: `python3 -c "import ast; ast.parse(open('hooks/prompt_submit.py').read())"` exits 0 and `grep -q 'ThreadPoolExecutor' hooks/prompt_submit.py`.
-- Dependencies: none
-
-**Task 2 — Parallelize memory + docs search in prompt_submit** `S`
-- File: `hooks/prompt_submit.py` (replace sequential calls at lines 165-166 in `main()`)
-- Reuse: `get_memory_context()`, `get_docs_context()` — unchanged; both already return `[]` on failure.
-- Code sample: replace
-  ```python
-  memory_items = get_memory_context(project, prompt)
-  docs_items = get_docs_context(project, prompt)
-  ```
-  with
-  ```python
-  with ThreadPoolExecutor(max_workers=2) as ex:
-      mem_future = ex.submit(get_memory_context, project, prompt)
-      docs_future = ex.submit(get_docs_context, project, prompt)
-      memory_items = mem_future.result()
-      docs_items = docs_future.result()
-  ```
-- Edge cases: both threads join before `parts[]` is built → output ordering (memory then docs) identical to current. Failure in either thread → that helper returns `[]` (same graceful-empty behavior).
-- ⚠️ Breaking change: none — output identical, only concurrent.
-- Verify: pipe a dummy event and confirm context still emitted:
-  `echo '{"prompt":"optimize performance"}' | python3 hooks/prompt_submit.py` prints an `<efficlaude-context>` block with both memory and docs sections (when present).
-- Dependencies: Task 1
-
-**Task 3 — Make check_update local-only (read cached remote version)** `S`
-- File: `hooks/prompt_submit.py` (replace `check_update()` body, lines 96-115; add constant near line 37)
-- Reuse: existing `VERSION_FILE`, `UPDATE_CHECK_FILE` constants.
-- Code sample: add constant by the other path constants:
-  ```python
-  REMOTE_VERSION_CACHE = os.path.expanduser("~/.efficlaude/.remote_version")
-  ```
-  Replace `check_update()` with a local-read-only version (no network):
-  ```python
-  def check_update():
-      try:
-          if not os.path.exists(VERSION_FILE) or not os.path.exists(REMOTE_VERSION_CACHE):
-              return None
-          with open(VERSION_FILE) as f:
-              local = f.read().strip()
-          with open(REMOTE_VERSION_CACHE) as f:
-              remote = f.read().strip()
-          if remote and local != remote:
-              return f"EffiClaude {remote} available (installed: {local}). Run: bash install.sh"
-      except Exception:
-          pass
-      return None
-  ```
-- Edge cases: first run after deploy → `REMOTE_VERSION_CACHE` absent → returns `None` (no message) until Task 4's background refresh populates it; message appears on a later prompt. Acceptable — update notice is advisory, never blocking.
-- ⚠️ Breaking change: none — same message format; behavior shifts from "block ≤3s on GitHub" to "instant local read".
-- Verify: `grep -n 'urlopen' hooks/prompt_submit.py` shows NO occurrence inside `check_update` (only in `refresh_update_cache` from Task 4 and `fetch`); `python3 -c "import ast; ast.parse(open('hooks/prompt_submit.py').read())"` exits 0.
-- Dependencies: none
-
-**Task 4 — Add background update refresh + --refresh-update handler** `M`
-- File: `hooks/prompt_submit.py` (add two functions near `check_update`; edit `main()` top + the `update_msg` line ~161)
-- Reuse: detached `Popen` pattern from `ensure_worker()` (lines 64-69); `VERSION_URL`, `REMOTE_VERSION_CACHE`, `UPDATE_CHECK_FILE`.
-- Code sample: add:
-  ```python
-  def maybe_refresh_update():
-      try:
-          if os.path.exists(UPDATE_CHECK_FILE):
-              with open(UPDATE_CHECK_FILE) as f:
-                  last = float(f.read().strip())
-              if time.time() - last < 86400:
-                  return
-          subprocess.Popen(
-              [sys.executable, os.path.abspath(__file__), "--refresh-update"],
-              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-          )
-      except Exception:
-          pass
-
-  def refresh_update_cache():
-      try:
-          with urllib.request.urlopen(VERSION_URL, timeout=3) as resp:
-              remote = resp.read().decode().strip()
-          with open(REMOTE_VERSION_CACHE, "w") as f:
-              f.write(remote)
-          with open(UPDATE_CHECK_FILE, "w") as f:
-              f.write(str(time.time()))
-      except Exception:
-          pass
-  ```
-  At the very TOP of `main()` (before `sys.stdin.read()`), add the child-mode branch:
-  ```python
-  def main():
-      if "--refresh-update" in sys.argv[1:]:
-          refresh_update_cache()
-          return
-      ...
-  ```
-  Replace `update_msg = check_update()` (line ~161) with:
-  ```python
-      maybe_refresh_update()
-      update_msg = check_update()
-  ```
-- Edge cases: detached child must not be `wait()`ed (it isn't); stdout/stderr→DEVNULL so it never blocks parent. Network failure in child → silent `except`, cache simply not refreshed.
-- ⚠️ Breaking change: none — `--refresh-update` only fires from the self-spawned child; normal stdin path unaffected.
-- Verify: `EFFICLAUDE_PORT=37777 python3 hooks/prompt_submit.py --refresh-update` exits 0 and creates/updates `~/.efficlaude/.remote_version`:
-  `test -f ~/.efficlaude/.remote_version && echo OK`.
-- Dependencies: Task 3
-
-**Task 5 — Make post_tool_use observe fire-and-forget** `M`
-- File: `hooks/post_tool_use.py` (rewrite `main()`, lines 89-110; `ensure_worker_quick`/`post_observation` unchanged)
-- Reuse: detached `Popen` pattern; `_warn()`; existing `ensure_worker_quick()` and `post_observation()` (moved into child path).
-- Code sample: replace `main()` with:
-  ```python
-  def main():
-      if len(sys.argv) >= 4 and sys.argv[1] == "--observe":
-          if ensure_worker_quick():
-              try:
-                  post_observation(sys.argv[2], sys.argv[3])
-              except Exception as e:
-                  _warn("post_tool_use", f"observe failed: {e}")
-          return
-
-      try:
-          raw = sys.stdin.read()
-          data = json.loads(raw)
-      except Exception:
-          sys.exit(0)
-
-      tool_name = data.get("tool_name", "")
-      if tool_name not in TRACKED_TOOLS:
-          sys.exit(0)
-
-      observation = build_observation(tool_name, data.get("tool_input", {}))
-      if not observation:
-          sys.exit(0)
-
-      project = get_project_name()
-      try:
-          subprocess.Popen(
-              [sys.executable, os.path.abspath(__file__), "--observe", project, observation],
-              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-          )
-      except Exception:
-          pass
-  ```
-- Edge cases: parent no longer calls `ensure_worker_quick()` (its 1s health check + possible start moves to child) → tool flow never blocks on worker. Dropped observation under detached failure = same failure mode as today (silent + `_warn`); SQLite/ChromaDB write in worker stays atomic per request.
-- ⚠️ Breaking change: none — `--observe` only fires from the self-spawned child.
-- Verify: `echo '{"tool_name":"Write","tool_input":{"file_path":"/tmp/x.txt"}}' | python3 hooks/post_tool_use.py` returns immediately (no blocking wait); then within ~2s `curl -s "http://localhost:37777/memory/search?q=Wrote%20file%20x.txt&project=EffiClaude&limit=3"` shows the observation recorded.
-- Dependencies: none
-
-**Task 6 — Verify end-to-end hook latency improvement** `S`
-- File: none (measurement only — no file writes)
-- Reuse: `/usr/bin/time -p`
-- Code sample: run before declaring done:
+**Task 1 — Sentinel read in ec-feature** `S`
+- File: `commands/ec-feature.md`
+- Reuse: canonical read snippet above
+- Anchor: Step 0, immediately after the **Branch detection** fenced block (the line `Note: "(branch: {BRANCH} → plan: {PLAN_FILE})"`).
+- Code sample: insert a new subsection:
+  ```markdown
+  **Auto-Flow check:** Detect whether this run is part of an auto-flow chain:
   ```bash
-  echo "=== prompt_submit ==="; for i in 1 2 3; do \
-    echo '{"prompt":"optimize worker performance latency"}' | /usr/bin/time -p python3 hooks/prompt_submit.py >/dev/null; done
-  echo "=== post_tool_use ==="; for i in 1 2 3; do \
-    echo '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/x.txt","old_string":"a"}}' | /usr/bin/time -p python3 hooks/post_tool_use.py >/dev/null; done
+  AUTOFLOW=".claude/.autoflow"
+  AUTO="no"
+  if [ -f "$AUTOFLOW" ]; then
+    MTIME=$(stat -f %m "$AUTOFLOW" 2>/dev/null || stat -c %Y "$AUTOFLOW" 2>/dev/null || echo 0)
+    AGE=$(( $(date +%s) - MTIME ))
+    SENT_BRANCH=$(grep '^branch=' "$AUTOFLOW" 2>/dev/null | cut -d= -f2)
+    if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
+  fi
   ```
-- Edge cases: `python3` interpreter startup (~30-60ms) is included in the measurement and is unavoidable for a hook — compare relative improvement, not absolute zero.
+  When `AUTO=yes`: treat this run like `vibe` mode for all confirmation gates (auto-skip). Do NOT delete the sentinel here — it is consumed/removed by `/ec-review`.
+  ```
+- Edge cases: stale sentinel (>2h) auto-removed; wrong-branch sentinel ignored; no sentinel → AUTO=no (normal).
 - ⚠️ Breaking change: none
-- Verify: prompt_submit `real` time ≈ `max(memory, docs)` (~250-350ms incl. interpreter), materially below the prior sequential ~400-700ms; post_tool_use `real` returns fast (no 2s observe wait). Record the numbers.
-- Dependencies: Task 2, Task 3, Task 4, Task 5
+- Verify: `grep -q 'Auto-Flow check' commands/ec-feature.md && grep -q 'AUTO="yes"' commands/ec-feature.md`
+- Dependencies: none
 
-Size guide: S = <1hr · M = 1-3hr · L = >3hr
+**Task 2 — Plan archival before overwrite** `S`
+- File: `commands/ec-feature.md`
+- Reuse: none
+- Anchor: **Incomplete plan guard** section. Add an archival step that runs whenever `{PLAN_FILE}` exists and is about to be overwritten.
+- Code sample: insert before "plan will be overwritten":
+  ```markdown
+  **Archive before overwrite:** If `{PLAN_FILE}` already exists, archive it before it is overwritten:
+  ```bash
+  if [ -f "$PLAN_FILE" ]; then
+    mkdir -p .claude/plans/archive
+    SLUG=$(grep -m1 '^## Feature:' "$PLAN_FILE" | sed 's/^## Feature: *//' | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-40)
+    [ -z "$SLUG" ] && SLUG="plan"
+    cp "$PLAN_FILE" ".claude/plans/archive/${BRANCH}-$(date +%Y-%m-%d-%H%M)-${SLUG}.md"
+    echo "(archived previous plan → .claude/plans/archive/${BRANCH}-$(date +%Y-%m-%d-%H%M)-${SLUG}.md)"
+  fi
+  ```
+  This write targets `.claude/plans/` — permitted by the No-Code Rule.
+  ```
+- Edge cases: no existing plan → skip; missing `## Feature:` line → slug defaults to `plan`.
+- ⚠️ Breaking change: none (additive copy; active slot unchanged)
+- Verify: `grep -q 'Archive before overwrite' commands/ec-feature.md && grep -q 'plans/archive' commands/ec-feature.md`
+- Dependencies: none
+
+**Task 3 — Honor AUTO in ec-feature gates** `S`
+- File: `commands/ec-feature.md`
+- Reuse: AUTO from Task 1
+- Anchor A: **Incomplete plan guard** `If count > 0` block. Anchor B: **Step 6 — Confirm** (`Ask: "Plan sudah benar? Confirm (y/n):"`).
+- Code sample (Anchor A) — append to the guard:
+  ```markdown
+  If `AUTO=yes`: skip the prompt — archive (Task 2 step) and overwrite automatically, then continue.
+  ```
+- Code sample (Anchor B) — extend the Step 6 vibe rule:
+  ```markdown
+  - If `AUTO=yes` (auto-flow) **or** MODE is `vibe`: skip this confirm gate and auto-proceed.
+  ```
+- Edge cases: AUTO=no → unchanged prompts.
+- ⚠️ Breaking change: none
+- Verify: `grep -c 'AUTO=yes' commands/ec-feature.md` returns ≥ 2
+- Dependencies: Task 1, Task 2
+
+**Task 4 — Sentinel read in ec-execute** `S`
+- File: `commands/ec-execute.md`
+- Reuse: canonical read snippet
+- Anchor: Step 1, after the **Mode check** block (ends before `## Step 2`).
+- Code sample: insert subsection:
+  ```markdown
+  **Auto-Flow check:** Detect auto-flow chaining:
+  ```bash
+  AUTOFLOW=".claude/.autoflow"
+  AUTO="no"
+  if [ -f "$AUTOFLOW" ]; then
+    MTIME=$(stat -f %m "$AUTOFLOW" 2>/dev/null || stat -c %Y "$AUTOFLOW" 2>/dev/null || echo 0)
+    AGE=$(( $(date +%s) - MTIME ))
+    SENT_BRANCH=$(grep '^branch=' "$AUTOFLOW" 2>/dev/null | cut -d= -f2)
+    if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
+  fi
+  ```
+  When `AUTO=yes`: auto-skip confirmation gates (like `vibe`). On any abnormal stop, delete the sentinel (see Error Recovery / Timeout). On successful completion, leave the sentinel for `/ec-review` to consume.
+  ```
+- Edge cases: same as Task 1.
+- ⚠️ Breaking change: none
+- Verify: `grep -q 'Auto-Flow check' commands/ec-execute.md`
+- Dependencies: none
+
+**Task 5 — Honor AUTO + cleanup in ec-execute** `S`
+- File: `commands/ec-execute.md`
+- Reuse: AUTO from Task 4
+- Anchor A: **Step 2 — Pre-flight Check** prompt (`"Found pre-flight issue: {issue}. Continue anyway? (y/n):"`). Anchor B: **Error Recovery** and **Timeout Rule**. Anchor C: lock-busy abort `If a:`.
+- Code sample (Anchor A) — append:
+  ```markdown
+  If `AUTO=yes`: do not prompt — abort the chain instead. Delete the sentinel (`rm -f .claude/.autoflow`), release the lock, report the pre-flight issue, and stop. Auto-flow never silently continues past a pre-flight failure.
+  ```
+- Code sample (Anchor B) — append to both Error Recovery and Timeout:
+  ```markdown
+  If `AUTO=yes`: delete the sentinel (`rm -f .claude/.autoflow`) so the auto-flow chain stops here; then surface the Retry/Skip/Fix choice to the user as normal.
+  ```
+- Code sample (Anchor C) — append to the `If a:` abort line:
+  ```markdown
+  If `AUTO=yes`, also run `rm -f .claude/.autoflow` before stopping.
+  ```
+- Edge cases: AUTO=no → unchanged behavior everywhere.
+- ⚠️ Breaking change: none
+- Verify: `grep -c 'rm -f .claude/.autoflow' commands/ec-execute.md` returns ≥ 3
+- Dependencies: Task 4
+
+**Task 6 — Sentinel read in ec-review** `S`
+- File: `commands/ec-review.md`
+- Reuse: canonical read snippet
+- Anchor: Step 1, after the **Mode check** block.
+- Code sample: insert subsection:
+  ```markdown
+  **Auto-Flow check:** Detect auto-flow chaining:
+  ```bash
+  AUTOFLOW=".claude/.autoflow"
+  AUTO="no"
+  if [ -f "$AUTOFLOW" ]; then
+    MTIME=$(stat -f %m "$AUTOFLOW" 2>/dev/null || stat -c %Y "$AUTOFLOW" 2>/dev/null || echo 0)
+    AGE=$(( $(date +%s) - MTIME ))
+    SENT_BRANCH=$(grep '^branch=' "$AUTOFLOW" 2>/dev/null | cut -d= -f2)
+    if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
+  fi
+  ```
+  When `AUTO=yes`: run the review without pausing for confirmation. This command is the END of the auto-flow chain — it always deletes the sentinel and stops before git (see Task 7).
+  ```
+- Edge cases: same as Task 1.
+- ⚠️ Breaking change: none
+- Verify: `grep -q 'Auto-Flow check' commands/ec-review.md`
+- Dependencies: none
+
+**Task 7 — Archival + sentinel teardown in ec-review** `S`
+- File: `commands/ec-review.md`
+- Reuse: AUTO from Task 6; archival snippet from Task 2
+- Anchor: the **"If review is clean"** line and the closing **"Next: run /ec-git"**.
+- Code sample (after the clean-review existing actions) — append:
+  ```markdown
+  Then archive the completed plan and tear down any auto-flow sentinel:
+  ```bash
+  if [ -f "$PLAN_FILE" ]; then
+    mkdir -p .claude/plans/archive
+    SLUG=$(grep -m1 '^## Feature:' "$PLAN_FILE" | sed 's/^## Feature: *//' | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-40)
+    [ -z "$SLUG" ] && SLUG="plan"
+    cp "$PLAN_FILE" ".claude/plans/archive/${BRANCH}-$(date +%Y-%m-%d-%H%M)-${SLUG}.md"
+    echo "(plan archived → .claude/plans/archive/)"
+  fi
+  rm -f .claude/.autoflow
+  ```
+  ```
+- Code sample (the not-clean branch) — add:
+  ```markdown
+  If review is NOT clean: also run `rm -f .claude/.autoflow` and stop — the auto-flow chain does not proceed to git.
+  ```
+- Code sample (end / "Next: run /ec-git") — clarify:
+  ```markdown
+  Auto-flow ends here: even when AUTO=yes, the chain STOPS at this point and only suggests `/ec-git`. Git is never run automatically (GIT RULES).
+  ```
+- Edge cases: clean and not-clean both delete the sentinel; AUTO=no still archives (harmless history).
+- ⚠️ Breaking change: none
+- Verify: `grep -q 'rm -f .claude/.autoflow' commands/ec-review.md && grep -q 'plans/archive' commands/ec-review.md`
+- Dependencies: Task 6
+
+**Task 8 — Auto gate + sentinel spec in ec-brainstorm** `S`
+- File: `commands/ec-brainstorm.md`
+- Reuse: none
+- Anchor: Step 3 gate (`"Setuju lanjut dengan ini? (y/n — atau describe apa yang kurang):"` and its `- If y:` / `- If n` lines).
+- Code sample — replace the gate block with:
+  ```markdown
+  "Setuju lanjut dengan ini? (y / auto / n — atau describe apa yang kurang):"
+  - If y: proceed to Step 4 (normal sharpening flow)
+  - If auto: skip Step 4 sharpening — go straight to Step 5 "now" save, then trigger the auto-flow chain (see Step 7). Auto-flow runs /ec-feature → /ec-execute → /ec-review with no further confirmation, stopping before git.
+  - If n or feedback: adjust the recommendation, re-present, ask again. Do not revert to showing multiple options.
+
+  **Auto-Flow sentinel format** (written by the auto path in Step 7): file `.claude/.autoflow`, two lines —
+  `branch={BRANCH}` and `created={unix_epoch}`. Consumed and removed by /ec-review. Treated as stale (ignored + deleted) by any command if older than 2 hours or if its branch ≠ current branch.
+  ```
+- Edge cases: `n`/feedback unchanged; `y` unchanged.
+- ⚠️ Breaking change: none (adds an option)
+- Verify: `grep -q 'y / auto / n' commands/ec-brainstorm.md && grep -q 'Auto-Flow sentinel format' commands/ec-brainstorm.md`
+- Dependencies: none
+
+**Task 9 — Auto-chain in ec-brainstorm** `M`
+- File: `commands/ec-brainstorm.md`
+- Reuse: existing Step 5 "now" save path (writes DECISION_FILE)
+- Anchor: end of **Step 6 — Hand Off** (after the `**If "now":**` next-run section). Add a new `## Step 7`.
+- Code sample — add a new subsection:
+  ```markdown
+  ## Step 7 — Auto-Flow Chain (only if user chose `auto` in Step 3)
+  After the decision file is saved (Step 5 "now" path), run the full chain automatically:
+  1. Write the sentinel:
+     ```bash
+     mkdir -p .claude
+     printf 'branch=%s\ncreated=%s\n' "$BRANCH" "$(date +%s)" > .claude/.autoflow
+     ```
+  2. Invoke `/ec-feature` via the Skill tool and let it run to completion (it auto-loads {DECISION_FILE}, auto-confirms because AUTO=yes).
+  3. Then invoke `/ec-execute` via the Skill tool and let it run all tasks (auto-confirms because AUTO=yes).
+  4. Then invoke `/ec-review` via the Skill tool (auto-runs, archives the plan, deletes the sentinel, stops before git).
+  5. Surface a final summary and suggest `/ec-git`. Never run git.
+
+  **Verification of mechanism:** If the Skill tool cannot be invoked from within a running command, FALL BACK to executing each command's steps inline in this same session, in the same order, honoring AUTO=yes at every gate. The end state must be identical (plan built, executed, reviewed, sentinel removed, stopped before git).
+
+  **Failure handling:** If /ec-execute or /ec-review aborts (it will delete the sentinel itself), stop the chain and report where it stopped. Do not continue to the next stage.
+  ```
+- Edge cases: user chose `y` (not `auto`) → Step 7 skipped entirely; worker offline → chain still works (memory saves are best-effort).
+- ⚠️ Breaking change: none
+- Verify: `grep -q 'Step 7 — Auto-Flow Chain' commands/ec-brainstorm.md && grep -q '.claude/.autoflow' commands/ec-brainstorm.md`
+- Dependencies: Task 8 (gate must offer `auto`); relies on Tasks 1-7 honoring the sentinel

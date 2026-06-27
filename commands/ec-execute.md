@@ -22,7 +22,7 @@ LOCK_STATUS=$(echo "$LOCK_RESULT" | python3 -c "import sys,json; print(json.load
   - Extract holder info: `echo "$LOCK_RESULT" | python3 -c "import sys,json; h=json.load(sys.stdin).get('holder',{}); print(f\"session {h.get('session_id','?')} (PID {h.get('pid','?')}) since {h.get('acquired_at','?')[:16]}\")"`
   - Show: "⚠️ Plan locked by another terminal: {holder_info}"
   - Ask: "Abort or wait for lock to clear? (a/w):"
-    - If `a`: stop — "Run /ec-execute in the other terminal first, or delete `{PLAN_FILE}.lock` manually."
+    - If `a`: stop — "Run /ec-execute in the other terminal first, or delete `{PLAN_FILE}.lock` manually." If a `.claude/.autoflow` sentinel exists whose `branch=` matches the current branch, also run `rm -f .claude/.autoflow` before stopping (auto-flow cannot proceed past a busy lock).
     - If `w`: run retry loop (10-second intervals, up to 3 minutes):
       ```bash
       for i in $(seq 1 18); do
@@ -72,6 +72,19 @@ If `done > 0` and `remaining > 0`:
 - If `vibe`: skip Step 6 memory save (`curl .../memory/observe`), skip "Next: run /ec-review" in Step 7 report
 - If `structured` (or file absent): proceed normally
 
+**Auto-Flow check:** Detect auto-flow chaining:
+```bash
+AUTOFLOW=".claude/.autoflow"
+AUTO="no"
+if [ -f "$AUTOFLOW" ]; then
+  MTIME=$(stat -f %m "$AUTOFLOW" 2>/dev/null || stat -c %Y "$AUTOFLOW" 2>/dev/null || echo 0)
+  AGE=$(( $(date +%s) - MTIME ))
+  SENT_BRANCH=$(grep '^branch=' "$AUTOFLOW" 2>/dev/null | cut -d= -f2)
+  if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
+fi
+```
+When `AUTO=yes`: auto-skip confirmation gates (like `vibe`). On any abnormal stop, delete the sentinel (see Error Recovery / Timeout). On successful completion, leave the sentinel for `/ec-review` to consume.
+
 ## Step 2 — Pre-flight Check
 Before executing, verify:
 - All files referenced in the plan exist (if modifying existing files)
@@ -81,6 +94,7 @@ Before executing, verify:
 
 If any issue found, report it and ask:
 "Found pre-flight issue: {issue}. Continue anyway? (y/n):"
+If `AUTO=yes`: do not prompt — abort the chain instead. Delete the sentinel (`rm -f .claude/.autoflow`), release the lock, report the pre-flight issue, and stop. Auto-flow never silently continues past a pre-flight failure.
 
 ## Step 3 — Execute Sequentially
 Read all tasks from `{PLAN_FILE}`. Find all lines matching `- [ ]`.
@@ -135,6 +149,7 @@ Each subagent MUST prove completion before claiming done:
 
 ### Error Recovery
 If a subagent fails or cannot verify:
+- If `AUTO=yes`: delete the sentinel (`rm -f .claude/.autoflow`) so the auto-flow chain stops here; then surface the Retry/Skip/Fix choice to the user as normal.
 - Report: "Task {name} failed: {reason}"
 - Ask user: "Retry / Skip / Fix manually?"
 - Do not continue to dependent tasks until resolved
@@ -142,6 +157,7 @@ If a subagent fails or cannot verify:
 ### Timeout Rule
 If a subagent has not completed within 10 minutes:
 - Treat it as failed
+- If `AUTO=yes`: delete the sentinel (`rm -f .claude/.autoflow`) so the auto-flow chain stops here; then surface the Retry/Skip/Fix choice to the user as normal.
 - Report: "Task {name} timed out after 10 minutes"
 - Ask user: "Retry / Skip / Fix manually?"
 

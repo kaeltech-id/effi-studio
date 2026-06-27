@@ -114,9 +114,13 @@ Format:
 - "Start with X, then do Y later" is not a recommendation — it is two recommendations. Pick one complete solution.
 
 After presenting:
-"Setuju lanjut dengan ini? (y/n — atau describe apa yang kurang):"
-- If y: proceed to Step 4
+"Setuju lanjut dengan ini? (y / auto / n — atau describe apa yang kurang):"
+- If y: proceed to Step 4 (normal sharpening flow)
+- If auto: skip Step 4 sharpening — go straight to Step 5 "now" save, then trigger the auto-flow chain (see Step 7). Auto-flow runs /ec-feature → /ec-execute → /ec-review with no further confirmation, stopping before git.
 - If n or feedback: adjust the recommendation based on feedback, re-present, ask again. Do not revert to showing multiple options.
+
+**Auto-Flow sentinel format** (written by the auto path in Step 7): file `.claude/.autoflow`, two lines —
+`branch={BRANCH}` and `created={unix_epoch}`. Consumed and removed by /ec-review. Treated as stale (ignored + deleted) by any command if older than 2 hours or if its branch ≠ current branch.
 
 ## Step 4 — Sharpen the Recommendation
 Present the deepening in **sections of 200-300 words each**. After each section, ask: "Bagian ini sudah oke? (y/lanjut/revisi)" — wait for confirmation before continuing to the next.
@@ -206,3 +210,19 @@ Next: run `/ec-feature` — it will load this decision automatically.
 
 **If "save":**
 Run `/ec-feature` when ready — it will show a numbered list of saved brainstorms to pick from.
+
+## Step 7 — Auto-Flow Chain (only if user chose `auto` in Step 3)
+After the decision file is saved (Step 5 "now" path), run the full chain automatically:
+1. Write the sentinel:
+   ```bash
+   mkdir -p .claude
+   printf 'branch=%s\ncreated=%s\n' "$BRANCH" "$(date +%s)" > .claude/.autoflow
+   ```
+2. Invoke `/ec-feature` via the Skill tool and let it run to completion (it auto-loads {DECISION_FILE}, auto-confirms because AUTO=yes).
+3. Then invoke `/ec-execute` via the Skill tool and let it run all tasks (auto-confirms because AUTO=yes).
+4. Then invoke `/ec-review` via the Skill tool (auto-runs, archives the plan, deletes the sentinel, stops before git).
+5. Surface a final summary and suggest `/ec-git`. Never run git.
+
+**Verification of mechanism:** If the Skill tool cannot be invoked from within a running command, FALL BACK to executing each command's steps inline in this same session, in the same order, honoring AUTO=yes at every gate. The end state must be identical (plan built, executed, reviewed, sentinel removed, stopped before git).
+
+**Failure handling:** If /ec-execute or /ec-review aborts (it will delete the sentinel itself), stop the chain and report where it stopped. Do not continue to the next stage.

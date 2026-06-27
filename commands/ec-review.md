@@ -25,6 +25,19 @@ Check worker status: `curl -s http://localhost:37777/health`
 - If `vibe`: skip "Next: run /ec-git" suggestion at end of review
 - If `structured` (or file absent): proceed normally
 
+**Auto-Flow check:** Detect auto-flow chaining:
+```bash
+AUTOFLOW=".claude/.autoflow"
+AUTO="no"
+if [ -f "$AUTOFLOW" ]; then
+  MTIME=$(stat -f %m "$AUTOFLOW" 2>/dev/null || stat -c %Y "$AUTOFLOW" 2>/dev/null || echo 0)
+  AGE=$(( $(date +%s) - MTIME ))
+  SENT_BRANCH=$(grep '^branch=' "$AUTOFLOW" 2>/dev/null | cut -d= -f2)
+  if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
+fi
+```
+When `AUTO=yes`: run the review without pausing for confirmation. This command is the END of the auto-flow chain — it always deletes the sentinel and stops before git (see Step 4 teardown).
+
 ## Step 1.5 — Blast Radius Analysis (if worker running)
 Extract all files modified during execution from `{PLAN_FILE}`.
 
@@ -183,6 +196,20 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 **If review is clean**, delete `{DECISION_FILE}` if it exists (run `rm -f {DECISION_FILE}`), then write the review-done sentinel: `touch {REVIEW_DONE}` — this lets `/ec-next` detect that review is complete and route to `/ec-git`.
 
+Then archive the completed plan and tear down any auto-flow sentinel:
+```bash
+if [ -f "$PLAN_FILE" ]; then
+  mkdir -p .claude/plans/archive
+  SLUG=$(grep -m1 '^## Feature:' "$PLAN_FILE" | sed 's/^## Feature: *//' | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-40)
+  [ -z "$SLUG" ] && SLUG="plan"
+  cp "$PLAN_FILE" ".claude/plans/archive/${BRANCH}-$(date +%Y-%m-%d-%H%M)-${SLUG}.md"
+  echo "(plan archived → .claude/plans/archive/)"
+fi
+rm -f .claude/.autoflow
+```
+
+**If review is NOT clean** (unresolved issues remain): also run `rm -f .claude/.autoflow` and stop — the auto-flow chain does not proceed to git.
+
 ## Step 5 — Write Review Docs
 
 Run `mkdir -p .claude/review-summaries` then write `{REVIEW_SUMMARY}` (overwrite if it already exists):
@@ -221,3 +248,5 @@ If `docs/PROJECT.md` does not exist: show "(docs/PROJECT.md not found — run /e
 
 If everything is clean: "No issues found. Ready to commit."
 Next: run `/ec-git` to commit and push.
+
+Auto-flow ends here: even when AUTO=yes, the chain STOPS at this point and only suggests `/ec-git`. Git is never run automatically (GIT RULES).

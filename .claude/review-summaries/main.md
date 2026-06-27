@@ -1,29 +1,32 @@
-# Review Summary — Slim the interaction critical path
-_Date: 2026-06-17_
+# Review Summary — Auto-Flow Mode + Plan Archival
+_Date: 2026-06-27_
 
 ## Feature
-Slim the interaction critical path
+Auto-Flow Mode + Plan Archival
 
 ## Tasks completed
-- [x] Task 1: Add ThreadPoolExecutor import to prompt_submit [S] [agent: ec-python] — import concurrent.futures
-- [x] Task 2: Parallelize memory + docs search in prompt_submit [S] [agent: ec-python] — run both worker calls concurrently
-- [x] Task 3: Make check_update local-only (read cached remote version) [S] [agent: ec-python] — remove network call from prompt path
-- [x] Task 4: Add background update refresh + --refresh-update handler [M] [agent: ec-python] — detached refresh of version cache
-- [x] Task 5: Make post_tool_use observe fire-and-forget [M] [agent: ec-python] — detached self-reinvocation for the POST
-- [x] Task 6: Verify end-to-end hook latency improvement [S] [agent: ec-python] — time both hooks with dummy stdin
+- [x] Task 1: Sentinel read in ec-feature [S] — add Auto-Flow read block to ec-feature Step 0 (after Branch detection), defining AUTO
+- [x] Task 2: Plan archival before overwrite [S] — archive existing plan to `.claude/plans/archive/` in ec-feature Incomplete plan guard
+- [x] Task 3: Honor AUTO in ec-feature gates [S] — auto-overwrite at guard + auto-proceed at Step 6 confirm when AUTO=yes
+- [x] Task 4: Sentinel read in ec-execute [S] — add Auto-Flow read block to ec-execute Step 1, defining AUTO
+- [x] Task 5: Honor AUTO + cleanup in ec-execute [S] — auto-continue pre-flight when AUTO=yes; delete sentinel on abort/fail/timeout
+- [x] Task 6: Sentinel read in ec-review [S] — add Auto-Flow read block to ec-review Step 1, defining AUTO
+- [x] Task 7: Archival + sentinel teardown in ec-review [S] — archive active plan and delete sentinel at end of clean review; always stop before git
+- [x] Task 8: Auto gate + sentinel spec in ec-brainstorm [S] — change Step 3 gate to (y/auto/n) and document the .autoflow format
+- [x] Task 9: Auto-chain in ec-brainstorm [M] — auto branch writes sentinel and invokes /ec-feature → /ec-execute → /ec-review sequentially with fallback
 
 ## Files modified
-- `hooks/prompt_submit.py`
-- `hooks/post_tool_use.py`
-
-Blast radius (reviewed, not modified): `tests/test_hooks.py`, `server/tests/test_hooks.py` — both import only `build_observation` and `check_context_staleness` (untouched); 5 + 12 tests pass.
+- commands/ec-brainstorm.md
+- commands/ec-feature.md
+- commands/ec-execute.md
+- commands/ec-review.md
 
 ## Issues fixed during review
-- `hooks/prompt_submit.py` — `maybe_refresh_update()` throttle-defeat: the 24h throttle timestamp was only written after a successful fetch, so a persistently failing `VERSION_URL` (currently 404) would spawn a detached refresh subprocess on **every** prompt. Fixed by stamping `UPDATE_CHECK_FILE` at spawn-decision time (and removing the now-redundant timestamp write from `refresh_update_cache()`), throttling spawn attempts to once/24h regardless of fetch outcome. Verified.
+No issues found. (Template drift check: ✓ GIT RULES in sync.)
 
 ## Review result
 | Check | Status |
 |-------|--------|
 | Spec compliance | ✓ |
 | Code quality | ✓ |
-| Tests | skipped (17 existing pass) |
+| Tests | skipped (Markdown command definitions — no executable unit) |

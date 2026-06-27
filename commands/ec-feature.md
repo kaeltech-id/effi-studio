@@ -20,12 +20,38 @@ DECISION_FILE=".claude/decisions/${BRANCH}.md"
 ```
 Note: "(branch: {BRANCH} → plan: {PLAN_FILE})"
 
+**Auto-Flow check:** Detect whether this run is part of an auto-flow chain:
+```bash
+AUTOFLOW=".claude/.autoflow"
+AUTO="no"
+if [ -f "$AUTOFLOW" ]; then
+  MTIME=$(stat -f %m "$AUTOFLOW" 2>/dev/null || stat -c %Y "$AUTOFLOW" 2>/dev/null || echo 0)
+  AGE=$(( $(date +%s) - MTIME ))
+  SENT_BRANCH=$(grep '^branch=' "$AUTOFLOW" 2>/dev/null | cut -d= -f2)
+  if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
+fi
+```
+When `AUTO=yes`: treat this run like `vibe` mode for all confirmation gates (auto-skip). Do NOT delete the sentinel here — it is consumed/removed by `/ec-review`.
+
 **Incomplete plan guard:** Before proceeding, check if `{PLAN_FILE}` exists.
 If it exists, count lines matching `- [ ]`.
 If count > 0:
+  If `AUTO=yes`: skip the prompt — archive (see "Archive before overwrite" below) and overwrite automatically, then continue.
   Show: "⚠️ {PLAN_FILE} has {n} incomplete task(s). Overwrite and start fresh? (y/n):"
   If n: Stop — "Run /ec-execute to finish the current plan, or manually delete {PLAN_FILE}."
   If y: continue normally — plan will be overwritten at Step 3.
+
+**Archive before overwrite:** If `{PLAN_FILE}` already exists, archive it before it is overwritten (runs for both the `If y` path above and the no-incomplete-tasks overwrite at Step 3):
+```bash
+if [ -f "$PLAN_FILE" ]; then
+  mkdir -p .claude/plans/archive
+  SLUG=$(grep -m1 '^## Feature:' "$PLAN_FILE" | sed 's/^## Feature: *//' | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-40)
+  [ -z "$SLUG" ] && SLUG="plan"
+  cp "$PLAN_FILE" ".claude/plans/archive/${BRANCH}-$(date +%Y-%m-%d-%H%M)-${SLUG}.md"
+  echo "(archived previous plan → .claude/plans/archive/${BRANCH}-$(date +%Y-%m-%d-%H%M)-${SLUG}.md)"
+fi
+```
+This write targets `.claude/plans/` — permitted by the No-Code Rule.
 
 **Check for brainstorm decision:** If `{DECISION_FILE}` exists, read it silently.
 - Look for `_Created: {YYYY-MM-DD}_` on the last non-empty line. If found, parse the date.
@@ -268,6 +294,7 @@ curl -s -X POST http://localhost:37777/memory/observe \
 ```
 
 ## Step 6 — Confirm
+- If `AUTO=yes` (auto-flow) **or** MODE is `vibe`: skip this confirm gate and auto-proceed.
 Ask: "Plan sudah benar? Confirm (y/n):"
 - If y: proceed
 - If n: ask "Apa yang perlu diubah?" → revise plan → re-confirm
