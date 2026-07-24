@@ -15,22 +15,25 @@ Scan all repos/folders in this project directory. Detect:
 - Naming conventions (files, folders, variables, components)
 - Code patterns used
 
-## Step 2 — Interactive Q&A
-Ask ONE question at a time. Wait for user response before proceeding.
+**Existing setup detection:** Check whether any of `.claude/context/stack.md`, `.claude/context/structure.md`, `.claude/context/conventions.md`, or `.claude/context/notes.md` already exist and are non-empty.
+- If any exist: set RESUME=yes. This is an add-to run, not a fresh setup — read them silently so you know what is already recorded.
+- If none exist: set RESUME=no (fresh setup).
 
-1. "What is this project called?"
-2. "Tech stack I detected: [scan result]. Correct? Anything to add or change?"
-3. "Folder structure: [scan result]. Correct? Any corrections?"
-4. "Naming conventions I detected: [scan result]. Correct?"
-5. "Do you use a project management tool? (Jira / Linear / GitHub Issues / Notion / Trello / other / none)"
-   - If yes: "Base URL?" then "API key?" then "Project key or board ID?"
-   - If none: skip
-6. "Do you use Figma or another design tool? (Figma / Sketch / other / none)"
-   - If Figma: "Figma API key?" then "Node.js is required for Figma MCP — is it installed? (yes / no / skip)"
-   - If other: "How do you share designs? (link / screenshot / description)"
-   - If none: skip
-7. "Backend API base URL? (or skip)"
-8. "Anything else I should know about this project?"
+## Step 2 — Free-Form Capture (optional, additive)
+There are NO fixed questions. Setup is free-form and never mandatory.
+
+**If RESUME=no (fresh setup):**
+Ask once, open-ended: "Ada yang mau kamu kasih tahu soal project ini? Apa aja — cara kerjanya, konvensi, gotcha, tools, URL, akun, apa pun yang menurut kamu setup. (atau ketik 'skip')"
+- Accept any free-form text, in any shape. Do not force it into categories.
+- If the user types 'skip': record nothing extra; the silent scan alone is enough.
+
+**If RESUME=yes (add-to run):**
+Show a 2–4 line summary of what is already recorded (from notes.md + detected stack).
+Then ask ONLY: "Mau nambah atau ubah apa? (atau ketik 'done')"
+- Whatever the user types is ADDED to existing setup — never restart from scratch, never re-ask prior questions.
+- If the user types 'done': keep everything as-is and proceed.
+
+Optional structured fields (ticket tool, design tool, API base URL, Figma key) are captured ONLY if the user volunteers them in their free-form answer — never interrogate for them. When volunteered, write them to project-config.json in Step 3 as before.
 
 ## Step 3 — Save Files
 
@@ -82,6 +85,13 @@ Folder structure & architecture detail.
 
 ### .claude/context/conventions.md
 Naming conventions & clean code rules.
+
+### .claude/context/notes.md (append-only — never overwrite)
+Free-form project notes the user provided in Step 2. This file is the user's own content and MUST be preserved across re-runs.
+- If it does not exist: create it with the `<!-- last_updated: {YYYY-MM-DD} -->` first line, then the user's notes under a `## {YYYY-MM-DD}` heading.
+- If it already exists: APPEND a new `## {YYYY-MM-DD}` heading with only the newly added notes. Never delete or rewrite existing entries. If the new input merely corrects an earlier note, add a short "(updates: …)" line rather than editing the old text.
+- If the user chose 'skip'/'done' with no new input: leave the file untouched.
+Unlike `docs/PROJECT.md` (a derived overview, regenerated fresh each run) and the scan-detected context files, `notes.md` is user-authored and additive.
 
 ### docs/PROJECT.md
 Create the `docs/` directory if it doesn't exist, then write `docs/PROJECT.md`:

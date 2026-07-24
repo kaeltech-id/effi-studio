@@ -130,6 +130,21 @@ After spec compliance is confirmed, review code quality on all modified files.
 - Keyboard navigation works
 - Semantic HTML used correctly
 
+### Visual Fidelity (if the plan has a Design Contract)
+- Every element listed in the Design Contract has a counterpart in the implemented code
+- No element was invented that the contract does not list
+- Copy matches the contract exactly — no rewording, no placeholder text
+- Spacing, typography, and color match the contract's measured values
+- Every state the contract records is implemented, plus loading / empty / error on data-driven regions
+- Any deviation is declared in the code or the execution report — an undeclared deviation is an issue to fix
+
+### API Error Handling (any code that calls an API)
+- Every call has error handling — none is left bare
+- Existing project error handlers were reused where they exist; a new reusable handler was created where they did not
+- Coverage includes network failure, non-2xx status, timeout, malformed or empty payload, and auth expiry
+- Failures surface in the UI as a recoverable state — no blank screen, no endless spinner
+- No empty catch blocks and no log-only handling
+
 ### API Correctness (if docs available)
 - Compare implemented API calls against cached docs
 - Flag any usage of deprecated or incorrect APIs

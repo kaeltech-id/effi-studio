@@ -7,9 +7,9 @@ Check worker status: `curl -s http://localhost:37777/health`
   Use memory to understand: what files have been touched recently, past decisions, patterns used. Do not dump raw memory.
 - If offline: show "(worker OFFLINE ⚠️ — memory unavailable)" and continue. Read .claude/context/ files for context.
 
-**Onboarding check:** Verify `.claude/context/stack.md`, `.claude/context/structure.md`, and `.claude/context/conventions.md` all exist and are non-empty.
-- If all present: proceed normally
-- If any are missing or empty: show "(context incomplete — run /ec-setup first to configure this project)" and stop
+**Setup check (optional):** Check whether any of `.claude/context/stack.md`, `.claude/context/structure.md`, `.claude/context/conventions.md`, or `.claude/context/notes.md` exist and are non-empty.
+- If any present: use them for context and proceed normally.
+- If none present: show "(no setup found — working from a live scan; run /ec-setup anytime to add project context)", do a quick live scan of the repo for stack/structure, and proceed. Do NOT stop.
 
 **Branch detection:** Run:
 ```bash
@@ -62,6 +62,7 @@ This write targets `.claude/plans/` — permitted by the No-Code Rule.
     - If n: delete `{DECISION_FILE}`, then proceed to saved brainstorms check
   - If within 7 days, or date line absent: proceed normally.
 - Pre-fill the feature description from the decision's "Chosen Approach" section
+- If the decision file contains a `## Design Contract` section, load it verbatim as the starting Design Contract — do not re-ask question 2 unless its Source line reads "none supplied"
 - Skip asking about approach — user already decided
 - Note: "({DECISION_FILE} loaded — using chosen approach from brainstorm)"
 - Do NOT delete `{DECISION_FILE}` here — it will be deleted by `/ec-review` after a clean review
@@ -85,6 +86,7 @@ This write targets `.claude/plans/` — permitted by the No-Code Rule.
 **No-Code Rule:** This command MUST NOT create, edit, or write any project files.
 Allowed writes: `.claude/plans/` only.
 If you find yourself about to write code or modify project files — stop. That belongs in `/ec-execute`.
+Reading is always allowed — this command MAY run read-only shell commands (`grep`, `grep -n`, `sed -n`, `wc -l`, `ls`, `git diff --stat`) to measure the codebase. It MUST NOT run any command that writes, deletes, or changes git state.
 
 ## Step 1 — Gather Input
 Ask ONE question at a time. Every input is optional — minimum viable input is a plain text description.
@@ -118,12 +120,31 @@ Ask ONE question at a time. Every input is optional — minimum viable input is 
    **If text description:** use as-is
    **If skip:** plan UI based on feature description only
 
+   **Build the Design Contract (every branch except skip):** After loading the reference, extract a Design Contract with this exact structure. It is written into the plan file verbatim, so it must stand on its own without the image:
+   ```
+   ### Design Contract
+   - Source: {figma url | screenshot absolute path | text description}  ·  Viewport: {e.g. 1440x900 desktop, 390x844 mobile, or "unspecified"}
+   - Layout: {structure and section order top-to-bottom, alignment, grid/flex behaviour}
+   - Spacing: {observed padding / margin / gap values}
+   - Typography: {per text element — size, weight, line-height, color}
+   - Color: {background, surface, border, text, accent — hex where determinable}
+   - Elements: {exhaustive ordered list of every visible element — containers, text, icons, dividers, badges, inputs, buttons}
+   - Copy: {exact literal text strings visible in the reference}
+   - States: {default / hover / focus / disabled / loading / empty / error — record each as shown, or "not shown"}
+   - Deviations allowed: {responsive adaptation or token substitution notes, or "none"}
+   ```
+   Rules: describe what is actually visible, never what is typical. If a value cannot be determined from the reference, write `not determinable from reference` rather than guessing. Always keep the original path or URL in the Source line so subagents can re-read the image at execute time; resolve a relative screenshot path to an absolute path before storing it. Extraction is identical whether Figma data came from the MCP tool or the REST fallback.
+
+   **If skip and the feature has UI scope:** write the contract with the single line `- Source: none supplied — implement from the feature description; no fidelity claim can be made.`
+
+   **If the feature has no UI scope:** write no Design Contract and no `[design:]` tags.
+
 3. "Any API contract? (paste JSON / OpenAPI / endpoint description / skip)"
 
 4. "Anything else I should know? (or type 'done')"
 
 ## Step 2 — Analyze
-Read .claude/context/stack.md, .claude/context/structure.md, .claude/context/conventions.md.
+Read .claude/context/stack.md, .claude/context/structure.md, .claude/context/conventions.md, and .claude/context/notes.md — load each only if it exists (all optional).
 
 ### Docs Lookup (if worker running)
 For the feature being planned, search relevant docs:
@@ -197,8 +218,22 @@ For each task in the plan, determine the appropriate agent from file path and ta
 | no clear match | (omit tag — do not force) |
 
 Add `[agent: ec-xxx]` after size tag in every task line:
-`- [ ] Task N: {name} [{size}] [agent: ec-xxx] — {description}`
+`- [ ] Task N: {name} [{size}] [agent: ec-xxx] [design: {source}#{frame}] — {description}`
+Add the design tag only to tasks that render UI. Omit it entirely on non-UI tasks. `{source}` is the path or URL from the Design Contract Source line; `{frame}` is the specific screen or component name, or `main` when the reference has a single frame.
 If no agent clearly matches, omit the tag entirely.
+
+## Step 2.5 — Grounding Pass (mandatory)
+Before writing any task, measure the codebase instead of assuming it. For every file a task will touch:
+1. Confirm the file exists and record its line count: `wc -l {file}`
+2. Record the exact anchor string each task will locate, with its line number: `grep -n "{anchor}" {file}`
+3. For every string a Verify step will count, record its CURRENT count: `grep -c "{string}" {file}`
+4. Record the current test baseline if the project has a suite
+
+Write all of it into the plan's `### Grounding` section verbatim — actual output, never predicted output.
+
+**Traceability rule:** every numeric threshold in a Verify step MUST be derived from a baseline recorded here. Write `== n` when the exact post-change count is known from the baseline plus the edits specified; use `>= n` only when the edit count genuinely varies. A threshold that cannot be traced to a baseline is a planning defect — measure it, do not guess it.
+
+Only read-only commands are permitted here (see the No-Code Rule).
 
 ## Step 3 — Write Plan
 
@@ -219,7 +254,8 @@ Every task must include:
 ### Flat Format Rules (mandatory — no exceptions)
 - Task list MUST be flat — no batch headers, no phase labels, no grouping of any kind
 - NEVER write: "## Batch A", "### Phase 1", "#### Group:", "**Wave 1**", or any grouping construct
-- Every task MUST use exact format: `- [ ] Task N: {name} [{size}] [agent: ec-xxx] — {description}` (omit agent tag if no clear match)
+- Every task MUST use exact format: `- [ ] Task N: {name} [{size}] [agent: ec-xxx] [design: {source}#{frame}] — {description}` (omit agent tag if no clear match; omit design tag on non-UI tasks)
+- Add the design tag only to tasks that render UI. Omit it entirely on non-UI tasks. `{source}` is the path or URL from the Design Contract Source line; `{frame}` is the specific screen or component name, or `main` when the reference has a single frame. The design tag always comes after the agent tag.
 - Task numbers are sequential integers 1 to N, no gaps, no sub-numbering (1.1, 1.2, etc.)
 - Size of the feature does not affect format — 3 tasks or 50 tasks use identical flat structure
 
@@ -233,19 +269,45 @@ Every task must include:
 ### Reusable Existing Code
 - {component/hook/util} at {path} — used for {reason}
 
+### Design Contract
+- Source: {figma url | screenshot absolute path | text description}  ·  Viewport: {viewport or "unspecified"}
+- Layout: {structure and section order top-to-bottom, alignment, grid/flex behaviour}
+- Spacing: {observed padding / margin / gap values}
+- Typography: {per text element — size, weight, line-height, color}
+- Color: {background, surface, border, text, accent — hex where determinable}
+- Elements: {exhaustive ordered list of every visible element}
+- Copy: {exact literal text strings visible in the reference}
+- States: {default / hover / focus / disabled / loading / empty / error — each as shown, or "not shown"}
+- Deviations allowed: {responsive adaptation or token substitution notes, or "none"}
+
+Omit this whole section when the feature has no UI scope.
+
+### Grounding
+Measured in Step 2.5 — real command output only, never predicted.
+- Baseline string counts: `grep -c "{string}" {file}` → {n}   (one line per string a Verify step will count)
+- Baseline line counts: `wc -l {file}` → {n}   (one line per file a task touches)
+- Baseline test result: {exact command} → {result, or "no suite"}
+- Verified anchors: `{exact anchor string}` → {file}:{line}   (one line per task; write "new file — no anchor" when the task creates the file)
+
+A Verify step with no numeric threshold — file existence, exit status, string presence — has nothing to trace; the traceability rule does not apply to it.
+
 ### Tasks
-- [ ] Task 1: {name} [S/M/L] [agent: ec-xxx] — {one-line description}
+- [ ] Task 1: {name} [S/M/L] [agent: ec-xxx] [design: {source}#{frame}] — {one-line description}
 - [ ] Task 2: {name} [S/M/L] [agent: ec-xxx] — {one-line description}
 - [ ] Task N: ...
 
 ### Per Task Detail
 **Task 1 — {name}** `S/M/L`
 - File: {exact path to create/modify}
+- Anchor: {exact existing string the executor must locate, with line number from Grounding — or "new file"}
 - Reuse: {existing code to use, or "none"}
 - Code sample: {concrete snippet or expected structure}
+- Do not touch: {files, sections, or behaviours this task must leave alone — or "n/a"}
 - Edge cases: loading state / empty state / error state
 - ⚠️ Breaking change: {description or "none"}
-- Verify: {exact command or check to confirm task is done}
+- Acceptance: {the observable end state, stated independently of any command}
+- Verify: {exact command + expected value, traced to a baseline in ### Grounding}
+- Rollback: {how to undo this task — or "git checkout -- {file}"}
 - Dependencies: {other tasks, or "none"}
 
 **Task 2 — {name}**
@@ -277,6 +339,13 @@ Before showing the plan, check:
 - [ ] No task says "fill in details", "handle edge cases", or "similar to Task N"
 - [ ] No task would take more than 5 minutes
 - [ ] Dependencies are correctly ordered
+- [ ] Every task has an Anchor that was confirmed to exist by the Grounding Pass, or reads "new file"
+- [ ] Every numeric threshold in a Verify step traces to a baseline in ### Grounding
+- [ ] Every task has an Acceptance stated independently of its Verify command
+- [ ] No Verify threshold was written without measuring the current value first
+- [ ] Design Contract is present and self-contained if the feature has UI scope
+- [ ] Every UI task carries a [design:] tag
+- [ ] Every task that calls an API names its error-handling approach — reused existing handler, or a new handler to create
 
 Fix any issues found, then present the plan.
 

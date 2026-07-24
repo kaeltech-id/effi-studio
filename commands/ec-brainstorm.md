@@ -1,16 +1,16 @@
 Explore solution approaches before committing to a feature plan. Read .claude/project-config.json and CLAUDE.md first.
 
 ## Step 0 — Load Context
-Read `.claude/context/stack.md`, `.claude/context/structure.md`, `.claude/context/conventions.md`.
+Read `.claude/context/stack.md`, `.claude/context/structure.md`, `.claude/context/conventions.md`, and `.claude/context/notes.md` — load each only if it exists (all optional).
 
 Check worker status: `curl -s http://localhost:37777/health`
 - If running: show "(worker online ✓ — memory active)" then load relevant memory:
   `curl -s "http://localhost:37777/memory/search?q={problem_keywords}&project={project_name}&limit=5"`
 - If offline: show "(worker OFFLINE ⚠️ — memory unavailable)" and continue without memory
 
-**Onboarding check:** Verify `.claude/context/stack.md`, `.claude/context/structure.md`, and `.claude/context/conventions.md` all exist and are non-empty.
-- If all present: proceed normally
-- If any are missing or empty: show "(context incomplete — run /ec-setup first to configure this project)" and stop
+**Setup check (optional):** Check whether any of `.claude/context/stack.md`, `.claude/context/structure.md`, `.claude/context/conventions.md`, or `.claude/context/notes.md` exist and are non-empty.
+- If any present: use them for context and proceed normally.
+- If none present: show "(no setup found — working from a live scan; run /ec-setup anytime to add project context)", do a quick live scan of the repo for stack/structure, and proceed. Do NOT stop.
 
 Use memory to surface: past decisions, similar problems solved before, patterns already in use. Do not dump raw memory — silently inform your suggestions.
 
@@ -78,6 +78,9 @@ If detected, silently run additional analysis:
 - Accessibility: WCAG AA minimum — contrast ratio, keyboard navigation, screen reader support
 - Performance budget: LCP < 2.5s, CLS < 0.1, INP < 200ms
 Weave findings into the recommendation description — do not add as a separate section in the output.
+**Carry forward:** if UI/frontend context was detected, also record the design reference the user supplied (Figma URL, screenshot path, or text description) and draft a Design Contract from it using the field list in the decision template in Step 5. If no reference was supplied, record the single line `- Source: none supplied — /ec-feature must ask for one before planning UI tasks.`
+
+**Record the evidence:** while analysing, collect the concrete `file:line` citations that support the diagnosis — never a claim without a locator. Carry them into the decision file's `## Evidence` section. Carry the per-approach scores into the `## Options Explored` table, and the constraints, non-goals, verification strategy, and unresolved questions into their matching sections. Fill every section without asking the user — this must work identically on the `auto` path, which skips Step 4.
 
 **Score each approach:**
 - Effort (1–5), Reversibility (1–5), Risk (1–5), Fit to existing patterns (1–5)
@@ -163,7 +166,20 @@ Run `mkdir -p .claude/decisions` then save to `{DECISION_FILE}`. Replace `{YYYY-
 ## Problem
 {problem statement in one paragraph}
 
+## Evidence
+- `{file}:{line}` — {what it shows}
+- `{file}:{line}` — {what it shows}
+
 ## Options Explored
+
+| # | Option | Effort | Reversibility | Risk | Fit | Result |
+|---|--------|--------|---------------|------|-----|--------|
+| 1 | {name} | {1-5} | {1-5} | {1-5} | {1-5} | Not chosen |
+| 2 | {name} | {1-5} | {1-5} | {1-5} | {1-5} | Not chosen |
+| 3 | {name} | {1-5} | {1-5} | {1-5} | {1-5} | **CHOSEN** |
+
+Scale 1–5; for Effort and Risk, higher is better (5 = low effort / low risk).
+
 - **Option 1 — {name}**: {one-line summary} → not chosen because: {reason}
 - **Option 2 — {name}**: {one-line summary} → not chosen because: {reason}
 - **Option 3 — {name}**: {one-line summary} → CHOSEN
@@ -171,18 +187,52 @@ Run `mkdir -p .claude/decisions` then save to `{DECISION_FILE}`. Replace `{YYYY-
 ## Chosen Approach
 {2-3 paragraph description of the chosen approach}
 
+## Design Contract
+_Include this section only when the problem has UI/frontend scope._
+- Source: {figma url | screenshot absolute path | text description}  ·  Viewport: {e.g. 1440x900 desktop, 390x844 mobile, or "unspecified"}
+- Layout: {structure and section order top-to-bottom, alignment, grid/flex behaviour}
+- Spacing: {observed padding / margin / gap values}
+- Typography: {per text element — size, weight, line-height, color}
+- Color: {background, surface, border, text, accent — hex where determinable}
+- Elements: {exhaustive ordered list of every visible element — containers, text, icons, dividers, badges, inputs, buttons}
+- Copy: {exact literal text strings visible in the reference}
+- States: {default / hover / focus / disabled / loading / empty / error — record each as shown, or "not shown"}
+- Deviations allowed: {responsive adaptation or token substitution notes, or "none"}
+
 ## Key Assumptions
 - {assumption 1}
 - {assumption 2}
 
+## Constraints
+_Hard limits the implementation must respect — stack, compatibility, deadline, data, API contract._
+- {constraint}
+
+## Non-Goals
+_Things deliberately not attempted in this cycle, so /ec-feature does not plan them._
+- {non-goal}
+
 ## Risks & Mitigations
 - {risk} → {mitigation}
+
+## Verification Strategy
+_How to prove the change works — the exact command, test, or observable signal per claim._
+- {claim} → {command / test / observable signal}
+
+## Open Questions
+_Each unresolved item paired with the assumption taken so planning proceeds unblocked; `- none` if all resolved._
+- {question} → assuming: {assumption taken}
 
 ## Out of Scope
 - {what was explicitly not addressed}
 
 _Created: {YYYY-MM-DD}_
 ```
+
+**Template edge cases:**
+- No repo evidence gathered → write the Evidence section as the single line `- none — reasoning is from the problem statement alone`.
+- Fewer than three options considered → render only the rows that exist, in both the table and the bullets below it.
+- No unresolved items → write Open Questions as the single line `- none`.
+- Decision files written before these sections existed remain valid input to `/ec-feature` — never rewrite them.
 
 **If "save":**
 Generate a slug from the problem title: lowercase, spaces→hyphens, max 5 words (e.g. "race-condition-memory-fix").
@@ -207,6 +257,7 @@ Show summary of the decision.
 
 **If "now":**
 Next: run `/ec-feature` — it will load this decision automatically.
+If the decision file contains a `## Design Contract` section, state: "(design contract captured — /ec-feature will plan UI tasks against it)".
 
 **If "save":**
 Run `/ec-feature` when ready — it will show a numbered list of saved brainstorms to pick from.

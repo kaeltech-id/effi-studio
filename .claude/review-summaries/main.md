@@ -1,32 +1,36 @@
-# Review Summary — Auto-Flow Mode + Plan Archival
-_Date: 2026-06-27_
+# Review Summary — Grounded Artifacts: Evidence-Backed Decisions + Calibrated Plans
+_Date: 2026-07-24_
 
 ## Feature
-Auto-Flow Mode + Plan Archival
+Grounded Artifacts — Evidence-Backed Decisions + Calibrated Plans
 
 ## Tasks completed
-- [x] Task 1: Sentinel read in ec-feature [S] — add Auto-Flow read block to ec-feature Step 0 (after Branch detection), defining AUTO
-- [x] Task 2: Plan archival before overwrite [S] — archive existing plan to `.claude/plans/archive/` in ec-feature Incomplete plan guard
-- [x] Task 3: Honor AUTO in ec-feature gates [S] — auto-overwrite at guard + auto-proceed at Step 6 confirm when AUTO=yes
-- [x] Task 4: Sentinel read in ec-execute [S] — add Auto-Flow read block to ec-execute Step 1, defining AUTO
-- [x] Task 5: Honor AUTO + cleanup in ec-execute [S] — auto-continue pre-flight when AUTO=yes; delete sentinel on abort/fail/timeout
-- [x] Task 6: Sentinel read in ec-review [S] — add Auto-Flow read block to ec-review Step 1, defining AUTO
-- [x] Task 7: Archival + sentinel teardown in ec-review [S] — archive active plan and delete sentinel at end of clean review; always stop before git
-- [x] Task 8: Auto gate + sentinel spec in ec-brainstorm [S] — change Step 3 gate to (y/auto/n) and document the .autoflow format
-- [x] Task 9: Auto-chain in ec-brainstorm [M] — auto branch writes sentinel and invokes /ec-feature → /ec-execute → /ec-review sequentially with fallback
+- [x] Task 1: Deepen ec-brainstorm decision template [M] [agent: ec-llm] — add Evidence, scored Options table, Constraints & Non-Goals, Verification Strategy, Open Questions; wire Step 2 to fill them
+- [x] Task 2: Grounding Pass and task fields in ec-feature [L] [agent: ec-llm] — add read-only Grounding Pass, `## Grounding` plan section, four new per-task fields, traceability rule, self-review items
+- [x] Task 3: Propagate Anchor and Acceptance in ec-execute [M] [agent: ec-llm] — inject the new fields into subagent prompts and enforce them in the Evidence Rule
+- [x] Task 4: Tests for grounded artifacts [M] [agent: ec-python] — add TestGroundedArtifacts covering all three commands
 
 ## Files modified
-- commands/ec-brainstorm.md
-- commands/ec-feature.md
-- commands/ec-execute.md
-- commands/ec-review.md
+- `commands/ec-brainstorm.md` — `**Record the evidence:**` directive in Step 2; decision template gained `## Evidence`, a scored `## Options Explored` table, `## Constraints`, `## Non-Goals`, `## Verification Strategy`, `## Open Questions`; template edge-case block
+- `commands/ec-feature.md` — No-Code Rule extended with an explicit read-only allowance; new `## Step 2.5 — Grounding Pass (mandatory)` with the Traceability rule; `### Grounding` section in the plan template; per-task template extended to 11 fields (Anchor / Do not touch / Acceptance / Rollback added); 4 new self-review checklist items
+- `commands/ec-execute.md` — 3 new subagent-prompt bullets (Anchor, Do not touch, Acceptance); Evidence Rule extended to items 1–9 including the Acceptance check and the Threshold-mismatch STOP rule; new `### Anchor Discipline` subsection
+- `tests/test_command_docs.py` — new `TestGroundedArtifacts` class, 10 tests
+
+Blast radius: no dependents — all changed command files are Markdown with no import graph; the test module imports only stdlib plus pytest.
 
 ## Issues fixed during review
-No issues found. (Template drift check: ✓ GIT RULES in sync.)
+- `commands/ec-feature.md` Step 4 checklist — the item read "Every task has an Anchor that was confirmed to exist by the Grounding Pass", which contradicts the per-task template's allowance of `Anchor: new file` where there is nothing to confirm → reworded to "…, or reads \"new file\"".
+
+## Gap flagged for the next cycle (not fixed here — deliberately out of the executed plan's scope)
+`/ec-review` Stage 1 verifies output against the task description and code sample, but does not yet check the new `Acceptance:` field. A task can therefore still pass review on command output alone, which is precisely the hole `Acceptance` exists to close in `/ec-execute`. Widening the edit during review would violate the Anchor Discipline rule this same feature just introduced, so it is recorded here instead.
+
+## Threshold calibration outcome
+Every Verify threshold in this plan was derived from a measured pre-change baseline recorded in the plan's `### Grounding` section, and every one hit exactly: Evidence `== 2`, Grounding Pass `== 1`, Anchor/Acceptance/Rollback `== 1` each, `[design:` unchanged at `5`, Anchor in ec-execute `== 2`, tests `52 → 62`. One threshold was caught wrong during plan self-review (Task 3's `Anchor:` count was written as `>= 3` when the specified edits produce 2) and corrected before execution. No subagent padded a file to satisfy a number — the over-building failure from the previous cycle did not recur.
 
 ## Review result
 | Check | Status |
 |-------|--------|
 | Spec compliance | ✓ |
 | Code quality | ✓ |
-| Tests | skipped (Markdown command definitions — no executable unit) |
+| Template drift (GIT RULES) | ✓ in sync |
+| Tests | added — 10 new, 62 passed |

@@ -61,7 +61,7 @@ class TestEcReviewStep5:
         assert '## Step 5 — Write Review Docs' in self.content
 
     def test_review_summary_write_instruction(self):
-        assert '.claude/review-summary.md' in self.content
+        assert '.claude/review-summaries' in self.content
         assert 'overwrite if it already exists' in self.content
 
     def test_review_summary_template_sections(self):
@@ -96,3 +96,118 @@ class TestEcReviewStep5:
     def test_file_ends_with_git_next_step(self):
         last_line = self.content.rstrip('\n').split('\n')[-1]
         assert 'ec-git' in last_line
+
+
+# --- Design Contract propagation chain ---
+
+AGENTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'agents')
+
+FRONTEND_AGENTS = ['ec-react', 'ec-vue', 'ec-nextjs', 'ec-react-native',
+                   'ec-flutter', 'ec-ios', 'ec-android']
+
+
+def read_agent(name):
+    with open(os.path.join(AGENTS_DIR, name + '.md')) as f:
+        return f.read()
+
+
+class TestDesignContractChain:
+    def test_brainstorm_emits_contract(self):
+        content = read_command('ec-brainstorm.md')
+        assert '## Design Contract' in content
+        assert 'none supplied' in content
+
+    def test_feature_builds_and_tags_contract(self):
+        content = read_command('ec-feature.md')
+        assert '### Design Contract' in content
+        assert '[design: {source}#{frame}]' in content
+        assert 'not determinable from reference' in content
+
+    def test_execute_injects_contract(self):
+        content = read_command('ec-execute.md')
+        assert '### Design Contract Injection' in content
+        assert 'Deviation:' in content
+
+    def test_design_tag_follows_agent_tag(self):
+        content = read_command('ec-feature.md')
+        for line in content.splitlines():
+            if '[agent:' in line and '[design:' in line:
+                assert line.index('[agent:') < line.index('[design:'), line
+
+    def test_agent_tag_regex_survives_design_tag(self):
+        line = ('- [ ] Task 1: X [M] [agent: ec-react] '
+                '[design: https://f.com/d?node-id=1-2#frag#Card] — build')
+        assert re.search(r'\[agent: (ec-\w+)\]', line).group(1) == 'ec-react'
+        m = re.search(r'\[design: (.+)#([^#\]]+)\]', line)
+        assert m.group(1) == 'https://f.com/d?node-id=1-2#frag'
+        assert m.group(2) == 'Card'
+
+    def test_review_has_both_gates(self):
+        content = read_command('ec-review.md')
+        assert '### Visual Fidelity' in content
+        assert '### API Error Handling' in content
+
+    @pytest.mark.parametrize('agent', FRONTEND_AGENTS)
+    def test_frontend_agents_have_both_protocols(self, agent):
+        content = read_agent(agent)
+        assert '## Visual Fidelity Protocol' in content
+        assert '## API Error Protocol' in content
+
+    def test_tailwind_has_fidelity_without_api_protocol(self):
+        content = read_agent('ec-tailwind')
+        assert '## Visual Fidelity Protocol' in content
+        assert '## API Error Protocol' not in content
+
+
+# --- Grounded artifacts across brainstorm / feature / execute ---
+
+class TestGroundedArtifacts:
+    def test_brainstorm_decision_template_has_new_sections(self):
+        content = read_command('ec-brainstorm.md')
+        for section in ['## Evidence', '## Constraints', '## Non-Goals',
+                        '## Verification Strategy', '## Open Questions']:
+            assert section in content, section
+
+    def test_brainstorm_options_table_present(self):
+        content = read_command('ec-brainstorm.md')
+        assert '| # | Option |' in content
+
+    def test_brainstorm_screen_format_unchanged(self):
+        content = read_command('ec-brainstorm.md')
+        assert '## Rekomendasi: {short name}' in content
+        assert '**Key assumption:**' in content
+
+    def test_feature_has_grounding_pass(self):
+        content = read_command('ec-feature.md')
+        assert '## Step 2.5 — Grounding Pass' in content
+        assert '### Grounding' in content
+
+    def test_feature_grounding_is_read_only(self):
+        content = read_command('ec-feature.md')
+        assert 'read-only' in content
+        assert 'MUST NOT run any command that writes' in content
+
+    def test_feature_task_template_has_new_fields(self):
+        content = read_command('ec-feature.md')
+        for field in ['- Anchor:', '- Do not touch:', '- Acceptance:', '- Rollback:']:
+            assert field in content, field
+
+    def test_feature_states_traceability_rule(self):
+        content = read_command('ec-feature.md')
+        assert 'Traceability rule' in content
+        assert 'traces to a baseline' in content
+
+    def test_execute_injects_anchor_and_acceptance(self):
+        content = read_command('ec-execute.md')
+        assert 'Anchor:' in content
+        assert 'Acceptance:' in content
+        assert '### Anchor Discipline' in content
+
+    def test_execute_forbids_threshold_gaming(self):
+        content = read_command('ec-execute.md')
+        assert 'Threshold mismatch' in content
+
+    def test_existing_tag_parsers_survive(self):
+        content = read_command('ec-execute.md')
+        assert '### Agent Context Injection' in content
+        assert '### Design Contract Injection' in content

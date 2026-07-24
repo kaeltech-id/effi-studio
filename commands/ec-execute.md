@@ -123,6 +123,11 @@ For each task, spawn one subagent. Each subagent prompt must include:
 - Only the context relevant to that specific task (stack, structure, conventions)
 - Reuse instructions from plan
 - Edge cases to handle
+- The task's `Anchor:` string — the subagent must locate this exact text before editing, never guess placement; if the task has no such line, inject nothing and proceed as normal
+- The task's `Do not touch:` boundary, stated as a hard constraint
+- The task's `Acceptance:` line — the observable end state, separate from the verify command; if the task has no such line, inject nothing and proceed as normal
+- The `### Design Contract` block from the plan, verbatim, for any task carrying a `[design:]` tag
+- The API error-handling approach named in the task detail
 - Clean code rules: readable, best practices, no unnecessary comments
 - ⚠️ Breaking change note if flagged in plan
 - The verify step from the plan
@@ -139,13 +144,32 @@ For each task, before spawning subagent, check for `[agent: ec-xxx]` tag in the 
 5. If agent file not found: show `(⚠️ agent {name} not installed — run install.sh to install agents)` and proceed without agent context
 6. If no `[agent:]` tag: proceed normally — no agent context injected
 
+### Design Contract Injection
+For each task, before spawning subagent, check for a `[design: {source}#{frame}]` tag in the task line:
+1. Extract source and frame: parse `\[design: (.+)#([^#\]]+)\]` from the task line — the separator is the LAST `#`, so a source URL containing a fragment still parses correctly
+2. Read the `### Design Contract` block from `{PLAN_FILE}` in full
+3. Append to the subagent prompt:
+   "Design Contract — this is the specification of record for this task. Implement it 1:1.\n{contract_block}\nReference: {source} (frame: {frame})\nIf {source} is a readable local file, open it with the Read tool and inspect it before writing any code. Declare any deviation explicitly in your output."
+4. If `{source}` is a path that no longer exists: show `(⚠️ design reference {source} missing — implementing from the Design Contract text only)` and proceed with the text block
+5. If the task has a `[design:]` tag but `{PLAN_FILE}` has no Design Contract block: show `(⚠️ no Design Contract in plan — proceeding without visual spec)` and proceed
+6. If no `[design:]` tag: proceed normally — no contract injected
+
 ### Evidence Rule — mandatory for every subagent
 Each subagent MUST prove completion before claiming done:
 1. Identify the verify step from the task
 2. Run it (compile check, test, lint, or file existence check)
 3. Read the actual output
 4. Only claim task complete if output confirms success
-5. If verification fails: fix and re-verify — do NOT claim done without evidence
+5. If the task carried a `[design:]` tag: walk the Design Contract element list and confirm each element has a counterpart in the code, then report any deviation as "Deviation: {what} — {why}"
+6. If the task added an API call: confirm the call has error handling covering network failure, non-2xx status, timeout, and malformed payload, and that the failure is visible in the UI — missing error handling means the task is not done
+7. Confirm the task's `Acceptance:` condition actually holds — a passing command with an unmet Acceptance is not done; if the task carries no such line, skip this item
+8. If the Verify threshold turns out to be wrong for the specified edits, report it as "Threshold mismatch: {expected} vs {actual}" and STOP — never add or alter content merely to satisfy a number
+9. If verification fails: fix and re-verify — do NOT claim done without evidence
+
+### Anchor Discipline
+- Locate the `Anchor:` string before editing; if it is absent from the target file, stop and report `(⚠️ anchor not found in {file} — plan is stale, not executing)`. If the anchor reads `new file`, there is nothing to locate — skip the check. If the task carries no anchor line, skip the check
+- Never widen an edit beyond what the task specifies to make a verify step pass
+- Respect `Do not touch:` absolutely — an edit inside that boundary is a failed task even if everything else verifies
 
 ### Error Recovery
 If a subagent fails or cannot verify:

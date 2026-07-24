@@ -39,6 +39,9 @@ def test_is_stale_false_after_fetch(db_path, chroma_path):
     }
     with patch("requests.get", return_value=mock_resp):
         engine.register_library("react")
+        # Call fetch_and_cache synchronously so the last_fetched UPDATE completes
+        # before the assertion, instead of racing register_library's daemon thread.
+        engine.fetch_and_cache("react")
     assert engine._is_stale("react") is False
 
 
