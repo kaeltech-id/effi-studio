@@ -367,4 +367,29 @@ curl -s -X POST http://localhost:37777/memory/observe \
 Ask: "Plan sudah benar? Confirm (y/n):"
 - If y: proceed
 - If n: ask "Apa yang perlu diubah?" → revise plan → re-confirm
+
+**Auto-Flow stage advance:** If `AUTO=yes`, record that planning is done so the Stop-hook driver routes to the next stage even if this context is lost:
+```bash
+if [ -f .claude/.autoflow ]; then
+  python3 - <<'PY'
+import os
+p = os.path.join(".claude", ".autoflow")
+f = {}
+for line in open(p):
+    if "=" in line:
+        k, _, v = line.strip().partition("=")
+        f[k] = v
+f["stage"] = "execute"
+done = [s for s in f.get("stages_done", "").split(",") if s]
+if "feature" not in done:
+    done.append("feature")
+f["stages_done"] = ",".join(done)
+order = ["branch", "created", "stage", "stages_done", "iterations",
+         "driver_stage", "driver_progress"]
+keys = [k for k in order if k in f] + [k for k in f if k not in order]
+open(p, "w").write("\n".join(f"{k}={f[k]}" for k in keys) + "\n")
+PY
+fi
+```
+
 Next: run `/ec-execute` to implement this plan.

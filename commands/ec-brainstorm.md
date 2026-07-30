@@ -119,11 +119,27 @@ Format:
 After presenting:
 "Setuju lanjut dengan ini? (y / auto / n — atau describe apa yang kurang):"
 - If y: proceed to Step 4 (normal sharpening flow)
-- If auto: skip Step 4 sharpening — go straight to Step 5 "now" save, then trigger the auto-flow chain (see Step 7). Auto-flow runs /ec-feature → /ec-execute → /ec-review with no further confirmation, stopping before git.
+- If auto: skip Step 4 sharpening — go straight to Step 5 "now" save, then trigger the auto-flow chain (see Step 7). Auto-flow runs /ec-feature → /ec-execute → /ec-review with no further confirmation, stopping before git. Auto-flow survives context exhaustion: the `Stop`-hook driver resumes the chain from on-disk state, so it runs to completion regardless of how many context windows it takes.
 - If n or feedback: adjust the recommendation based on feedback, re-present, ask again. Do not revert to showing multiple options.
 
-**Auto-Flow sentinel format** (written by the auto path in Step 7): file `.claude/.autoflow`, two lines —
-`branch={BRANCH}` and `created={unix_epoch}`. Consumed and removed by /ec-review. Treated as stale (ignored + deleted) by any command if older than 2 hours or if its branch ≠ current branch.
+**Auto-Flow sentinel format** (first written by the auto path in Step 7): file `.claude/.autoflow`, one `key=value` per line, eight fields in this order:
+
+| Field | Written by | Meaning |
+|---|---|---|
+| `branch` | command | Branch the chain belongs to |
+| `created` | command | Unix epoch the chain started |
+| `stage` | command | `feature` \| `execute` \| `review` — stage last handed off |
+| `stages_done` | command | Comma-separated completed stages; empty at start |
+| `iterations` | driver only | Driver bookkeeping; starts `0`, hard cap 40 |
+| `driver_stage` | driver only | Last stage observed by the driver |
+| `driver_progress` | driver only | Last `- [x]` count observed by the driver |
+| `no_progress` | driver only | Consecutive turns with no new completed work; chain abandoned at 3 |
+
+- Commands write `branch`, `created`, `stage`, `stages_done` only. Never write `iterations`, `driver_stage`, `driver_progress`, or `no_progress` — those belong to the driver alone.
+- Progress signal: a turn counts as productive if `stage` advanced OR the plan's `- [x]` count rose. `/ec-execute` emits that signal per completed task; `/ec-feature` and `/ec-review` may legitimately produce none for a turn, which is why the driver tolerates 3 consecutive no-progress turns rather than giving up after one.
+- Routing authority is the on-disk state files (plan file, `- [ ]` counts, decision file, review-done sentinel), never the `stage=` field. `stage=` is a trail for humans and logs, not a decision input.
+- The `Stop` hook `hooks/session_stop.py` drives the chain: it reads the sentinel at the end of every turn and blocks with the next command until the chain finishes. Auto-flow therefore survives context exhaustion and compaction.
+- Consumed and removed by /ec-review. Treated as stale (ignored + deleted) by any command if older than 2 hours or if its branch ≠ current branch.
 
 ## Step 4 — Sharpen the Recommendation
 Present the deepening in **sections of 200-300 words each**. After each section, ask: "Bagian ini sudah oke? (y/lanjut/revisi)" — wait for confirmation before continuing to the next.
@@ -267,7 +283,8 @@ After the decision file is saved (Step 5 "now" path), run the full chain automat
 1. Write the sentinel:
    ```bash
    mkdir -p .claude
-   printf 'branch=%s\ncreated=%s\n' "$BRANCH" "$(date +%s)" > .claude/.autoflow
+   printf 'branch=%s\ncreated=%s\nstage=feature\nstages_done=\niterations=0\n' \
+     "$BRANCH" "$(date +%s)" > .claude/.autoflow
    ```
 2. Invoke `/ec-feature` via the Skill tool and let it run to completion (it auto-loads {DECISION_FILE}, auto-confirms because AUTO=yes).
 3. Then invoke `/ec-execute` via the Skill tool and let it run all tasks (auto-confirms because AUTO=yes).

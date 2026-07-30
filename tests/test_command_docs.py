@@ -211,3 +211,73 @@ class TestGroundedArtifacts:
         content = read_command('ec-execute.md')
         assert '### Agent Context Injection' in content
         assert '### Design Contract Injection' in content
+
+
+# --- Auto-flow sentinel schema + backward compatibility ---
+
+SENTINEL_COMMAND_FIELDS = ['stage=', 'stages_done=', 'iterations=']
+
+SENTINEL_DRIVER_FIELDS = ['driver_stage', 'driver_progress']
+
+AUTOFLOW_COMMANDS = ['ec-brainstorm.md', 'ec-feature.md',
+                     'ec-execute.md', 'ec-review.md']
+
+BODY_COMMAND_WRITTEN = 'branch=main\ncreated=123\nstage=feature\nstages_done=\niterations=0\n'
+
+BODY_WITH_DRIVER_FIELDS = BODY_COMMAND_WRITTEN + 'driver_stage=execute\ndriver_progress=3\n'
+
+
+class TestAutoflowSentinelSchema:
+    @pytest.mark.parametrize('field', SENTINEL_COMMAND_FIELDS)
+    def test_brainstorm_documents_command_written_field(self, field):
+        assert field in read_command('ec-brainstorm.md')
+
+    @pytest.mark.parametrize('field', SENTINEL_DRIVER_FIELDS)
+    def test_brainstorm_documents_driver_written_field(self, field):
+        assert field in read_command('ec-brainstorm.md')
+
+    def test_brainstorm_keeps_staleness_wording(self):
+        assert '2 hours' in read_command('ec-brainstorm.md')
+
+    def test_feature_advances_stage_to_execute(self):
+        assert 'f["stage"] = "execute"' in read_command('ec-feature.md')
+
+    def test_execute_advances_stage_to_review(self):
+        assert 'f["stage"] = "review"' in read_command('ec-execute.md')
+
+    def test_review_documents_no_git_routing(self):
+        assert 'never routes to' in read_command('ec-review.md')
+
+    @pytest.mark.parametrize('name', AUTOFLOW_COMMANDS)
+    def test_command_still_references_sentinel_path(self, name):
+        assert '.claude/.autoflow' in read_command(name)
+
+    @pytest.mark.parametrize('name', ['ec-feature.md', 'ec-execute.md', 'ec-review.md'])
+    def test_command_keeps_detection_idiom(self, name):
+        assert 'AUTOFLOW=".claude/.autoflow"' in read_command(name)
+
+    @pytest.mark.parametrize('name', ['ec-feature.md', 'ec-execute.md', 'ec-review.md'])
+    def test_command_keeps_branch_extraction_idiom(self, name):
+        assert "grep '^branch=' \"$AUTOFLOW\"" in read_command(name)
+
+    def test_branch_extraction_survives_command_written_fields(self):
+        match = re.search(r'^branch=(.*)$', BODY_COMMAND_WRITTEN, re.M)
+        assert match.group(1) == 'main'
+
+    def test_branch_extraction_survives_driver_written_fields(self):
+        match = re.search(r'^branch=(.*)$', BODY_WITH_DRIVER_FIELDS, re.M)
+        assert match.group(1) == 'main'
+
+    def test_branch_is_first_line_of_sentinel(self):
+        assert BODY_COMMAND_WRITTEN.split('\n')[0] == 'branch=main'
+
+    def test_sentinel_writer_emits_five_command_written_lines(self):
+        assert BODY_COMMAND_WRITTEN.count('\n') == 5
+
+    def test_brainstorm_writer_matches_command_written_body(self):
+        content = read_command('ec-brainstorm.md')
+        assert 'stage=feature\\nstages_done=\\niterations=0\\n' in content
+
+    def test_brainstorm_forbids_commands_writing_driver_fields(self):
+        content = read_command('ec-brainstorm.md')
+        assert 'those belong to the driver alone' in content

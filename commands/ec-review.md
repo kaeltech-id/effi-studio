@@ -36,7 +36,7 @@ if [ -f "$AUTOFLOW" ]; then
   if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
 fi
 ```
-When `AUTO=yes`: run the review without pausing for confirmation. This command is the END of the auto-flow chain — it always deletes the sentinel and stops before git (see Step 4 teardown).
+When `AUTO=yes`: run the review without pausing for confirmation. This command is the END of the auto-flow chain — it always deletes the sentinel and stops before git (see Step 4 teardown). Deleting `.claude/.autoflow` is exactly the signal the `Stop`-hook driver (`hooks/session_stop.py`) reads as "chain complete": with the sentinel gone the driver stops blocking and the session is free to end, whether or not the review came out clean. The driver never routes to `/ec-git` — not even once `.claude/.review-done-{BRANCH}` exists — so git stays manual per GIT RULES.
 
 ## Step 1.5 — Blast Radius Analysis (if worker running)
 Extract all files modified during execution from `{PLAN_FILE}`.
@@ -222,6 +222,7 @@ if [ -f "$PLAN_FILE" ]; then
 fi
 rm -f .claude/.autoflow
 ```
+Removing the sentinel in that last line is what stops the `Stop`-hook driver from blocking further turns.
 
 **If review is NOT clean** (unresolved issues remain): also run `rm -f .claude/.autoflow` and stop — the auto-flow chain does not proceed to git.
 

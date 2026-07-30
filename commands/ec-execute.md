@@ -83,7 +83,7 @@ if [ -f "$AUTOFLOW" ]; then
   if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
 fi
 ```
-When `AUTO=yes`: auto-skip confirmation gates (like `vibe`). On any abnormal stop, delete the sentinel (see Error Recovery / Timeout). On successful completion, leave the sentinel for `/ec-review` to consume.
+When `AUTO=yes`: auto-skip confirmation gates (like `vibe`). On any abnormal stop, delete the sentinel (see Error Recovery / Timeout). On successful completion, leave the sentinel for `/ec-review` to consume. Partial progress is safe: if this context ends mid-plan (context exhaustion or compaction), the Stop-hook driver re-invokes `/ec-execute` from the plan file's remaining `- [ ]` lines — so do NOT delete the sentinel merely because the context ended mid-plan; only a genuine abort (Error Recovery / Timeout) deletes it.
 
 ## Step 2 — Pre-flight Check
 Before executing, verify:
@@ -230,6 +230,30 @@ curl -s -X POST http://localhost:37777/memory/observe \
 ```bash
 python3 ~/.efficlaude/server/file_lock.py release "{PLAN_FILE}" "$SESSION_ID" 2>/dev/null \
   && echo "(plan lock released)" || echo "(lock already clear)"
+```
+
+**Auto-Flow stage advance:** If `AUTO=yes`, record that execution is done so the Stop-hook driver routes to `/ec-review` even if this context is lost.
+```bash
+if [ -f .claude/.autoflow ]; then
+  python3 - <<'PY'
+import os
+p = os.path.join(".claude", ".autoflow")
+f = {}
+for line in open(p):
+    if "=" in line:
+        k, _, v = line.strip().partition("=")
+        f[k] = v
+f["stage"] = "review"
+done = [s for s in f.get("stages_done", "").split(",") if s]
+if "execute" not in done:
+    done.append("execute")
+f["stages_done"] = ",".join(done)
+order = ["branch", "created", "stage", "stages_done", "iterations",
+         "driver_stage", "driver_progress"]
+keys = [k for k in order if k in f] + [k for k in f if k not in order]
+open(p, "w").write("\n".join(f"{k}={f[k]}" for k in keys) + "\n")
+PY
+fi
 ```
 
 Next: run `/ec-review` to review the results.
