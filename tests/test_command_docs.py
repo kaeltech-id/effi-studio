@@ -105,6 +105,8 @@ AGENTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'agents')
 FRONTEND_AGENTS = ['ec-react', 'ec-vue', 'ec-nextjs', 'ec-react-native',
                    'ec-flutter', 'ec-ios', 'ec-android']
 
+ALL_FRONTEND_AGENTS = FRONTEND_AGENTS + ['ec-tailwind']
+
 
 def read_agent(name):
     with open(os.path.join(AGENTS_DIR, name + '.md')) as f:
@@ -115,7 +117,7 @@ class TestDesignContractChain:
     def test_brainstorm_emits_contract(self):
         content = read_command('ec-brainstorm.md')
         assert '## Design Contract' in content
-        assert 'none supplied' in content
+        assert '## Design Direction' in content
 
     def test_feature_builds_and_tags_contract(self):
         content = read_command('ec-feature.md')
@@ -125,7 +127,7 @@ class TestDesignContractChain:
 
     def test_execute_injects_contract(self):
         content = read_command('ec-execute.md')
-        assert '### Design Contract Injection' in content
+        assert '### Design Block Injection' in content
         assert 'Deviation:' in content
 
     def test_design_tag_follows_agent_tag(self):
@@ -157,6 +159,74 @@ class TestDesignContractChain:
         content = read_agent('ec-tailwind')
         assert '## Visual Fidelity Protocol' in content
         assert '## API Error Protocol' not in content
+
+
+# --- Design Direction chain + anti-slop precedence ---
+
+class TestDesignDirectionChain:
+    def test_brainstorm_emits_direction(self):
+        content = read_command('ec-brainstorm.md')
+        assert '## Design Direction' in content
+        assert 'never both' in content
+
+    def test_feature_documents_mutual_exclusivity(self):
+        content = read_command('ec-feature.md')
+        assert '### Design Direction' in content
+        assert content.count('never both') >= 2
+
+    def test_execute_injects_either_block(self):
+        content = read_command('ec-execute.md')
+        assert '### Design Block Injection' in content
+        assert '### Design Direction' in content
+        assert '### Design Contract' in content
+
+    def test_review_gate_is_conditional(self):
+        content = read_command('ec-review.md')
+        assert '### Anti-Slop (if the plan has a Design Direction)' in content
+        assert 'Skip this gate entirely when the plan has a Design Contract' in content
+
+    def test_antislop_agent_has_dials_and_tiers(self):
+        content = read_agent('ec-antislop')
+        for section in ['## Dials', '## Hard Gates', '## Purpose Gates',
+                        '## Quality Locks', '## Reporting']:
+            assert section in content, section
+        for dial in ['ENERGY', 'RHYTHM', 'MOTION']:
+            assert dial in content, dial
+
+    def test_antislop_attributes_upstream(self):
+        assert 'anti-slop' in read_agent('ec-antislop')
+
+    def test_antislop_installed(self):
+        with open(os.path.join(os.path.dirname(__file__), '..', 'install.sh')) as f:
+            assert 'ec-antislop' in f.read()
+
+    def test_all_frontend_agents_state_precedence(self):
+        for agent in ALL_FRONTEND_AGENTS:
+            content = read_agent(agent)
+            assert '## Anti-Slop Precedence' in content, agent
+            assert content.index('## Anti-Slop Precedence') < \
+                content.index('## Visual Fidelity Protocol'), agent
+
+    def test_frontend_agents_did_not_bloat(self):
+        for agent in ALL_FRONTEND_AGENTS:
+            lines = len(read_agent(agent).splitlines())
+            assert lines <= 90, f'{agent} grew to {lines} lines'
+
+    def test_direction_path_defines_design_tag_source(self):
+        content = read_command('ec-feature.md')
+        assert content.count('literal `direction`') == 2
+        assert '[design: direction#SettingsPanel]' in content
+
+    def test_execute_direction_branch_expects_direction_source(self):
+        content = read_command('ec-execute.md')
+        assert 'so there is no image to open' in content
+
+    def test_antislop_referenced_by_installed_path(self):
+        for name in ['ec-brainstorm.md', 'ec-feature.md', 'ec-execute.md']:
+            content = read_command(name)
+            assert '~/.claude/agents/ec-antislop.md' in content, name
+        for agent in ALL_FRONTEND_AGENTS:
+            assert '~/.claude/agents/ec-antislop.md' in read_agent(agent), agent
 
 
 # --- Grounded artifacts across brainstorm / feature / execute ---
@@ -210,7 +280,7 @@ class TestGroundedArtifacts:
     def test_existing_tag_parsers_survive(self):
         content = read_command('ec-execute.md')
         assert '### Agent Context Injection' in content
-        assert '### Design Contract Injection' in content
+        assert '### Design Block Injection' in content
 
 
 # --- Auto-flow sentinel schema + backward compatibility ---

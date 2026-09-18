@@ -7,6 +7,7 @@ Type=simple
 ExecStart=/usr/bin/python3 EFFICLAUDE_HOME/server/worker.py
 Restart=always
 RestartSec=5
+LimitNOFILE=8192
 StandardOutput=append:EFFICLAUDE_HOME/worker.log
 StandardError=append:EFFICLAUDE_HOME/worker.log
 WorkingDirectory=EFFICLAUDE_HOME

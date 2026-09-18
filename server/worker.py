@@ -16,7 +16,7 @@ from flask import Flask, request, jsonify, Response
 from memory import MemoryEngine
 from docs import DocsEngine
 from graph import GraphEngine
-from logger import get_counts, warn
+from logger import get_counts, warn, rotate_if_large
 
 app = Flask(__name__)
 
@@ -47,6 +47,7 @@ _graph_executor = ThreadPoolExecutor(max_workers=2)
 _rate_buckets: dict = defaultdict(list)
 _RATE_LIMIT = int(os.getenv('EFFICLAUDE_RATE_LIMIT', '100'))
 _RATE_WINDOW = 60.0
+_HEALTH_ERROR_THRESHOLD = int(os.getenv('EFFICLAUDE_HEALTH_ERROR_THRESHOLD', '50'))
 
 
 def _err(msg: str, code: int = 400) -> tuple:
@@ -96,11 +97,14 @@ def health() -> Response:
             version = f.read().strip()
     except Exception:
         pass
+    counts = get_counts()
+    total_errors = sum(counts.values())
+    status = "degraded" if total_errors >= _HEALTH_ERROR_THRESHOLD else "ok"
     return jsonify({
-        "status": "ok",
+        "status": status,
         "version": version,
         "tree_sitter": graph._ts_available,
-        "error_counts": get_counts()
+        "error_counts": counts
     })
 
 
@@ -343,4 +347,10 @@ def graph_import() -> Response:
 
 
 if __name__ == '__main__':
+    rotate_if_large()
+    try:
+        with open(os.path.join(BASE_DIR, "worker.pid"), "w") as f:
+            f.write(str(os.getpid()))
+    except Exception as e:
+        warn("worker", f"pidfile write failed: {e}")
     app.run(host='127.0.0.1', port=int(os.environ.get('EFFICLAUDE_PORT', 37777)), debug=False, threaded=True)

@@ -15,6 +15,12 @@ if [ -f "$WATCHDOG_PIDFILE" ]; then
   fi
 fi
 
+PLIST="$HOME/Library/LaunchAgents/com.efficlaude.worker.plist"
+if [ -f "$PLIST" ]; then
+  launchctl unload "$PLIST" 2>/dev/null && \
+    echo "EffiClaude LaunchAgent unloaded (run install.sh or 'launchctl load' to re-enable)"
+fi
+
 if [ -f "$PIDFILE" ]; then
   PID=$(cat "$PIDFILE")
   if kill -0 "$PID" 2>/dev/null; then

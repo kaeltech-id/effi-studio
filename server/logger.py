@@ -6,6 +6,8 @@ from pathlib import Path
 
 LOG_PATH = Path.home() / ".efficlaude" / "efficlaude.log"
 MAX_LOG_LINES = int(os.getenv('EFFICLAUDE_MAX_LOG_LINES', '1000'))
+WORKER_LOG_PATH = Path.home() / ".efficlaude" / "worker.log"
+MAX_WORKER_LOG_BYTES = int(os.getenv('EFFICLAUDE_MAX_LOG_BYTES', str(5 * 1024 * 1024)))
 _error_counts: dict[str, int] = {}
 _log_lock = threading.Lock()
 
@@ -24,6 +26,20 @@ def warn(tag: str, msg: str) -> None:
         pass
     if os.getenv("EFFICLAUDE_DEBUG"):
         print(line, end="", file=sys.stderr)
+
+
+def rotate_if_large(path: Path = WORKER_LOG_PATH, max_bytes: int = MAX_WORKER_LOG_BYTES) -> bool:
+    """Move an oversized log aside, keeping one backup. Returns True if rotated."""
+    try:
+        if not path.exists() or path.stat().st_size <= max_bytes:
+            return False
+        backup = path.with_suffix(path.suffix + ".1")
+        if backup.exists():
+            backup.unlink()
+        path.rename(backup)
+        return True
+    except Exception:
+        return False
 
 
 def get_counts() -> dict:

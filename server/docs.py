@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sqlite3
 import json
-import re
 import requests
 import chromadb
 from datetime import datetime
@@ -33,6 +32,7 @@ LIBRARY_SOURCES = {
 }
 
 DOC_TTL_DAYS = 7
+SHARED_DOCS_COLLECTION = "efficlaude_docs"
 
 
 class DocsEngine:
@@ -67,9 +67,8 @@ class DocsEngine:
             ''')
             conn.commit()
 
-    def _get_collection(self, library: str):
-        safe = re.sub(r'[^a-z0-9]', '_', library.lower())[:40]
-        return self.chroma_client.get_or_create_collection(f"docs_{safe}")
+    def _get_collection(self, library: str = ''):
+        return self.chroma_client.get_or_create_collection(SHARED_DOCS_COLLECTION)
 
     def _is_stale(self, name: str) -> bool:
         with sqlite3.connect(self.db_path) as conn:
@@ -137,7 +136,7 @@ class DocsEngine:
                     conn.commit()
 
                 collection = self._get_collection(name)
-                existing_ids = set(collection.get()['ids']) if collection.count() > 0 else set()
+                existing_ids = set(collection.get(where={"library": name})['ids'])
                 new_ids = [f"{name}_{i}" for i in range(len(chunks))]
 
                 new_ids_set = set(new_ids)
@@ -192,33 +191,36 @@ class DocsEngine:
         if not rows:
             return []
 
-        all_results = []
-        for (lib_name,) in rows:
+        lib_names = [r[0] for r in rows]
+        for lib_name in lib_names:
             if self._is_stale(lib_name):
                 threading.Thread(target=self.fetch_and_cache, args=(lib_name,), daemon=True).start()
-            collection = self._get_collection(lib_name)
-            try:
-                count = collection.count()
-                if count == 0:
-                    continue
-                results = collection.query(
-                    query_texts=[query],
-                    n_results=min(limit, count)
-                )
-                for doc, meta, dist in zip(
-                    results['documents'][0],
-                    results['metadatas'][0],
-                    results['distances'][0]
-                ):
-                    all_results.append({
-                        "library": lib_name,
-                        "heading": meta.get('heading', ''),
-                        "content": doc,
-                        "distance": dist
-                    })
-            except Exception as e:
-                warn("docs", f"search error ({lib_name}): {e}")
-                continue
+
+        collection = self._get_collection()
+        all_results = []
+        try:
+            count = collection.count()
+            if count == 0:
+                return []
+            results = collection.query(
+                query_texts=[query],
+                n_results=min(limit * len(lib_names), count),
+                where={"library": {"$in": lib_names}}
+            )
+            for doc, meta, dist in zip(
+                results['documents'][0],
+                results['metadatas'][0],
+                results['distances'][0]
+            ):
+                all_results.append({
+                    "library": meta.get('library', ''),
+                    "heading": meta.get('heading', ''),
+                    "content": doc,
+                    "distance": dist
+                })
+        except Exception as e:
+            warn("docs", f"search error: {e}")
+            return []
 
         all_results.sort(key=lambda x: x['distance'])
         return all_results[:limit]

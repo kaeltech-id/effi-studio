@@ -144,7 +144,15 @@ For each task, before spawning subagent, check for `[agent: ec-xxx]` tag in the 
 5. If agent file not found: show `(⚠️ agent {name} not installed — run install.sh to install agents)` and proceed without agent context
 6. If no `[agent:]` tag: proceed normally — no agent context injected
 
-### Design Contract Injection
+### Design Block Injection
+Step 0 — determine which block the plan carries: `### Design Contract` or `### Design Direction`. A plan has at most one.
+
+**If the plan has `### Design Contract`:** follow steps 1-6 below unchanged.
+
+**If the plan has `### Design Direction`:** for each task carrying a `[design:]` tag (its `{source}` reads `direction`, so there is no image to open), read the `### Design Direction` block from {PLAN_FILE} in full and prepend to the subagent prompt:
+   "Design Direction — no visual reference exists for this task. Build to these dials and rules.\n{direction_block}\nRead ~/.claude/agents/ec-antislop.md and apply it in full. Report every purpose-gate use and every major design decision as 'Reason: {what} — {why}'."
+If the plan has neither block: proceed normally — nothing injected.
+
 For each task, before spawning subagent, check for a `[design: {source}#{frame}]` tag in the task line:
 1. Extract source and frame: parse `\[design: (.+)#([^#\]]+)\]` from the task line — the separator is the LAST `#`, so a source URL containing a fragment still parses correctly
 2. Read the `### Design Contract` block from `{PLAN_FILE}` in full

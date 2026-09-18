@@ -19,5 +19,15 @@
   <string>EFFICLAUDE_HOME/worker.log</string>
   <key>WorkingDirectory</key>
   <string>EFFICLAUDE_HOME</string>
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>8192</integer>
+  </dict>
+  <key>HardResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>8192</integer>
+  </dict>
 </dict>
 </plist>

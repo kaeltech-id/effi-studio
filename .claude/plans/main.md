@@ -1,436 +1,433 @@
-## Feature: Durable Auto-Flow — Stage State on Disk + Stop-Hook Driver
+## Feature: Design Direction — anti-slop as the second branch of Design Contract
 
 ### Impact Analysis
-- Files affected: `hooks/session_stop.py`, `commands/ec-brainstorm.md`, `commands/ec-feature.md`, `commands/ec-execute.md`, `commands/ec-review.md`, `tests/test_hooks.py`, `tests/test_command_docs.py`, plus installed copies `~/.efficlaude/hooks/session_stop.py` and `~/.claude/commands/ec-{brainstorm,feature,execute,review}.md`
-- ⚠️ Breaking change risk:
-  - `hooks/session_stop.py` is a registered `Stop` hook (`~/.claude/settings.json`). A crash or stray stdout here degrades every session. Mitigated by wrapping driver logic in try/except and by suppressing `check_uncommitted()`'s stdout whenever a JSON payload is emitted.
-  - `main()` currently calls `sys.exit(0)` when the worker is unreachable (`hooks/session_stop.py:152`). Left as-is, that path would swallow the driver payload. Mitigated by catching `SystemExit` around the legacy body.
-  - Sentinel gains new fields. Existing readers parse only `branch=` with `grep '^branch='` (`ec-feature.md:29`, `ec-execute.md:82`, `ec-review.md` equivalent), so extra lines are inert — verified by Task 7.
+- Files affected: `agents/ec-antislop.md` (new), `install.sh`, `commands/ec-brainstorm.md`, `commands/ec-feature.md`, `commands/ec-execute.md`, `commands/ec-review.md`, `agents/ec-react.md`, `agents/ec-vue.md`, `agents/ec-nextjs.md`, `agents/ec-react-native.md`, `agents/ec-tailwind.md`, `agents/ec-flutter.md`, `agents/ec-ios.md`, `agents/ec-android.md`, `tests/test_command_docs.py`, installed copies under `~/.claude`
+- ⚠️ Breaking change risk: `commands/ec-execute.md` `### Design Contract Injection` is the propagation path for every existing UI task. Generalising it must leave the Design Contract branch byte-identical in behaviour, or every reference-backed feature regresses. Task 10 is additive only — a second branch beside the existing one, never a rewrite of it.
 
 ### Reusable Existing Code
-- `_warn(tag, msg)` at `hooks/session_stop.py:16` — rotating log helper; reuse for all driver logging, no new logging code.
-- Routing table at `commands/ec-next.md:47-53` — the next-command derivation is copied from here, truncated before the `/ec-git` row.
-- Age + branch guard shell block at `commands/ec-execute.md:79-84` — the driver mirrors its semantics (7200s, branch match) in Python.
-- `subprocess.run([... 'git' ...], capture_output=True, timeout=…)` pattern at `hooks/session_stop.py:119-122` — reuse for branch detection.
-- Hook test pattern at `tests/test_hooks.py:35-53` — imports functions directly from `session_stop`; `sys.path.insert` already set up at `tests/test_hooks.py:9`.
-- Command-doc assertion pattern at `tests/test_command_docs.py:8-10` (`read_command`) — reuse for Task 7.
+- `### Design Contract Injection` at `commands/ec-execute.md:147` — the per-task block-injection mechanism; Design Direction reuses it rather than adding a parallel path
+- `### Visual Fidelity (if the plan has a Design Contract)` at `commands/ec-review.md:133` — the conditional-gate pattern the Anti-Slop gate copies
+- `## Visual Fidelity Protocol` at `agents/ec-react.md:50` — the agent-protocol section shape the precedence clause sits beside
+- `FRONTEND_AGENTS` list at `tests/test_command_docs.py:105` — existing frontend-agent fixture, extended rather than duplicated
+- `AGENTS=(...)` array at `install.sh:15` — existing agent install loop; `ec-antislop` is appended, no new loop
 
 ### Grounding
-Measured 2026-07-30 — real command output only.
-- `wc -l hooks/session_stop.py` → 170
-- `wc -l commands/ec-brainstorm.md` → 279
-- `wc -l commands/ec-feature.md` → 370
-- `wc -l commands/ec-execute.md` → 235
-- `wc -l commands/ec-review.md` → 267
-- `grep -c 'stage=' commands/ec-brainstorm.md` → 0
-- `grep -c 'stage=' commands/ec-feature.md` → 0
-- `grep -c 'stage=' commands/ec-execute.md` → 0
-- `grep -c 'stage=' commands/ec-review.md` → 0
-- `grep -c 'autoflow' hooks/session_stop.py` → 0
-- `grep -c '^def ' hooks/session_stop.py` → 8
-- `grep -c 'autoflow' commands/ec-brainstorm.md` → 2
-- Baseline test result: `python3 -m pytest tests/ -q` → **62 passed, 1 warning** (exit 0)
-- `python3 -c "import ast; ast.parse(open('hooks/session_stop.py').read())"` → parses OK
-- Source vs installed parity: `diff -q` reports **identical** for `session_stop.py` and all four command files
-- `ls .claude/.review-done-main` → ABSENT
-- `ls .claude/brainstorms/` → ABSENT
+Measured 2026-09-10 — real command output only.
+- Baseline string counts:
+  - `grep -c "Design Direction" commands/ec-brainstorm.md` → 0
+  - `grep -c "Design Direction" commands/ec-feature.md` → 0
+  - `grep -c "Design Direction" commands/ec-execute.md` → 0
+  - `grep -c "Design Direction" commands/ec-review.md` → 0
+  - `grep -c "Design Direction" tests/test_command_docs.py` → 0
+  - `grep -c "ec-antislop" install.sh` → 0
+  - `grep -c "Anti-Slop" agents/ec-react.md` → 0 (same for ec-vue, ec-nextjs, ec-react-native, ec-tailwind, ec-flutter, ec-ios, ec-android)
+  - `grep -c "^class Test" tests/test_command_docs.py` → 5
+  - `grep -c "^- \[ \] " commands/ec-feature.md` → 16 (3 task-template lines + 13 checklist rows)
+- Baseline line counts: `wc -l` → ec-brainstorm.md 296 · ec-feature.md 395 · ec-execute.md 259 · ec-review.md 268 · install.sh 265 · tests/test_command_docs.py 283 · ec-react.md 75 · ec-vue.md 65 · ec-nextjs.md 65 · ec-react-native.md 68 · ec-tailwind.md 55 · ec-flutter.md 70 · ec-ios.md 62 · ec-android.md 65
+- Baseline test result: `python3 -m pytest -q` → 112 passed, 1 warning
 - Verified anchors:
-  - `def main():` → `hooks/session_stop.py:148`
-  - `    release_stale_locks()` → `hooks/session_stop.py:149`
-  - `if __name__ == "__main__":` → `hooks/session_stop.py:169`
-  - `**Auto-Flow sentinel format**` → `commands/ec-brainstorm.md:125`
-  - `printf 'branch=%s\ncreated=%s\n' "$BRANCH" "$(date +%s)" > .claude/.autoflow` → `commands/ec-brainstorm.md:270`
-  - `When AUTO=yes: treat this run like vibe mode … consumed/removed by /ec-review.` → `commands/ec-feature.md:34`
-  - `Next: run /ec-execute to implement this plan.` → `commands/ec-feature.md:370`
-  - `When AUTO=yes: auto-skip confirmation gates (like vibe) … leave the sentinel for /ec-review to consume.` → `commands/ec-execute.md:86`
-  - `Next: run /ec-review to review the results.` → `commands/ec-execute.md:235`
-  - `When AUTO=yes: run the review without pausing … stops before git (see Step 4 teardown).` → `commands/ec-review.md:39`
-  - `rm -f .claude/.autoflow` → `commands/ec-review.md:223`
-  - `tests/test_hooks.py` → exists, pattern at line 35 (`test_check_uncommitted_no_output_when_clean`)
-  - `tests/test_command_docs.py` → exists, `read_command` helper at line 8
-
-### Sentinel Schema (target)
-```
-branch={branch}
-created={unix_epoch}
-stage={feature|execute|review}
-stages_done={comma-separated completed stages, empty at start}
-iterations={driver bookkeeping, starts 0}
-driver_stage={last stage observed by the driver — driver-written}
-driver_progress={last `- [x]` count observed by the driver — driver-written}
-```
-`stage=` / `stages_done=` are written by the commands. `iterations=` / `driver_stage=` / `driver_progress=` are written only by the driver. Authority for routing is the on-disk state files, never `stage=`.
+  - `agents/ec-antislop.md` → new file — no anchor
+  - `AGENTS=("ec-react"` → `install.sh:15`
+  - `record the single line` → `commands/ec-brainstorm.md:81`
+  - `## Design Contract` (decision template) → `commands/ec-brainstorm.md:206`
+  - `do not re-ask question 2` → `commands/ec-feature.md:65`
+  - `**If skip and the feature has UI scope:**` → `commands/ec-feature.md:138`
+  - `### Design Contract` (plan template) → `commands/ec-feature.md:272`
+  - `- [ ] Design Contract is present and self-contained` → `commands/ec-feature.md:346`
+  - `### Design Contract Injection` → `commands/ec-execute.md:147`
+  - `### Visual Fidelity (if the plan has a Design Contract)` → `commands/ec-review.md:133`
+  - `FRONTEND_AGENTS = [` → `tests/test_command_docs.py:105` (parametrized at line 150; `ec-tailwind` exception pinned at line 156)
+  - `- Accessibility:   ✓/✗ (UI only)` → `commands/ec-review.md:198`
+  - `## Visual Fidelity Protocol` → ec-react.md:50 · ec-vue.md:42 · ec-nextjs.md:40 · ec-react-native.md:42 · ec-tailwind.md:37 · ec-flutter.md:45 · ec-ios.md:37 · ec-android.md:40 (all 8 confirmed present)
 
 ### Tasks
-- [x] Task 1: Add auto-flow driver to session_stop hook [L] [agent: ec-python] — add sentinel parse/write, branch + plan-progress readers, state-file routing, stall/cap guards, and JSON block emission; rewire main() to preserve all legacy behaviour
-- [x] Task 2: Extend sentinel schema and writer in ec-brainstorm [M] — document the 7-field schema and make Step 7 write stage=feature, stages_done=, iterations=0
-- [x] Task 3: Advance stage to execute at end of ec-feature [S] — write stage=execute and append feature to stages_done when planning completes
-- [x] Task 4: Advance stage to review at end of ec-execute [S] — write stage=review and append execute to stages_done when all tasks complete
-- [x] Task 5: State chain-end semantics in ec-review [S] — record that deleting the sentinel is the driver's chain-complete signal and that the driver never routes to git
-- [x] Task 6: Unit-test the auto-flow driver [M] [agent: ec-unit-test] — cover parse, routing precedence, git exclusion, stall detection, iteration cap, stale sentinel, and stop_hook_active
-- [x] Task 7: Doc-test sentinel schema and backward compatibility [S] [agent: ec-unit-test] — assert the schema appears in the command docs and that existing grep '^branch=' readers still match
-- [x] Task 8: Sync source to installed copies [S] — copy the hook and four command files to ~/.efficlaude/hooks/ and ~/.claude/commands/
+- [x] Task 1: Create ec-antislop agent file [M] [agent: ec-llm] — new agent carrying the dials, distilled rules, and attribution
+- [x] Task 2: Register ec-antislop in install.sh [S] — append to the AGENTS array
+- [x] Task 3: Branch ec-brainstorm carry-forward to Design Direction [S] [agent: ec-llm] — replace the one-line no-reference fallback
+- [x] Task 4: Add Design Direction section to the decision template [S] [agent: ec-llm] — sibling of the Design Contract template block
+- [x] Task 5: Teach ec-feature to load a Design Direction decision [S] [agent: ec-llm] — recognise the block when loading the decision file
+- [x] Task 6: Emit Design Direction on the ec-feature skip branch [S] [agent: ec-llm] — replace the "no fidelity claim" dead end
+- [x] Task 7: Add Design Direction block to the plan template [S] [agent: ec-llm] — with the mutual-exclusivity rule
+- [x] Task 8: Add Design Direction rows to the ec-feature self-review checklist [S] [agent: ec-llm] — Step 4 gate entries
+- [x] Task 9: Generalise the ec-execute injection heading [M] [agent: ec-llm] — inject whichever design block the plan contains
+- [x] Task 10: Add the Anti-Slop gate to ec-review Stage 2 [M] [agent: ec-llm] — conditional on a Design Direction block
+- [x] Task 11: Add the Anti-Slop line to the ec-review summary block [S] [agent: ec-llm] — report row beside the existing gates
+- [x] Task 12: Add the precedence clause to 4 web frontend agents [S] [agent: ec-llm] — ec-react, ec-vue, ec-nextjs, ec-tailwind
+- [x] Task 13: Add the precedence clause to 4 mobile frontend agents [S] [agent: ec-llm] — ec-react-native, ec-flutter, ec-ios, ec-android
+- [x] Task 14: Add the Design Direction test class [M] [agent: ec-unit-test] — propagation-chain and mutual-exclusivity tests
+- [x] Task 15: Add the agent-bloat guard test [S] [agent: ec-unit-test] — assert frontend agents stayed small
+- [x] Task 16: Sync installed copies [S] — copy changed commands and agents into ~/.claude
 
 ### Per Task Detail
 
-**Task 1 — Add auto-flow driver to session_stop hook** `L`
-- File: `hooks/session_stop.py`
-- Anchor: `def main():` → `hooks/session_stop.py:148` (insert the new block immediately above it; then rename that `def main():` to `def _legacy_main(quiet=False):` and add a new `main()` below the inserted block)
-- Reuse: `_warn()` at line 16 for all logging; the `subprocess.run` git pattern at lines 119-122; do not add a second logging helper
+**Task 1 — Create ec-antislop agent file** `M`
+- File: `agents/ec-antislop.md` (create)
+- Anchor: new file — no anchor
+- Reuse: frontmatter shape from `agents/ec-reviewer.md` (`name`, `description`, `tools`)
 - Code sample:
-  ```python
-  # add to the import block at the top (re is not currently imported)
-  import re
+```markdown
+---
+name: ec-antislop
+description: Distilled anti-slop design ruleset. Invoked when UI is built with no visual reference — supplies dials, hard gates, and purpose gates.
+tools: Read, Grep, Glob
+---
 
-  AUTOFLOW_PATH = os.path.join(".claude", ".autoflow")
-  AUTOFLOW_MAX_AGE = 7200
-  AUTOFLOW_MAX_ITERATIONS = 40
-  _SENTINEL_ORDER = ["branch", "created", "stage", "stages_done",
-                     "iterations", "driver_stage", "driver_progress"]
+Distilled from github.com/miqdadbadjuber/anti-slop (paraphrased, 2026-09-10). Applies ONLY when the plan carries a `### Design Direction` block. When the plan carries a `### Design Contract`, that contract wins outright and this file is silent.
 
+## Dials
+Every UI declares three dials, 1=Calm 2=Balanced 3=Bold:
+| Dial | 1 | 2 | 3 |
+|---|---|---|---|
+| ENERGY | restrained, GOV.UK | Stripe, Vercel | showcase |
+| RHYTHM | uniform grid | consistent with breaks | asymmetric, mixed |
+| MOTION | hover only | scroll reveal | parallax, choreography |
 
-  def _parse_sentinel(path):
-      fields = {}
-      try:
-          with open(path) as f:
-              for line in f:
-                  line = line.strip()
-                  if not line or "=" not in line:
-                      continue
-                  key, _, value = line.partition("=")
-                  fields[key.strip()] = value.strip()
-      except Exception:
-          return None
-      return fields or None
+## Hard Gates — breaking one is a failure
+- No em dashes in UI copy
+- No invented numbers or statistics — omit rather than fabricate
+- No AI avatars, invented person names, or fictional testimonials
+- Confirm assets exist before referencing them; use labelled placeholders
+- Nav links point only to sections or pages that exist
+- Every button, link, and form has real behaviour or is removed
+- Microcopy and FAQ entries are product-specific, never template filler
+- No fabricated security, compliance, or performance claims
+- Mobile layout has no overflow, clipping, or broken state
+- If a theme toggle exists, both themes are fully implemented
 
+## Purpose Gates — allowed only with a written one-line reason
+- Gradient or glow: max 2 elements, stated hierarchy or brand purpose
+- Glassmorphism: max 2 elements, never navbar + cards + modal together
+- Icons: content-relevant only, no decorative sparkles
+- Animation: stated UX purpose, and must match the declared MOTION dial
+- Shadow: expresses elevation, never decorative float
 
-  def _write_sentinel(path, fields):
-      lines = [f"{k}={fields[k]}" for k in _SENTINEL_ORDER if k in fields]
-      lines += [f"{k}={v}" for k, v in fields.items() if k not in _SENTINEL_ORDER]
-      with open(path, "w") as f:
-          f.write("\n".join(lines) + "\n")
+## Quality Locks
+- No AI template layouts: hero + 3 identical cards, 3-step "How It Works", bento grid, fake terminal, 3 pricing tiers, generic footer
+- CTAs name the product action, never "Get Started"
+- No buzzwords: AI-Powered, Seamless, Revolutionary, Effortless
+- Max 2-3 core colors plus 1 accent
+- Do not clone Linear, Vercel, Stripe, Notion, or Apple
+- Radius consistent with the system — not every element pill-shaped
+- Feature cards vary by hierarchy, not identical size, icon, and padding
 
-
-  def _current_branch():
-      try:
-          result = subprocess.run(
-              ["git", "branch", "--show-current"],
-              capture_output=True, text=True, cwd=os.getcwd(), timeout=3
-          )
-          return re.sub(r"[^a-zA-Z0-9._-]", "-", result.stdout.strip()) or "default"
-      except Exception:
-          return "default"
-
-
-  def _plan_counts(branch):
-      plan = os.path.join(".claude", "plans", f"{branch}.md")
-      if not os.path.exists(plan):
-          return None
-      done = todo = 0
-      try:
-          with open(plan) as f:
-              for line in f:
-                  stripped = line.lstrip()
-                  if stripped.startswith("- [x]"):
-                      done += 1
-                  elif stripped.startswith("- [ ]"):
-                      todo += 1
-      except Exception:
-          return None
-      return done, todo
-
-
-  def _next_autoflow_command(branch):
-      """Route from on-disk state, mirroring commands/ec-next.md:47-53 truncated
-      before the /ec-git row. Returns None when the chain is finished."""
-      if os.path.exists(os.path.join(".claude", f".review-done-{branch}")):
-          return None
-      counts = _plan_counts(branch)
-      if counts is not None:
-          done, todo = counts
-          if todo > 0:
-              return "/ec-execute"
-          if done > 0:
-              return "/ec-review"
-      if os.path.exists(os.path.join(".claude", "decisions", f"{branch}.md")):
-          return "/ec-feature"
-      try:
-          if any(n.endswith(".md")
-                 for n in os.listdir(os.path.join(".claude", "brainstorms"))):
-              return "/ec-feature"
-      except Exception:
-          pass
-      return None
-
-
-  def _autoflow_end(path, why):
-      try:
-          os.remove(path)
-      except Exception:
-          pass
-      _warn("autoflow", f"chain ended: {why}")
-
-
-  def autoflow_driver(hook_input):
-      """Keep an auto-flow chain running across context loss. Returns a Stop-hook
-      payload dict to emit, or None to let the session stop normally."""
-      if hook_input.get("stop_hook_active"):
-          return None
-      path = AUTOFLOW_PATH
-      fields = _parse_sentinel(path)
-      if not fields:
-          return None
-      branch = _current_branch()
-      try:
-          age = time.time() - os.path.getmtime(path)
-      except Exception:
-          age = AUTOFLOW_MAX_AGE + 1
-      if age > AUTOFLOW_MAX_AGE or fields.get("branch") != branch:
-          _autoflow_end(path, "stale sentinel")
-          return None
-      try:
-          iterations = int(fields.get("iterations") or 0)
-      except ValueError:
-          iterations = 0
-      if iterations >= AUTOFLOW_MAX_ITERATIONS:
-          _autoflow_end(path, f"iteration cap {AUTOFLOW_MAX_ITERATIONS} reached")
-          return None
-      next_command = _next_autoflow_command(branch)
-      if next_command is None:
-          _autoflow_end(path, "chain complete")
-          return None
-      counts = _plan_counts(branch)
-      progress = counts[0] if counts else 0
-      stage = fields.get("stage", "")
-      seen_stage = fields.get("driver_stage")
-      try:
-          seen_progress = int(fields.get("driver_progress"))
-      except (TypeError, ValueError):
-          seen_progress = -1
-      if seen_stage is not None and stage == seen_stage and progress <= seen_progress:
-          _autoflow_end(path, f"no progress at stage={stage} progress={progress}")
-          return None
-      fields["driver_stage"] = stage
-      fields["driver_progress"] = str(progress)
-      fields["iterations"] = str(iterations + 1)
-      _write_sentinel(path, fields)
-      _warn("autoflow",
-            f"resuming {next_command} (stage={stage} progress={progress} "
-            f"iter={iterations + 1})")
-      return {
-          "decision": "block",
-          "reason": (
-              f"Auto-flow is still running on branch {branch} "
-              f"(stage={stage or 'unknown'}, {progress} task(s) marked done). "
-              f"Do not stop. Invoke {next_command} now and continue the chain "
-              f"to completion. Never run git — the chain stops before /ec-git."
-          ),
-      }
-
-
-  def _read_hook_input():
-      try:
-          raw = sys.stdin.read()
-      except Exception:
-          return {}
-      try:
-          return json.loads(raw) if raw.strip() else {}
-      except Exception:
-          return {}
-  ```
-  Then rename the existing `def main():` (line 148) to `def _legacy_main(quiet=False):` and guard its stdout-producing call:
-  ```python
-  def _legacy_main(quiet=False):
-      release_stale_locks()
-      if not quiet:
-          check_uncommitted()
-      if not ensure_worker(wait_secs=3):
-          return
-      # ...rest of the existing body unchanged...
-  ```
-  (`sys.exit(0)` at old line 152 becomes `return`; keep every other statement identical.)
-  And add the new entry point:
-  ```python
-  def main():
-      hook_input = _read_hook_input()
-      payload = None
-      try:
-          payload = autoflow_driver(hook_input)
-      except Exception as e:
-          _warn("session_stop", f"autoflow driver failed: {e}")
-      try:
-          _legacy_main(quiet=payload is not None)
-      except SystemExit:
-          pass
-      except Exception as e:
-          _warn("session_stop", f"legacy main failed: {e}")
-      if payload is not None:
-          if os.environ.get("EFFICLAUDE_AUTOFLOW_MODE") == "exit2":
-              print(payload["reason"], file=sys.stderr)
-              sys.exit(2)
-          print(json.dumps(payload))
-  ```
-- Do not touch: `_warn`, `get_project_name`, `ensure_worker`, `check_uncommitted`, `auto_export`, `ensure_commit_hook`, `release_stale_locks` bodies — all seven stay byte-identical. Do not touch `WORKER_URL` / `START_SH`. Do not change `if __name__ == "__main__": main()` at lines 169-170.
-- Edge cases: no sentinel (return None, silent); malformed sentinel line without `=` (skipped); `iterations` / `driver_progress` non-numeric (defaults, no crash); plan file absent while decision file present (routes `/ec-feature`); `.claude/brainstorms/` absent (`os.listdir` raises, caught); stdin empty or not JSON (empty dict); git unavailable (branch `default`, sentinel branch will not match → chain ends cleanly rather than looping).
-- ⚠️ Breaking change: this file is a live `Stop` hook. Emitting anything to stdout other than the JSON payload breaks the contract — that is why `check_uncommitted()` is suppressed when a payload exists. Catching `SystemExit` is required so the worker-offline path no longer discards the payload.
-- Acceptance: importing `session_stop` exposes `autoflow_driver`, `_parse_sentinel`, `_write_sentinel`, `_current_branch`, `_plan_counts`, `_next_autoflow_command`, `_autoflow_end`, `_read_hook_input`, and `_legacy_main`; the seven pre-existing helpers still exist; and running the hook with no sentinel present produces no stdout.
-- Verify: `python3 -c "import sys; sys.path.insert(0,'hooks'); import session_stop as s; new=['autoflow_driver','_parse_sentinel','_write_sentinel','_current_branch','_plan_counts','_next_autoflow_command','_autoflow_end','_read_hook_input','_legacy_main']; old=['_warn','get_project_name','ensure_worker','check_uncommitted','auto_export','ensure_commit_hook','release_stale_locks']; print(all(hasattr(s,n) for n in new+old))"` → prints `True` (presence check — no numeric threshold, nothing to trace)
-- Rollback: `git checkout -- hooks/session_stop.py`
+## Reporting
+Every purpose-gate use and every major design decision is reported as one line: "Reason: {what} — {why}". A reason that does not match the built code is a failure, not a pass.
+```
+- Do not touch: any existing file in `agents/`
+- Edge cases: n/a — static prompt file
+- ⚠️ Breaking change: none — new file, referenced by nothing until Task 9
+- Acceptance: the file exists with valid frontmatter, the three dials, and the three rule tiers
+- Verify: `test -f agents/ec-antislop.md && grep -c "^## " agents/ec-antislop.md` → `== 5` (Dials, Hard Gates, Purpose Gates, Quality Locks, Reporting)
+- Rollback: `rm agents/ec-antislop.md`
 - Dependencies: none
 
-**Task 2 — Extend sentinel schema and writer in ec-brainstorm** `M`
+**Task 2 — Register ec-antislop in install.sh** `S`
+- File: `install.sh`
+- Anchor: `AGENTS=("ec-react"` → `install.sh:15`
+- Reuse: existing `for agent in "${AGENTS[@]}"` loop at `install.sh:79` — no new loop
+- Code sample: append `"ec-antislop"` as the final element of the `AGENTS=(...)` array on line 15
+- Do not touch: `SERVER_FILES`, `HOOK_FILES`, the install loops themselves
+- Edge cases: n/a
+- ⚠️ Breaking change: none — additive array element
+- Acceptance: a fresh install copies `ec-antislop.md` into `~/.claude/agents/`
+- Verify: `grep -c "ec-antislop" install.sh` → `== 1` (baseline 0, one element added)
+- Rollback: `git checkout -- install.sh`
+- Dependencies: Task 1
+
+**Task 3 — Branch ec-brainstorm carry-forward to Design Direction** `S`
 - File: `commands/ec-brainstorm.md`
-- Anchor: `**Auto-Flow sentinel format**` → `commands/ec-brainstorm.md:125`, and `printf 'branch=%s\ncreated=%s\n' "$BRANCH" "$(date +%s)" > .claude/.autoflow` → `commands/ec-brainstorm.md:270`
-- Reuse: the `### Sentinel Schema (target)` block in this plan file — copy the field list verbatim so hook and docs cannot drift
-- Code sample: replace the two-line description at lines 125-126 with the full field list (`branch`, `created`, `stage`, `stages_done`, `iterations`, `driver_stage`, `driver_progress`), stating which fields are command-written and which are driver-written, that routing authority is the on-disk state files rather than `stage=`, and that the `Stop` hook `session_stop.py` drives the chain so it survives context loss and compaction. Replace the writer at line 270 with:
-  ```bash
-  printf 'branch=%s\ncreated=%s\nstage=feature\nstages_done=\niterations=0\n' \
-    "$BRANCH" "$(date +%s)" > .claude/.autoflow
-  ```
-  Also amend the Step 3 `auto` bullet (line 122) to state that auto-flow survives context exhaustion because the driver resumes it from disk.
-- Do not touch: Steps 0–6 apart from the line-122 bullet; the No-Code Rule block; the decision template.
-- Edge cases: keep the 2-hour staleness rule and the branch-mismatch rule stated exactly as before — the driver depends on both; do not change `7200`.
-- ⚠️ Breaking change: none — readers grep only `^branch=`.
-- Acceptance: the sentinel format section names all seven fields and says which side writes each; Step 7's writer emits five lines including `stage=feature`.
-- Verify: `grep -c 'stage=' commands/ec-brainstorm.md` → `>= 2` (baseline 0 in `### Grounding`; the schema block and the writer each add at least one, prose mentions may add more, so the count genuinely varies)
+- Anchor: `record the single line` → `commands/ec-brainstorm.md:81`
+- Reuse: none
+- Code sample: replace the trailing sentence of line 81 so the no-reference branch reads:
+```
+If no reference was supplied, do NOT write a Design Contract — draft a `## Design Direction` section instead using the field list in the decision template in Step 5, inferring the three dials from the problem description. A decision file carries a Design Contract or a Design Direction, never both.
+```
+- Do not touch: the reference-supplied half of line 81, which must keep drafting a Design Contract unchanged
+- Edge cases: non-UI features produce neither block — leave that path untouched
+- ⚠️ Breaking change: none — only the previously-dead no-reference branch changes
+- Acceptance: the no-reference branch instructs a Design Direction and states mutual exclusivity
+- Verify: `grep -c "Design Direction" commands/ec-brainstorm.md` → `>= 1` (baseline 0; Task 4 adds more to the same file)
 - Rollback: `git checkout -- commands/ec-brainstorm.md`
 - Dependencies: none
 
-**Task 3 — Advance stage to execute at end of ec-feature** `S`
+**Task 4 — Add Design Direction section to the decision template** `S`
+- File: `commands/ec-brainstorm.md`
+- Anchor: `## Design Contract` → `commands/ec-brainstorm.md:206`
+- Reuse: the field-list shape of the `## Design Contract` template block directly above
+- Code sample: insert immediately after the Design Contract template block ends:
+```
+## Design Direction
+_Include this section only when the problem has UI/frontend scope AND no visual reference was supplied. Mutually exclusive with ## Design Contract._
+- Dials: ENERGY {1-3} · RHYTHM {1-3} · MOTION {1-3} — {one-line reason for each}
+- Palette: {2-3 core colors + 1 accent, hex} — {reason}
+- Typography: {headline face, body face, scale} — {reason}
+- Identity motif: {the repeated gesture or pattern specific to this product}
+- Rules: apply agents/ec-antislop.md in full — hard gates, purpose gates, quality locks
+```
+- Do not touch: the `## Design Contract` template block itself
+- Edge cases: no UI scope → section omitted entirely
+- ⚠️ Breaking change: none
+- Acceptance: the decision template offers Design Direction as a documented sibling section
+- Verify: `grep -c "^## Design Direction$" commands/ec-brainstorm.md` → `== 1` (baseline 0)
+- Rollback: `git checkout -- commands/ec-brainstorm.md`
+- Dependencies: Task 3
+
+**Task 5 — Teach ec-feature to load a Design Direction decision** `S`
 - File: `commands/ec-feature.md`
-- Anchor: `Next: run /ec-execute to implement this plan.` → `commands/ec-feature.md:370`
-- Reuse: the sentinel-read shell block at `commands/ec-feature.md:25-33` — the update block goes in the same idiom
-- Code sample: insert immediately above line 370, inside Step 6, a paragraph reading "**Auto-Flow stage advance:** If `AUTO=yes`, record that planning is done so the Stop-hook driver routes to the next stage even if this context is lost:" followed by a bash block:
-  ```bash
-  if [ -f .claude/.autoflow ]; then
-    python3 - <<'PY'
-  import os
-  p = os.path.join(".claude", ".autoflow")
-  f = {}
-  for line in open(p):
-      if "=" in line:
-          k, _, v = line.strip().partition("=")
-          f[k] = v
-  f["stage"] = "execute"
-  done = [s for s in f.get("stages_done", "").split(",") if s]
-  if "feature" not in done:
-      done.append("feature")
-  f["stages_done"] = ",".join(done)
-  order = ["branch", "created", "stage", "stages_done", "iterations",
-           "driver_stage", "driver_progress"]
-  keys = [k for k in order if k in f] + [k for k in f if k not in order]
-  open(p, "w").write("\n".join(f"{k}={f[k]}" for k in keys) + "\n")
-  PY
-  fi
-  ```
-- Do not touch: the Auto-Flow check block at lines 23-34 (it must keep saying the sentinel is not deleted here); the confirm gate wording; Steps 0–5.
-- Edge cases: sentinel absent → the `if` guard makes it a no-op; `stages_done` already containing `feature` → not duplicated; unknown extra fields → preserved by the order-then-remainder write.
-- ⚠️ Breaking change: none.
-- Acceptance: after a plan is written under `AUTO=yes`, `.claude/.autoflow` reads `stage=execute` and `stages_done` contains `feature`, with `branch=` and `created=` unchanged.
-- Verify: `grep -c 'f\["stage"\] = "execute"' commands/ec-feature.md` → `== 1` (baseline 0 — the inserted block sets the field with Python assignment syntax, so the pattern must match `f["stage"] = "execute"`, not a literal `stage=execute`; corrected during execution after Task 3 reported a threshold mismatch against the original pattern)
+- Anchor: `do not re-ask question 2` → `commands/ec-feature.md:65`
+- Reuse: the existing decision-loading bullet directly above
+- Code sample: add a sibling bullet immediately after line 65:
+```
+- If the decision file contains a `## Design Direction` section, load it verbatim as the starting Design Direction and skip question 2 entirely — the user already declined a reference at brainstorm time. A plan carries a Design Contract or a Design Direction, never both.
+```
+- Do not touch: line 65 itself — the Design Contract loading rule stays byte-identical
+- Edge cases: decision file with neither block → existing behaviour unchanged
+- ⚠️ Breaking change: none — additive bullet
+- Acceptance: a Design Direction decision reaches `/ec-feature` without re-asking for a reference
+- Verify: `grep -c "Design Direction" commands/ec-feature.md` → `>= 1` (baseline 0; Tasks 6-8 add more to the same file)
 - Rollback: `git checkout -- commands/ec-feature.md`
-- Dependencies: Task 2 (schema must be defined first)
+- Dependencies: Task 4
 
-**Task 4 — Advance stage to review at end of ec-execute** `S`
+**Task 6 — Emit Design Direction on the ec-feature skip branch** `S`
+- File: `commands/ec-feature.md`
+- Anchor: `**If skip and the feature has UI scope:**` → `commands/ec-feature.md:138`
+- Reuse: none
+- Code sample: replace line 138 with:
+```
+   **If skip and the feature has UI scope:** write no Design Contract. Build a `### Design Direction` block instead, inferring the three dials from the feature description and stating a one-line reason for each; the plan then carries a Design Direction and no `### Design Contract`.
+```
+- Do not touch: line 140 (`**If the feature has no UI scope:**`) — no-UI features still get neither block
+- Edge cases: skip on a non-UI feature → falls through to line 140 unchanged
+- ⚠️ Breaking change: none — replaces a branch that previously produced an ungoverned plan
+- Acceptance: choosing "skip" on a UI feature yields a Design Direction rather than a fidelity disclaimer
+- Verify: `grep -c "no fidelity claim can be made" commands/ec-feature.md` → `== 0` (baseline 1, removed)
+- Rollback: `git checkout -- commands/ec-feature.md`
+- Dependencies: Task 5
+
+**Task 7 — Add Design Direction block to the plan template** `S`
+- File: `commands/ec-feature.md`
+- Anchor: `### Design Contract` (plan template) → `commands/ec-feature.md:272`
+- Reuse: the `### Design Contract` plan-template block and its trailing omit-rule sentence
+- Code sample: insert after the Design Contract plan-template block and its "Omit this whole section" line:
+```
+### Design Direction
+- Dials: ENERGY {1-3} · RHYTHM {1-3} · MOTION {1-3} — {one-line reason for each}
+- Palette: {2-3 core colors + 1 accent, hex} — {reason}
+- Typography: {headline face, body face, scale} — {reason}
+- Identity motif: {the repeated gesture or pattern specific to this product}
+- Rules: apply agents/ec-antislop.md in full — hard gates, purpose gates, quality locks
+
+Include this section only when the feature has UI scope AND no visual reference was supplied. A plan contains `### Design Contract` or `### Design Direction`, never both, and never neither when the feature has UI scope.
+```
+- Do not touch: the `### Design Contract` plan-template block
+- Edge cases: non-UI feature → neither block, as today
+- ⚠️ Breaking change: none
+- Acceptance: the plan template documents both blocks and their mutual exclusivity
+- Verify: `grep -c "never both" commands/ec-feature.md` → `>= 2` (baseline 0; Task 5 adds one, this task adds one)
+- Rollback: `git checkout -- commands/ec-feature.md`
+- Dependencies: Task 6
+
+**Task 8 — Add Design Direction rows to the ec-feature self-review checklist** `S`
+- File: `commands/ec-feature.md`
+- Anchor: `- [ ] Design Contract is present and self-contained` → `commands/ec-feature.md:346`
+- Reuse: the checklist row shape directly above
+- Code sample: insert two rows after line 347:
+```
+  - [ ] A UI feature carries exactly one of ### Design Contract / ### Design Direction — never both, never neither
+  - [ ] Design Direction states all three dials with a one-line reason each
+```
+- Do not touch: the existing Design Contract and `[design:]` checklist rows
+- Edge cases: n/a
+- ⚠️ Breaking change: none
+- Acceptance: Step 4 refuses to present a UI plan carrying both blocks or neither
+- Verify: `grep -c "^- \[ \] " commands/ec-feature.md` → `== 18` (baseline 16, two rows added). The two sample rows above are indented two spaces in this plan so they never match this pattern or the executor's task counter — write them unindented into ec-feature.md.
+- Rollback: `git checkout -- commands/ec-feature.md`
+- Dependencies: Task 7
+
+**Task 9 — Generalise the ec-execute injection heading** `M`
 - File: `commands/ec-execute.md`
-- Anchor: `Next: run /ec-review to review the results.` → `commands/ec-execute.md:235`
-- Reuse: the same inline-python update block as Task 3, with `stage=review` and `execute` appended to `stages_done`
-- Code sample: insert immediately above line 235 (after the lock release) a paragraph reading "**Auto-Flow stage advance:** If `AUTO=yes`, record that execution is done so the Stop-hook driver routes to `/ec-review` even if this context is lost." followed by the same `bash` + heredoc shape as Task 3 but setting `f["stage"] = "review"` and appending `"execute"` to `stages_done`. Also append to the `When AUTO=yes` paragraph at line 86 a sentence stating that partial progress is safe because the driver re-invokes `/ec-execute` from the plan file's remaining `- [ ]` lines, so the sentinel must NOT be deleted merely because this context ended mid-plan.
-- Do not touch: the Auto-Flow detection block at lines 76-84; Error Recovery (line 176) and Timeout Rule (line 184) sentinel deletions — those are genuine aborts and must keep deleting the sentinel; the per-task `[x]` update rule at line 107 (the driver's progress signal depends on it).
-- Edge cases: sentinel absent → no-op via the `if` guard; execution ending mid-plan → `stage` stays `execute`, driver re-routes to `/ec-execute`, and the rising `[x]` count keeps the stall guard satisfied.
-- ⚠️ Breaking change: none.
-- Acceptance: the file states that a mid-plan context loss under `AUTO=yes` is resumed by the driver rather than requiring a manual re-invocation, and the stage advance to `review` runs only after all tasks complete.
-- Verify: `grep -c 'f\["stage"\] = "review"' commands/ec-execute.md` → `== 1` (baseline 0 — same Python-assignment-syntax correction as Task 3; a literal `stage=review` never appears in the inserted block)
+- Anchor: `### Design Contract Injection` → `commands/ec-execute.md:147`
+- Reuse: the entire existing 6-step injection procedure — extended, not rewritten
+- Code sample: rename the heading to `### Design Block Injection` and add a step 0 plus a Design Direction branch, leaving steps 1-6 of the Design Contract path unaltered:
+```
+### Design Block Injection
+Step 0 — determine which block the plan carries: `### Design Contract` or `### Design Direction`. A plan has at most one.
+
+**If the plan has `### Design Contract`:** follow steps 1-6 below unchanged.
+
+**If the plan has `### Design Direction`:** for each task carrying a `[design:]` tag, read the `### Design Direction` block from {PLAN_FILE} in full and prepend to the subagent prompt:
+   "Design Direction — no visual reference exists for this task. Build to these dials and rules.\n{direction_block}\nRead ~/.claude/agents/ec-antislop.md and apply it in full. Report every purpose-gate use and every major design decision as 'Reason: {what} — {why}'."
+If the plan has neither block: proceed normally — nothing injected.
+```
+- Do not touch: numbered steps 1-6 at `commands/ec-execute.md:148-155` — the Design Contract path must stay byte-identical
+- Edge cases: plan with neither block (non-UI feature) → nothing injected, as today; task tagged `[design:]` but no block present → existing warning at step 5 still applies
+- ⚠️ Breaking change: this is the propagation path for every existing UI task. Mitigated by leaving steps 1-6 untouched and adding the Direction branch beside them.
+- Acceptance: a UI task injects its contract when one exists, its direction when one exists, and nothing when neither does
+- Verify: `grep -c "Design Contract Injection" commands/ec-execute.md` → `== 0` and `grep -c "Design Block Injection" commands/ec-execute.md` → `== 1` (baseline 1 and 0)
 - Rollback: `git checkout -- commands/ec-execute.md`
-- Dependencies: Task 2
+- Dependencies: Task 1, Task 7
 
-**Task 5 — State chain-end semantics in ec-review** `S`
+**Task 10 — Add the Anti-Slop gate to ec-review Stage 2** `M`
 - File: `commands/ec-review.md`
-- Anchor: `When AUTO=yes: run the review without pausing for confirmation.` → `commands/ec-review.md:39`
-- Reuse: existing teardown block at lines 214-224 — no change to the `rm -f` itself
-- Code sample: extend the line-39 paragraph with: deleting `.claude/.autoflow` is the signal the `Stop`-hook driver reads as "chain complete"; the driver never routes to `/ec-git` even once `.claude/.review-done-{BRANCH}` exists, so git stays manual per GIT RULES. Add one sentence near the teardown at line 223 noting the deletion is what stops the driver from blocking further turns. The phrase `never routes to` must appear literally.
-- Do not touch: the two-stage review structure; `rm -f {DECISION_FILE}`; `touch {REVIEW_DONE}`; the plan-archival block at lines 215-222; the not-clean path at line 226.
-- Edge cases: review not clean → sentinel still deleted (already the behaviour at line 226), so the driver stops rather than looping on an unfixed review.
-- ⚠️ Breaking change: none.
-- Acceptance: the file states that sentinel deletion is the driver's chain-complete signal and that the driver never routes to git.
-- Verify: `grep -c 'never routes to' commands/ec-review.md` → `>= 1` (baseline 0 — string absent before this task)
+- Anchor: `### Visual Fidelity (if the plan has a Design Contract)` → `commands/ec-review.md:133`
+- Reuse: the conditional-gate shape of the Visual Fidelity section directly above
+- Code sample: insert a new gate after the Visual Fidelity section ends and before `### API Error Handling`:
+```
+### Anti-Slop (if the plan has a Design Direction)
+- Implemented ENERGY, RHYTHM, and MOTION match the dials declared in the plan
+- No hard gate is broken: no em dashes in UI copy, no invented statistics, no fictional people or testimonials, no dead buttons or nav links, no fabricated security or performance claims, no mobile overflow
+- Every purpose-gate technique used (gradient, glow, glassmorphism, decorative icon, animation, shadow) carries a written reason, and that reason matches what the code actually does — an unverifiable reason is an issue to fix
+- No AI template layout: hero + 3 identical cards, 3-step "How It Works", bento grid, fake terminal, 3 pricing tiers, generic footer
+- CTAs name the product action; no buzzwords (AI-Powered, Seamless, Revolutionary, Effortless)
+- Palette is 2-3 core colors plus 1 accent; radius is consistent; feature cards vary by hierarchy
+Skip this gate entirely when the plan has a Design Contract or no design block.
+```
+- Do not touch: the Visual Fidelity gate and the API Error Handling gate — both stay byte-identical
+- Edge cases: plan with a Design Contract → gate skipped; no design block → gate skipped
+- ⚠️ Breaking change: none — additive conditional gate
+- Acceptance: a Design Direction plan is graded on dials and slop rules; a Design Contract plan is not
+- Verify: `grep -c "^### Anti-Slop (if the plan has a Design Direction)$" commands/ec-review.md` → `== 1` (baseline 0)
 - Rollback: `git checkout -- commands/ec-review.md`
-- Dependencies: none
+- Dependencies: Task 7
 
-**Task 6 — Unit-test the auto-flow driver** `M`
-- File: `tests/test_hooks.py`
-- Anchor: `def test_check_uncommitted_no_output_when_clean(capsys):` → `tests/test_hooks.py:35` (append the new tests at end of file; `sys.path.insert` for `hooks/` already present at line 9)
-- Reuse: the existing `from session_stop import …` + `tmp_path` + `monkeypatch.chdir` idiom already used at lines 35-95; `unittest.mock.patch` already imported at line 6
-- Code sample: add a `TestAutoflowDriver` class whose helper writes a sentinel and a plan into `tmp_path`, chdirs there, and patches `session_stop._current_branch` to return `"main"`:
-  ```python
-  def _sentinel(tmp_path, **over):
-      f = {"branch": "main", "created": str(int(time.time())),
-           "stage": "execute", "stages_done": "feature", "iterations": "0"}
-      f.update(over)
-      p = tmp_path / ".claude" / ".autoflow"
-      p.parent.mkdir(parents=True, exist_ok=True)
-      p.write_text("".join(f"{k}={v}\n" for k, v in f.items()))
-      return p
-  ```
-  Required cases:
-  - no sentinel → `autoflow_driver({})` is `None`
-  - `stop_hook_active: True` → `None` and the sentinel file still exists
-  - plan with 1 `- [x]` and 2 `- [ ]` → payload `reason` contains `/ec-execute`
-  - plan with 2 `- [x]` and 0 `- [ ]` → `reason` contains `/ec-review`
-  - no plan, decision file present → `reason` contains `/ec-feature`
-  - `.review-done-main` present → `None` and sentinel deleted
-  - `_next_autoflow_command` never returns `/ec-git` for any routing case above, and the payload `reason`'s imperative is never `Invoke /ec-git` — corrected during execution: the original wording ("`reason` never contains `/ec-git`") is unsatisfiable, because the reason string deliberately ends with the negative instruction "Never run git — the chain stops before /ec-git."
-  - stall: sentinel with `driver_stage=execute`, `driver_progress=1`, plan with 1 `- [x]` → `None` and sentinel deleted
-  - progress: same sentinel but plan with 2 `- [x]` → payload returned, sentinel `driver_progress` becomes `2`
-  - `iterations=40` → `None` and sentinel deleted
-  - sentinel `branch=other` → `None` and sentinel deleted
-  - sentinel `mtime` older than 7200s (`os.utime`) → `None` and sentinel deleted
-  - `iterations=abc` and `driver_progress=xyz` → no exception, payload returned
-  - `_parse_sentinel` on a file containing a line without `=` → that line ignored, other keys parsed
-  - `_write_sentinel` round-trip preserves an unknown extra field
-  - `payload["decision"] == "block"` and `payload["reason"]` is a non-empty string
-- Do not touch: the four existing tests at lines 12-95 — they must keep passing unchanged.
-- Edge cases: tests must not touch the real repo `.claude/` — every case uses `tmp_path` + `monkeypatch.chdir`; `_current_branch` is patched so no test depends on the actual git branch.
-- ⚠️ Breaking change: none.
-- Acceptance: the full suite passes with strictly more tests than the 62-test baseline, and no test writes outside `tmp_path`.
-- Verify: `python3 -m pytest tests/ -q 2>&1 | tail -3` → reports `0 failed` and a passed count strictly greater than the baseline 62 recorded in `### Grounding`
-- Rollback: `git checkout -- tests/test_hooks.py`
+**Task 11 — Add the Anti-Slop line to the ec-review summary block** `S`
+- File: `commands/ec-review.md`
+- Anchor: `- Accessibility:   ✓/✗ (UI only)` in the Stage 2 summary block
+- Reuse: the summary-row format of the surrounding lines
+- Code sample: add one row to the Stage 2 summary block:
+```
+- Anti-slop:       ✓/✗ (Design Direction only)
+```
+- Do not touch: the existing summary rows
+- Edge cases: gate skipped → row renders as n/a
+- ⚠️ Breaking change: none
+- Acceptance: the review report shows the anti-slop verdict alongside the other Stage 2 gates
+- Verify: `grep -c "Anti-slop:" commands/ec-review.md` → `== 1` (baseline 0)
+- Rollback: `git checkout -- commands/ec-review.md`
+- Dependencies: Task 10
+
+**Task 12 — Add the precedence clause to 4 web frontend agents** `S`
+- File: `agents/ec-react.md`, `agents/ec-vue.md`, `agents/ec-nextjs.md`, `agents/ec-tailwind.md`
+- Anchor: `## Visual Fidelity Protocol` → `agents/ec-react.md:50`, `agents/ec-tailwind.md:37`, and the equivalent heading in ec-vue.md and ec-nextjs.md
+- Reuse: none — new 4-line section per file, identical text
+- Code sample: insert immediately before `## Visual Fidelity Protocol` in each file:
+```
+## Anti-Slop Precedence
+- A Design Contract in the prompt is the specification of record and wins outright — never question, justify, or "improve" what the reference specifies
+- A Design Direction in the prompt means no reference exists: apply ~/.claude/agents/ec-antislop.md in full and report each purpose-gate use as "Reason: {what} — {why}"
+- Neither block present: build to the feature description; make no fidelity claim
+```
+- Do not touch: `## Visual Fidelity Protocol` and `## API Error Protocol` in any of the four files
+- Edge cases: `ec-tailwind.md` has fidelity only and no API Error Protocol — insert the same clause anyway
+- ⚠️ Breaking change: none
+- Acceptance: each of the four agents states which block wins before its fidelity protocol runs
+- Verify: `grep -lc "Anti-Slop Precedence" agents/ec-react.md agents/ec-vue.md agents/ec-nextjs.md agents/ec-tailwind.md | wc -l` → `== 4` (baseline 0 in each)
+- Rollback: `git checkout -- agents/ec-react.md agents/ec-vue.md agents/ec-nextjs.md agents/ec-tailwind.md`
 - Dependencies: Task 1
 
-**Task 7 — Doc-test sentinel schema and backward compatibility** `S`
-- File: `tests/test_command_docs.py`
-- Anchor: `def read_command(name):` → `tests/test_command_docs.py:8` (append a new class at end of file, reusing this helper)
-- Reuse: `read_command()` at line 8 — do not add a second file reader
-- Code sample: add a `TestAutoflowSentinelSchema` class asserting:
-  - `read_command('ec-brainstorm.md')` contains each of `stage=`, `stages_done=`, `iterations=` (present with `=` in the Step 7 `printf` writer) and `driver_stage`, `driver_progress` (documented as backticked names in the schema table, NOT with `=` — corrected during execution)
-  - it still contains `2 hours` (staleness guard wording preserved). Corrected during execution: `7200` does not appear in ec-brainstorm.md at all — it lives in the three reader files (ec-feature/ec-execute/ec-review), each once.
-  - `read_command('ec-feature.md')` contains `f["stage"] = "execute"` (Python assignment syntax — a literal `stage=execute` never appears; corrected during execution)
-  - `read_command('ec-execute.md')` contains `f["stage"] = "review"`
-  - `read_command('ec-review.md')` contains `never routes to`
-  - backward compatibility: for the five-line sentinel body emitted by ec-brainstorm's writer, `re.search(r'^branch=(.*)$', body, re.M).group(1) == 'main'` — proving existing `grep '^branch='` readers still resolve the branch with the extra fields present
-- Do not touch: every existing class in the file.
-- Edge cases: assert on substrings only — never on line numbers, which shift as the docs grow.
-- ⚠️ Breaking change: none.
-- Acceptance: the schema is asserted in the docs, and the backward-compatibility assertion proves `^branch=` extraction is unaffected by the new fields.
-- Verify: `python3 -m pytest tests/test_command_docs.py -q 2>&1 | tail -3` → reports `0 failed`
-- Rollback: `git checkout -- tests/test_command_docs.py`
-- Dependencies: Tasks 2, 3, 4, 5
+**Task 13 — Add the precedence clause to 4 mobile frontend agents** `S`
+- File: `agents/ec-react-native.md`, `agents/ec-flutter.md`, `agents/ec-ios.md`, `agents/ec-android.md`
+- Anchor: `## Visual Fidelity Protocol` in each of the four files
+- Reuse: the exact `## Anti-Slop Precedence` text written in Task 12 — identical across all 8 agents
+- Code sample: same 4-line section as Task 12, inserted immediately before `## Visual Fidelity Protocol`
+- Do not touch: `## Visual Fidelity Protocol` and `## API Error Protocol` in any of the four files
+- Edge cases: none
+- ⚠️ Breaking change: none
+- Acceptance: all 8 frontend agents carry the identical precedence clause
+- Verify: `grep -lc "Anti-Slop Precedence" agents/ec-react-native.md agents/ec-flutter.md agents/ec-ios.md agents/ec-android.md | wc -l` → `== 4` (baseline 0 in each)
+- Rollback: `git checkout -- agents/ec-react-native.md agents/ec-flutter.md agents/ec-ios.md agents/ec-android.md`
+- Dependencies: Task 12
 
-**Task 8 — Sync source to installed copies** `S`
-- File: `~/.efficlaude/hooks/session_stop.py` and `~/.claude/commands/ec-{brainstorm,feature,execute,review}.md`
-- Anchor: new file — these are destination copies; source parity was confirmed `identical` in `### Grounding`
-- Reuse: none — plain copy
+**Task 14 — Add the Design Direction test class** `M`
+- File: `tests/test_command_docs.py`
+- Anchor: `FRONTEND_AGENTS = [` → `tests/test_command_docs.py:105`
+- Reuse: `read_command`, `read_agent`, and the `FRONTEND_AGENTS` list already defined in the file. Do NOT add `ec-tailwind` to `FRONTEND_AGENTS` — that list is parametrized by `test_frontend_agents_have_both_protocols` at `tests/test_command_docs.py:150`, which asserts `## API Error Protocol`, and `ec-tailwind` deliberately lacks it (`test_tailwind_has_fidelity_without_api_protocol` at line 156 pins that). Define a new module-level `ALL_FRONTEND_AGENTS = FRONTEND_AGENTS + ['ec-tailwind']` instead.
 - Code sample:
-  ```bash
-  cp hooks/session_stop.py ~/.efficlaude/hooks/session_stop.py
-  for f in ec-brainstorm ec-feature ec-execute ec-review; do
-    cp "commands/$f.md" "$HOME/.claude/commands/$f.md"
-  done
-  ```
-- Do not touch: any other file under `~/.efficlaude/` or `~/.claude/` — in particular do not modify `~/.claude/settings.json`; the `Stop` hook is already registered and needs no change.
-- Edge cases: run this only after Tasks 1–5 are complete, or the installed copies will lag the source.
-- ⚠️ Breaking change: this activates the driver for every session on this machine. The `EFFICLAUDE_AUTOFLOW_MODE=exit2` escape hatch from Task 1 and the no-sentinel silent path are the safety nets.
-- Acceptance: `diff -q` reports no differences between each source file and its installed copy.
-- Verify: `diff -q hooks/session_stop.py ~/.efficlaude/hooks/session_stop.py && for f in ec-brainstorm ec-feature ec-execute ec-review; do diff -q "commands/$f.md" "$HOME/.claude/commands/$f.md" || exit 1; done && echo SYNCED` → prints `SYNCED` (exit-status check — no numeric threshold)
-- Rollback: re-run `install.sh`, or `cp` from the restored source files
-- Dependencies: Tasks 1, 2, 3, 4, 5
+```python
+class TestDesignDirectionChain:
+    def test_brainstorm_emits_direction(self):
+        content = read_command('ec-brainstorm.md')
+        assert '## Design Direction' in content
+        assert 'never both' in content
+
+    def test_feature_documents_mutual_exclusivity(self):
+        content = read_command('ec-feature.md')
+        assert '### Design Direction' in content
+        assert content.count('never both') >= 2
+
+    def test_execute_injects_either_block(self):
+        content = read_command('ec-execute.md')
+        assert '### Design Block Injection' in content
+        assert '### Design Direction' in content
+        assert '### Design Contract' in content
+
+    def test_review_gate_is_conditional(self):
+        content = read_command('ec-review.md')
+        assert '### Anti-Slop (if the plan has a Design Direction)' in content
+        assert 'Skip this gate entirely when the plan has a Design Contract' in content
+
+    def test_antislop_agent_has_dials_and_tiers(self):
+        content = read_agent('ec-antislop')
+        for section in ['## Dials', '## Hard Gates', '## Purpose Gates',
+                        '## Quality Locks', '## Reporting']:
+            assert section in content, section
+        for dial in ['ENERGY', 'RHYTHM', 'MOTION']:
+            assert dial in content, dial
+
+    def test_antislop_attributes_upstream(self):
+        assert 'anti-slop' in read_agent('ec-antislop')
+
+    def test_antislop_installed(self):
+        with open(os.path.join(os.path.dirname(__file__), '..', 'install.sh')) as f:
+            assert 'ec-antislop' in f.read()
+
+    def test_all_frontend_agents_state_precedence(self):
+        for agent in ALL_FRONTEND_AGENTS:
+            content = read_agent(agent)
+            assert '## Anti-Slop Precedence' in content, agent
+            assert content.index('## Anti-Slop Precedence') < \
+                content.index('## Visual Fidelity Protocol'), agent
+```
+- Do not touch: `TestDesignContractChain` — the existing contract tests must keep passing untouched
+- Edge cases: measured — `FRONTEND_AGENTS` IS parametrized at `tests/test_command_docs.py:150` and asserts `## API Error Protocol`, so mutating it would fail on `ec-tailwind`. `ALL_FRONTEND_AGENTS` is therefore a separate list and `FRONTEND_AGENTS` is left untouched. `test_all_frontend_agents_state_precedence` is a plain loop, not parametrized, so it collects as 1 test.
+- ⚠️ Breaking change: none
+- Acceptance: the propagation chain, mutual exclusivity, and agent precedence are all asserted
+- Verify: `python3 -m pytest -q` → `120 passed` (baseline 112, 8 new tests)
+- Rollback: `git checkout -- tests/test_command_docs.py`
+- Dependencies: Tasks 1-13
+
+**Task 15 — Add the agent-bloat guard test** `S`
+- File: `tests/test_command_docs.py`
+- Anchor: end of `class TestDesignDirectionChain` added in Task 14
+- Reuse: `ALL_FRONTEND_AGENTS` defined in Task 14, and `AGENTS_DIR`
+- Code sample:
+```python
+    def test_frontend_agents_did_not_bloat(self):
+        for agent in ALL_FRONTEND_AGENTS:
+            lines = len(read_agent(agent).splitlines())
+            assert lines <= 90, f'{agent} grew to {lines} lines'
+```
+- Do not touch: any other test
+- Edge cases: largest baseline is `ec-react.md` at 75 lines; a 4-line clause plus blank lines lands near 80, so 90 is the ceiling that catches vendoring without flagging this change
+- ⚠️ Breaking change: none
+- Acceptance: a future attempt to paste the full ruleset into the agents fails the suite
+- Verify: `python3 -m pytest -q` → `121 passed` (Task 14 leaves 120, one test added)
+- Rollback: `git checkout -- tests/test_command_docs.py`
+- Dependencies: Task 14
+
+**Task 16 — Sync installed copies** `S`
+- File: `~/.claude/commands/ec-brainstorm.md`, `~/.claude/commands/ec-feature.md`, `~/.claude/commands/ec-execute.md`, `~/.claude/commands/ec-review.md`, `~/.claude/agents/ec-antislop.md`, and the 8 frontend agent files under `~/.claude/agents/`
+- Anchor: n/a — file copy
+- Reuse: `cp` per file; do not re-run `install.sh`, which would also touch the server and hooks
+- Code sample:
+```bash
+cp commands/ec-brainstorm.md commands/ec-feature.md commands/ec-execute.md commands/ec-review.md ~/.claude/commands/
+cp agents/ec-antislop.md agents/ec-react.md agents/ec-vue.md agents/ec-nextjs.md agents/ec-tailwind.md agents/ec-react-native.md agents/ec-flutter.md agents/ec-ios.md agents/ec-android.md ~/.claude/agents/
+```
+- Do not touch: `~/.efficlaude/server/`, `~/.efficlaude/hooks/`, `~/.claude/settings.json`
+- Edge cases: `~/.claude/agents/` already exists — `install.sh:9` creates it, so no mkdir needed
+- ⚠️ Breaking change: none
+- Acceptance: the installed commands and agents match the repo
+- Verify: `diff -q commands/ec-execute.md ~/.claude/commands/ec-execute.md && diff -q agents/ec-antislop.md ~/.claude/agents/ec-antislop.md` → exit status 0
+- Rollback: re-run `bash install.sh`
+- Dependencies: Tasks 1-15

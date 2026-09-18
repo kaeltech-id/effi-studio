@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import sqlite3
 import json
-import hashlib
 import chromadb
 from datetime import datetime
+from pathlib import Path
 from logger import warn
 import threading
 
@@ -25,15 +27,56 @@ _MIGRATIONS: dict[int, list[str]] = {
     # 1 = baseline — no DDL changes needed, just establishes the versioning system
 }
 _CHROMA_FALLBACK_THRESHOLD = float(os.getenv('EFFICLAUDE_FTS_THRESHOLD', '1.2'))
+SHARED_MEM_COLLECTION = "efficlaude_memory"
+CHROMA_SCHEMA_VERSION = 2
+SUMMARY_TABLE_CAP = int(os.getenv('EFFICLAUDE_SUMMARY_CAP', '50'))
+_PROJECT_OVERFETCH = 5
+
+
+def _fts_sanitize(query: str) -> str:
+    """Quote each term so FTS5 cannot choke on punctuation."""
+    terms = re.findall(r'[A-Za-z0-9_]+', query)
+    return ' OR '.join(f'"{t}"' for t in terms)
+
+
+def _migrate_chroma_layout(chroma_path: str) -> bool:
+    """Wipe the legacy per-entity chroma store once. Returns True if wiped."""
+    marker = Path(chroma_path) / f".layout_v{CHROMA_SCHEMA_VERSION}"
+    if marker.exists():
+        return False
+    db = Path(chroma_path) / "chroma.sqlite3"
+    legacy = 0
+    if db.exists():
+        try:
+            with sqlite3.connect(str(db)) as conn:
+                legacy = conn.execute(
+                    "SELECT COUNT(*) FROM collections "
+                    "WHERE name LIKE 'mem_%' OR name LIKE 'docs_%'"
+                ).fetchone()[0]
+        except Exception as e:
+            warn("memory", f"chroma layout probe failed: {e}")
+    if legacy:
+        shutil.rmtree(chroma_path, ignore_errors=True)
+        try:
+            chromadb.api.client.SharedSystemClient.clear_system_cache()
+        except Exception as e:
+            warn("memory", f"chroma cache clear failed: {e}")
+    Path(chroma_path).mkdir(parents=True, exist_ok=True)
+    marker.touch()
+    return bool(legacy)
 
 
 class MemoryEngine:
     def __init__(self, db_path, chroma_path):
         self.db_path = db_path
+        self._migrated = _migrate_chroma_layout(chroma_path)
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)
         self._init_db()
         self._migrate()
-        threading.Thread(target=self._reconcile_chromadb, daemon=True).start()
+        if self._migrated:
+            self._reconcile_chromadb()
+        else:
+            threading.Thread(target=self._reconcile_chromadb, daemon=True).start()
         threading.Thread(target=self._prune_on_startup, daemon=True).start()
 
     def _init_db(self) -> None:
@@ -66,6 +109,8 @@ class MemoryEngine:
                 ''')
             except Exception as e:
                 warn("memory", f"fts init error: {e}")
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_obs_project_type ON observations(project, type)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_sum_project_created ON summaries(project, created_at)')
             conn.commit()
 
     def _migrate(self) -> None:
@@ -111,7 +156,7 @@ class MemoryEngine:
                     chroma_ids: set = set()
                     offset, BATCH = 0, 500
                     while True:
-                        batch = collection.get(limit=BATCH, offset=offset)['ids']
+                        batch = collection.get(limit=BATCH, offset=offset, where={"project": project})['ids']
                         if not batch:
                             break
                         chroma_ids.update(batch)
@@ -129,7 +174,7 @@ class MemoryEngine:
                     if missing:
                         collection.add(
                             documents=[r[2] for r in missing],
-                            metadatas=[{"type": r[1], "created_at": r[4], **json.loads(r[3] or '{}')} for r in missing],
+                            metadatas=[{"type": r[1], "created_at": r[4], "project": project, **json.loads(r[3] or '{}')} for r in missing],
                             ids=[str(r[0]) for r in missing]
                         )
                     if orphans:
@@ -137,9 +182,8 @@ class MemoryEngine:
         except Exception as e:
             warn("memory", f"chromadb reconcile error: {e}")
 
-    def _get_collection(self, project):
-        key = hashlib.md5(project.encode()).hexdigest()[:8]
-        return self.chroma_client.get_or_create_collection(f"mem_{key}")
+    def _get_collection(self, project=None):
+        return self.chroma_client.get_or_create_collection(SHARED_MEM_COLLECTION)
 
     def _prune_type(self, project: str, obs_type: str, cap: int) -> None:
         try:
@@ -157,6 +201,10 @@ class MemoryEngine:
                         f'DELETE FROM observations WHERE id IN ({placeholders})',
                         excess_int_ids
                     )
+                    conn.execute(
+                        f'DELETE FROM obs_fts WHERE rowid IN ({placeholders})',
+                        excess_int_ids
+                    )
                 conn.commit()
             if excess_int_ids:
                 with _lock:
@@ -165,7 +213,24 @@ class MemoryEngine:
         except Exception as e:
             warn("memory", f"prune error (type={obs_type}): {e}")
 
+    def _purge_fts_orphans(self) -> None:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    'DELETE FROM obs_fts WHERE rowid NOT IN (SELECT id FROM observations)'
+                )
+                conn.commit()
+        except Exception as e:
+            warn("memory", f"fts orphan purge error: {e}")
+        try:
+            conn = sqlite3.connect(self.db_path, isolation_level=None)
+            conn.execute('VACUUM')
+            conn.close()
+        except Exception as e:
+            warn("memory", f"vacuum error: {e}")
+
     def _prune_on_startup(self) -> None:
+        self._purge_fts_orphans()
         try:
             placeholders = ','.join('?' * len(TYPE_CAPS))
             with sqlite3.connect(self.db_path) as conn:
@@ -179,6 +244,9 @@ class MemoryEngine:
             warn("memory", f"prune on startup error: {e}")
 
     def _fts_search(self, project: str, query: str, limit: int) -> list:
+        safe_query = _fts_sanitize(query)
+        if not safe_query:
+            return []
         try:
             with sqlite3.connect(self.db_path) as conn:
                 rows = conn.execute(
@@ -188,7 +256,7 @@ class MemoryEngine:
                        WHERE f.content MATCH ? AND o.project = ?
                        ORDER BY o.created_at DESC
                        LIMIT ?''',
-                    (query, project, limit)
+                    (safe_query, project, limit)
                 ).fetchall()
             return [
                 {
@@ -222,7 +290,7 @@ class MemoryEngine:
                 try:
                     collection.add(
                         documents=[content],
-                        metadatas=[{"type": obs_type, "created_at": now, **(metadata or {})}],
+                        metadatas=[{"type": obs_type, "created_at": now, "project": project, **(metadata or {})}],
                         ids=[str(obs_id)]
                     )
                     chroma_ok = True
@@ -247,7 +315,8 @@ class MemoryEngine:
                 return self._fts_search(project, query, limit)
             results = collection.query(
                 query_texts=[query],
-                n_results=min(limit, count)
+                n_results=min(limit * _PROJECT_OVERFETCH, count),
+                where={"project": project}
             )
             items = [
                 {"content": doc, "metadata": meta, "distance": dist}
@@ -256,7 +325,7 @@ class MemoryEngine:
                     results['metadatas'][0],
                     results['distances'][0]
                 )
-            ]
+            ][:limit]
             if all(item['distance'] > _CHROMA_FALLBACK_THRESHOLD for item in items):
                 fts = self._fts_search(project, query, limit)
                 if fts:
@@ -283,6 +352,20 @@ class MemoryEngine:
             for r in rows
         ]
 
+    def _prune_summaries(self, project: str) -> None:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    'DELETE FROM summaries WHERE project=? AND id NOT IN ('
+                    '  SELECT id FROM summaries WHERE project=? '
+                    '  ORDER BY created_at DESC, id DESC LIMIT ?'
+                    ')',
+                    (project, project, SUMMARY_TABLE_CAP)
+                )
+                conn.commit()
+        except Exception as e:
+            warn("memory", f"summaries prune error: {e}")
+
     def summarize_session(self, project: str, session_id: str = '') -> str:
         recent = self.get_recent(project, 50)
         if not recent:
@@ -296,6 +379,7 @@ class MemoryEngine:
                 (project, session_id, summary, now)
             )
             conn.commit()
+        self._prune_summaries(project)
         return summary
 
     def export(self, project: str) -> dict:

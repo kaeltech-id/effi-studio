@@ -138,6 +138,16 @@ After spec compliance is confirmed, review code quality on all modified files.
 - Every state the contract records is implemented, plus loading / empty / error on data-driven regions
 - Any deviation is declared in the code or the execution report — an undeclared deviation is an issue to fix
 
+### Anti-Slop (if the plan has a Design Direction)
+- Implemented ENERGY, RHYTHM, and MOTION match the dials declared in the plan
+- No hard gate is broken: no em dashes in UI copy, no invented statistics, no fictional people or testimonials, no dead buttons or nav links, no fabricated security or performance claims, no mobile overflow
+- Every purpose-gate technique used (gradient, glow, glassmorphism, decorative icon, animation, shadow) carries a written reason, and that reason matches what the code actually does — an unverifiable reason is an issue to fix
+- No AI template layout: hero + 3 identical cards, 3-step "How It Works", bento grid, fake terminal, 3 pricing tiers, generic footer
+- CTAs name the product action; no buzzwords (AI-Powered, Seamless, Revolutionary, Effortless)
+- Palette is 2-3 core colors plus 1 accent; radius is consistent; feature cards vary by hierarchy
+
+Skip this gate entirely when the plan has a Design Contract or no design block.
+
 ### API Error Handling (any code that calls an API)
 - Every call has error handling — none is left bare
 - Existing project error handlers were reused where they exist; a new reusable handler was created where they did not
@@ -196,6 +206,7 @@ curl -s -X POST http://localhost:37777/memory/observe \
 - Performance:     ✓/✗
 - Security:        ✓/✗
 - Accessibility:   ✓/✗ (UI only)
+- Anti-slop:       ✓/✗ (Design Direction only)
 - API correctness: ✓/✗ (if docs available)
 
 ### Fixes Applied

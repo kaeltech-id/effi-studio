@@ -78,7 +78,7 @@ If detected, silently run additional analysis:
 - Accessibility: WCAG AA minimum — contrast ratio, keyboard navigation, screen reader support
 - Performance budget: LCP < 2.5s, CLS < 0.1, INP < 200ms
 Weave findings into the recommendation description — do not add as a separate section in the output.
-**Carry forward:** if UI/frontend context was detected, also record the design reference the user supplied (Figma URL, screenshot path, or text description) and draft a Design Contract from it using the field list in the decision template in Step 5. If no reference was supplied, record the single line `- Source: none supplied — /ec-feature must ask for one before planning UI tasks.`
+**Carry forward:** if UI/frontend context was detected, also record the design reference the user supplied (Figma URL, screenshot path, or text description) and draft a Design Contract from it using the field list in the decision template in Step 5. If no reference was supplied, do NOT write a Design Contract — draft a `## Design Direction` section instead using the field list in the decision template in Step 5, inferring the three dials from the problem description. A decision file carries a Design Contract or a Design Direction, never both.
 
 **Record the evidence:** while analysing, collect the concrete `file:line` citations that support the diagnosis — never a claim without a locator. Carry them into the decision file's `## Evidence` section. Carry the per-approach scores into the `## Options Explored` table, and the constraints, non-goals, verification strategy, and unresolved questions into their matching sections. Fill every section without asking the user — this must work identically on the `auto` path, which skips Step 4.
 
@@ -214,6 +214,14 @@ _Include this section only when the problem has UI/frontend scope._
 - Copy: {exact literal text strings visible in the reference}
 - States: {default / hover / focus / disabled / loading / empty / error — record each as shown, or "not shown"}
 - Deviations allowed: {responsive adaptation or token substitution notes, or "none"}
+
+## Design Direction
+_Include this section only when the problem has UI/frontend scope AND no visual reference was supplied. Mutually exclusive with ## Design Contract._
+- Dials: ENERGY {1-3} · RHYTHM {1-3} · MOTION {1-3} — {one-line reason for each}
+- Palette: {2-3 core colors + 1 accent, hex} — {reason}
+- Typography: {headline face, body face, scale} — {reason}
+- Identity motif: {the repeated gesture or pattern specific to this product}
+- Rules: apply ~/.claude/agents/ec-antislop.md in full — hard gates, purpose gates, quality locks
 
 ## Key Assumptions
 - {assumption 1}

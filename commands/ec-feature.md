@@ -63,6 +63,7 @@ This write targets `.claude/plans/` — permitted by the No-Code Rule.
   - If within 7 days, or date line absent: proceed normally.
 - Pre-fill the feature description from the decision's "Chosen Approach" section
 - If the decision file contains a `## Design Contract` section, load it verbatim as the starting Design Contract — do not re-ask question 2 unless its Source line reads "none supplied"
+- If the decision file contains a `## Design Direction` section, load it verbatim as the starting Design Direction and skip question 2 entirely — the user already declined a reference at brainstorm time. A plan carries a Design Contract or a Design Direction, never both.
 - Skip asking about approach — user already decided
 - Note: "({DECISION_FILE} loaded — using chosen approach from brainstorm)"
 - Do NOT delete `{DECISION_FILE}` here — it will be deleted by `/ec-review` after a clean review
@@ -135,7 +136,7 @@ Ask ONE question at a time. Every input is optional — minimum viable input is 
    ```
    Rules: describe what is actually visible, never what is typical. If a value cannot be determined from the reference, write `not determinable from reference` rather than guessing. Always keep the original path or URL in the Source line so subagents can re-read the image at execute time; resolve a relative screenshot path to an absolute path before storing it. Extraction is identical whether Figma data came from the MCP tool or the REST fallback.
 
-   **If skip and the feature has UI scope:** write the contract with the single line `- Source: none supplied — implement from the feature description; no fidelity claim can be made.`
+   **If skip and the feature has UI scope:** write no Design Contract. Build a `### Design Direction` block instead, inferring the three dials from the feature description and stating a one-line reason for each; the plan then carries a Design Direction and no `### Design Contract`.
 
    **If the feature has no UI scope:** write no Design Contract and no `[design:]` tags.
 
@@ -219,7 +220,7 @@ For each task in the plan, determine the appropriate agent from file path and ta
 
 Add `[agent: ec-xxx]` after size tag in every task line:
 `- [ ] Task N: {name} [{size}] [agent: ec-xxx] [design: {source}#{frame}] — {description}`
-Add the design tag only to tasks that render UI. Omit it entirely on non-UI tasks. `{source}` is the path or URL from the Design Contract Source line; `{frame}` is the specific screen or component name, or `main` when the reference has a single frame.
+Add the design tag only to tasks that render UI. Omit it entirely on non-UI tasks. `{source}` is the path or URL from the Design Contract Source line, or the literal `direction` when the plan carries a `### Design Direction` instead (which has no Source line) — e.g. `[design: direction#SettingsPanel]`; `{frame}` is the specific screen or component name, or `main` when the reference has a single frame.
 If no agent clearly matches, omit the tag entirely.
 
 ## Step 2.5 — Grounding Pass (mandatory)
@@ -255,7 +256,7 @@ Every task must include:
 - Task list MUST be flat — no batch headers, no phase labels, no grouping of any kind
 - NEVER write: "## Batch A", "### Phase 1", "#### Group:", "**Wave 1**", or any grouping construct
 - Every task MUST use exact format: `- [ ] Task N: {name} [{size}] [agent: ec-xxx] [design: {source}#{frame}] — {description}` (omit agent tag if no clear match; omit design tag on non-UI tasks)
-- Add the design tag only to tasks that render UI. Omit it entirely on non-UI tasks. `{source}` is the path or URL from the Design Contract Source line; `{frame}` is the specific screen or component name, or `main` when the reference has a single frame. The design tag always comes after the agent tag.
+- Add the design tag only to tasks that render UI. Omit it entirely on non-UI tasks. `{source}` is the path or URL from the Design Contract Source line, or the literal `direction` when the plan carries a `### Design Direction` instead (which has no Source line) — e.g. `[design: direction#SettingsPanel]`; `{frame}` is the specific screen or component name, or `main` when the reference has a single frame. The design tag always comes after the agent tag.
 - Task numbers are sequential integers 1 to N, no gaps, no sub-numbering (1.1, 1.2, etc.)
 - Size of the feature does not affect format — 3 tasks or 50 tasks use identical flat structure
 
@@ -281,6 +282,15 @@ Every task must include:
 - Deviations allowed: {responsive adaptation or token substitution notes, or "none"}
 
 Omit this whole section when the feature has no UI scope.
+
+### Design Direction
+- Dials: ENERGY {1-3} · RHYTHM {1-3} · MOTION {1-3} — {one-line reason for each}
+- Palette: {2-3 core colors + 1 accent, hex} — {reason}
+- Typography: {headline face, body face, scale} — {reason}
+- Identity motif: {the repeated gesture or pattern specific to this product}
+- Rules: apply ~/.claude/agents/ec-antislop.md in full — hard gates, purpose gates, quality locks
+
+Include this section only when the feature has UI scope AND no visual reference was supplied. A plan contains `### Design Contract` or `### Design Direction`, never both, and never neither when the feature has UI scope.
 
 ### Grounding
 Measured in Step 2.5 — real command output only, never predicted.
@@ -345,6 +355,8 @@ Before showing the plan, check:
 - [ ] No Verify threshold was written without measuring the current value first
 - [ ] Design Contract is present and self-contained if the feature has UI scope
 - [ ] Every UI task carries a [design:] tag
+- [ ] A UI feature carries exactly one of ### Design Contract / ### Design Direction — never both, never neither
+- [ ] Design Direction states all three dials with a one-line reason each
 - [ ] Every task that calls an API names its error-handling approach — reused existing handler, or a new handler to create
 
 Fix any issues found, then present the plan.
