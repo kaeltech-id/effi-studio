@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -13,7 +14,7 @@ import threading
 
 _lock = threading.Lock()
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TYPE_CAPS: dict[str, int] = {
     "tool_use": 200,
     "summary": 50,
@@ -25,12 +26,18 @@ TYPE_CAPS: dict[str, int] = {
 }
 _MIGRATIONS: dict[int, list[str]] = {
     # 1 = baseline — no DDL changes needed, just establishes the versioning system
+    2: [
+        "ALTER TABLE observations ADD COLUMN content_hash TEXT",
+        "ALTER TABLE observations ADD COLUMN seen_count INTEGER NOT NULL DEFAULT 1",
+        "CREATE INDEX IF NOT EXISTS idx_obs_project_hash ON observations(project, content_hash)",
+    ],
 }
 _CHROMA_FALLBACK_THRESHOLD = float(os.getenv('EFFICLAUDE_FTS_THRESHOLD', '1.2'))
 SHARED_MEM_COLLECTION = "efficlaude_memory"
-CHROMA_SCHEMA_VERSION = 2
+CHROMA_SCHEMA_VERSION = 3
 SUMMARY_TABLE_CAP = int(os.getenv('EFFICLAUDE_SUMMARY_CAP', '50'))
 _PROJECT_OVERFETCH = 5
+REJECT_FILE = Path.home() / ".efficlaude" / ".observe_rejects.json"
 
 
 def _fts_sanitize(query: str) -> str:
@@ -39,11 +46,59 @@ def _fts_sanitize(query: str) -> str:
     return ' OR '.join(f'"{t}"' for t in terms)
 
 
-def _migrate_chroma_layout(chroma_path: str) -> bool:
-    """Wipe the legacy per-entity chroma store once. Returns True if wiped."""
-    marker = Path(chroma_path) / f".layout_v{CHROMA_SCHEMA_VERSION}"
+def _content_hash(content: str) -> str:
+    """Stable hash for dedup — whitespace-normalised so reruns collapse."""
+    return hashlib.sha256(' '.join(content.split()).encode()).hexdigest()[:32]
+
+
+def _bm25_to_distance(rank: float) -> float:
+    """FTS5 rank is negative and unbounded; map to [0,1] where lower is better."""
+    try:
+        score = -float(rank)
+    except (TypeError, ValueError):
+        return 1.0
+    return round(1.0 / (1.0 + score), 4) if score > 0 else 1.0
+
+
+def _rrf(vector_items: list, fts_items: list, limit: int, k: int = 60) -> list:
+    """Reciprocal rank fusion — ordering only, so the two scales never need calibrating."""
+    scored: dict = {}
+    for items in (vector_items, fts_items):
+        for rank, item in enumerate(items, start=1):
+            entry = scored.setdefault(item['content'], {"item": item, "score": 0.0})
+            entry["score"] += 1.0 / (k + rank)
+    ranked = sorted(scored.values(), key=lambda e: -e["score"])
+    out = []
+    for e in ranked[:limit]:
+        item = dict(e["item"])
+        item["fused_score"] = round(e["score"], 6)
+        out.append(item)
+    return out
+
+
+def _resolve_ef():
+    """The locally installed embedding function, or None to keep Chroma's default."""
+    try:
+        import embedder
+
+        return embedder.get_embedding_function()
+    except Exception as e:
+        warn("memory", f"embedder unavailable: {e}")
+        return None
+
+
+def _migrate_chroma_layout(chroma_path: str, rebuild: bool = False) -> bool:
+    """Wipe the stale chroma store once per layout version. Returns True if wiped.
+
+    The marker is scoped to both the layout version and whether a custom
+    embedding function is in use, so switching embedders discards vectors the
+    other embedder wrote — exactly once, since the wipe then writes the marker.
+    """
+    suffix = "_ef" if rebuild else ""
+    marker = Path(chroma_path) / f".layout_v{CHROMA_SCHEMA_VERSION}{suffix}"
     if marker.exists():
         return False
+    other_marker = Path(chroma_path) / f".layout_v{CHROMA_SCHEMA_VERSION}{'' if suffix else '_ef'}"
     db = Path(chroma_path) / "chroma.sqlite3"
     legacy = 0
     if db.exists():
@@ -55,7 +110,8 @@ def _migrate_chroma_layout(chroma_path: str) -> bool:
                 ).fetchone()[0]
         except Exception as e:
             warn("memory", f"chroma layout probe failed: {e}")
-    if legacy:
+    stale = bool(legacy) or (db.exists() and (rebuild or other_marker.exists()))
+    if stale:
         shutil.rmtree(chroma_path, ignore_errors=True)
         try:
             chromadb.api.client.SharedSystemClient.clear_system_cache()
@@ -63,13 +119,16 @@ def _migrate_chroma_layout(chroma_path: str) -> bool:
             warn("memory", f"chroma cache clear failed: {e}")
     Path(chroma_path).mkdir(parents=True, exist_ok=True)
     marker.touch()
-    return bool(legacy)
+    return stale
 
 
 class MemoryEngine:
     def __init__(self, db_path, chroma_path):
         self.db_path = db_path
-        self._migrated = _migrate_chroma_layout(chroma_path)
+        self._embedding_function = _resolve_ef()
+        self._migrated = _migrate_chroma_layout(
+            chroma_path, rebuild=self._embedding_function is not None
+        )
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)
         self._init_db()
         self._migrate()
@@ -128,7 +187,10 @@ class MemoryEngine:
                 if current < SCHEMA_VERSION:
                     for v in range(current + 1, SCHEMA_VERSION + 1):
                         for sql in _MIGRATIONS.get(v, []):
-                            conn.execute(sql)
+                            try:
+                                conn.execute(sql)
+                            except Exception as e:
+                                warn("memory", f"migration v{v} statement skipped: {e}")
                     if row:
                         conn.execute(
                             'UPDATE schema_version SET version = ?',
@@ -183,7 +245,10 @@ class MemoryEngine:
             warn("memory", f"chromadb reconcile error: {e}")
 
     def _get_collection(self, project=None):
-        return self.chroma_client.get_or_create_collection(SHARED_MEM_COLLECTION)
+        kwargs = {}
+        if self._embedding_function is not None:
+            kwargs["embedding_function"] = self._embedding_function
+        return self.chroma_client.get_or_create_collection(SHARED_MEM_COLLECTION, **kwargs)
 
     def _prune_type(self, project: str, obs_type: str, cap: int) -> None:
         try:
@@ -250,11 +315,11 @@ class MemoryEngine:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 rows = conn.execute(
-                    '''SELECT o.id, o.type, o.content, o.metadata, o.created_at
+                    '''SELECT o.id, o.type, o.content, o.metadata, o.created_at, f.rank
                        FROM obs_fts f
                        JOIN observations o ON f.rowid = o.id
                        WHERE f.content MATCH ? AND o.project = ?
-                       ORDER BY o.created_at DESC
+                       ORDER BY rank
                        LIMIT ?''',
                     (safe_query, project, limit)
                 ).fetchall()
@@ -262,7 +327,8 @@ class MemoryEngine:
                 {
                     "content": r[2],
                     "metadata": {**json.loads(r[3] or '{}'), "type": r[1], "created_at": r[4]},
-                    "distance": 0.5
+                    "distance": _bm25_to_distance(r[5]),
+                    "source": "fts"
                 }
                 for r in rows
             ]
@@ -274,9 +340,20 @@ class MemoryEngine:
         now = datetime.utcnow().isoformat()
         with _lock:
             with sqlite3.connect(self.db_path) as conn:
+                h = _content_hash(content)
+                existing = conn.execute(
+                    'SELECT id FROM observations WHERE project=? AND content_hash=?', (project, h)
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        'UPDATE observations SET seen_count = seen_count + 1, created_at = ? WHERE id = ?',
+                        (now, existing[0])
+                    )
+                    conn.commit()
+                    return  # no new row, so the _prune_type cap at the end does not apply
                 cursor = conn.execute(
-                    'INSERT INTO observations (project, type, content, metadata, created_at) VALUES (?,?,?,?,?)',
-                    (project, obs_type, content, json.dumps(metadata or {}), now)
+                    'INSERT INTO observations (project, type, content, metadata, created_at, content_hash) VALUES (?,?,?,?,?,?)',
+                    (project, obs_type, content, json.dumps(metadata or {}), now, h)
                 )
                 obs_id = cursor.lastrowid
                 try:
@@ -319,18 +396,17 @@ class MemoryEngine:
                 where={"project": project}
             )
             items = [
-                {"content": doc, "metadata": meta, "distance": dist}
+                {"content": doc, "metadata": meta, "distance": dist, "source": "vector"}
                 for doc, meta, dist in zip(
                     results['documents'][0],
                     results['metadatas'][0],
                     results['distances'][0]
                 )
             ][:limit]
-            if all(item['distance'] > _CHROMA_FALLBACK_THRESHOLD for item in items):
-                fts = self._fts_search(project, query, limit)
-                if fts:
-                    return fts
-            return items
+            fts_items = self._fts_search(project, query, limit)
+            if fts_items and all(item['distance'] > _CHROMA_FALLBACK_THRESHOLD for item in items):
+                items = []
+            return _rrf(items, fts_items, limit)
         except Exception as e:
             warn("memory", f"chromadb search error: {e}")
             return self._fts_search(project, query, limit)
@@ -351,6 +427,32 @@ class MemoryEngine:
             }
             for r in rows
         ]
+
+    def stats(self, project: str) -> dict:
+        types: dict[str, int] = {}
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                rows = conn.execute(
+                    'SELECT type, COUNT(*) FROM observations '
+                    'WHERE project=? GROUP BY type',
+                    (project,)
+                ).fetchall()
+            types = {r[0]: r[1] for r in rows}
+        except Exception as e:
+            warn("memory", f"stats query error: {e}")
+        return {
+            "types": types,
+            "total": sum(types.values()),
+            "rejects": self._read_rejects()
+        }
+
+    def _read_rejects(self) -> dict:
+        try:
+            with open(REJECT_FILE, encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {}
 
     def _prune_summaries(self, project: str) -> None:
         try:

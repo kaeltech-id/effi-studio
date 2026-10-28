@@ -351,3 +351,83 @@ class TestAutoflowSentinelSchema:
     def test_brainstorm_forbids_commands_writing_driver_fields(self):
         content = read_command('ec-brainstorm.md')
         assert 'those belong to the driver alone' in content
+
+
+# --- Exception-only fields + verify split in ec-feature.md ---
+
+class TestFeatureTemplateRules:
+    def setup_method(self):
+        self.content = read_command('ec-feature.md')
+
+    def test_feature_template_has_no_default_rollback(self):
+        """Exception-only fields must not ship with their defaults."""
+        assert 'Breaking change: {description or "none"}' not in self.content
+        assert 'or "new file"' not in self.content
+        assert 'git checkout -- {file}' not in self.content
+        assert '**Exception-only fields.**' in self.content
+
+    def test_feature_template_declares_verify_split(self):
+        """Both verify kinds must be documented."""
+        assert '- Verify (local):' in self.content
+        assert '- Verify (global):' in self.content
+
+    def test_feature_template_requires_honest_dependencies(self):
+        """The fabricated Task N-1 chain must be explicitly forbidden."""
+        assert '**Honest dependencies.**' in self.content
+        assert 'no fabricated Task N-1 chain' in self.content
+
+    def test_feature_self_review_checklist_has_twenty_items(self):
+        """The Step 4 checklist must keep all 20 rules."""
+        start = self.content.index('## Step 4 — Self-Review Before Presenting')
+        end = self.content.index('## Step 5 — Save Feature Intent to Memory')
+        items = [line for line in self.content[start:end].splitlines()
+                 if line.startswith('- [ ]')]
+        assert len(items) == 20, f'checklist has {len(items)} items'
+
+
+# --- Ranged reads, fusion and evidence rules in ec-execute.md ---
+
+class TestExecuteTemplateRules:
+    def setup_method(self):
+        self.content = read_command('ec-execute.md')
+
+    def test_execute_does_not_forward_memory_snippets(self):
+        """Injection must not be multiplied by the task count."""
+        assert 'Pass relevant snippets into each subagent' not in self.content
+        assert 'Do NOT forward memory or docs snippets' in self.content
+
+    def test_execute_uses_ranged_plan_reads(self):
+        """A large plan must not be ingested in full per task."""
+        assert 'Do not read `### Per Task Detail` in full' in self.content
+
+    def test_execute_declares_colocation_fusion(self):
+        """Consecutive same-file tasks fuse into one execution unit."""
+        assert 'Fuse CONSECUTIVE' in self.content
+        assert 'A fusion run STOPS at' in self.content
+        for stop in ['`GATE`', 'Verify (global)', '`Dependencies:` edge pointing outside']:
+            assert stop in self.content, stop
+
+    def test_execute_forbids_global_invariant_as_local_evidence(self):
+        """'The project still compiles' is not task-level evidence."""
+        assert 'is not evidence that this task is correct' in self.content
+
+
+# --- Definitive gate, plan lint and scope boundary in ec-review.md ---
+
+class TestReviewTemplateRules:
+    def setup_method(self):
+        self.content = read_command('ec-review.md')
+
+    def test_review_has_plan_lint_and_evidence_audit(self):
+        """Review must flag default-valued fields and audit [x] claims."""
+        assert '### Plan lint — exception-only fields' in self.content
+        assert 'a default value IS the defect' in self.content
+        assert '### Evidence audit' in self.content
+        assert 're-run the local verify' in self.content
+
+    def test_review_has_definitive_gate_and_scope_boundary(self):
+        """Global invariants run once, here; scope is bounded by the plan."""
+        assert '### Definitive global gate' in self.content
+        assert 'this is the authoritative gate' in self.content
+        assert '### Scope boundary' in self.content
+        assert 'git status --short' in self.content

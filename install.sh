@@ -13,7 +13,7 @@ BIN_DIR="$HOME/.efficlaude/bin"
 SHELL_DIR="$HOME/.efficlaude/shell"
 COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode" "ec-next" "ec-selfhealing")
 AGENTS=("ec-react" "ec-vue" "ec-nextjs" "ec-typescript" "ec-tailwind" "ec-react-native" "ec-flutter" "ec-ios" "ec-android" "ec-mobile-perf" "ec-python" "ec-nodejs" "ec-golang" "ec-java" "ec-php" "ec-sql" "ec-nosql" "ec-migration" "ec-unit-test" "ec-e2e" "ec-api-test" "ec-docker" "ec-cicd" "ec-cloud" "ec-security" "ec-performance" "ec-refactor" "ec-reviewer" "ec-api-design" "ec-architect" "ec-llm" "ec-antislop")
-SERVER_FILES=("worker.py" "memory.py" "docs.py" "graph.py" "logger.py" "file_lock.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
+SERVER_FILES=("worker.py" "memory.py" "embedder.py" "docs.py" "graph.py" "logger.py" "file_lock.py" "purge_noise.py" "requirements.txt" "start.sh" "stop.sh" "watchdog.sh")
 HOOK_FILES=("post_tool_use.py" "session_stop.py" "prompt_submit.py" "commit-msg")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,6 +72,15 @@ for cmd in "${COMMANDS[@]}"; do
 done
 fetch_file "VERSION" "$EFFICLAUDE_HOME/VERSION"
 echo "  ✓ VERSION"
+
+LEGACY_COMMANDS=("setup" "feature" "brainstorm" "execute" "review" "git" "design")
+for cmd in "${LEGACY_COMMANDS[@]}"; do
+  LEGACY_FILE="${COMMANDS_DIR:?}/${cmd:?}.md"
+  if [ -f "$LEGACY_FILE" ]; then
+    rm -f "$LEGACY_FILE"
+    echo "  ✓ removed legacy /$cmd (superseded by /ec-$cmd)"
+  fi
+done
 
 # ── 3b. Install Claude agents ─────────────────────────────────────────────────
 echo ""

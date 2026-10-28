@@ -170,6 +170,15 @@ def memory_context() -> Response:
     return jsonify(memory.get_recent(project, limit))
 
 
+@app.route('/memory/stats')
+def memory_stats() -> Response:
+    """Return observation type composition and write-gate reject counts."""
+    project = request.args.get('project', '')
+    if not _valid_project(project):
+        return _err("invalid project name")
+    return jsonify(memory.stats(project))
+
+
 @app.route('/memory/summarize', methods=['POST'])
 def summarize() -> Response:
     """Summarize recent observations into a session summary."""

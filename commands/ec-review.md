@@ -97,6 +97,17 @@ If `commands/ec-setup.md` exists in this project:
 - If all rules match: note "Template drift check: ✓ GIT RULES in sync"
 If `commands/ec-setup.md` does not exist: skip this check silently.
 
+### Plan lint — exception-only fields
+Read the plan that was executed (check `.claude/plans/{branch}.md`, and `.claude/plans/archive/` if the plan has already been archived) and flag:
+- any `Rollback:` line that is merely a revert or delete of that task's own `File:`
+- any per-task `⚠️ Breaking change:` line whose value is `none`
+- any `Anchor:` line reading `new file`
+- any `Dependencies:` values forming a straight `Task N-1` chain across more than 3 consecutive tasks
+
+Do NOT check a task's `File:` "new file" claim against the disk here. By review time a new file exists precisely because its task created it, so the check fires on every correctly-executed new-file task. That claim is verifiable only at plan time, and `/ec-feature`'s Grounding Pass plus its self-review checklist item ("Every file a task claims is new was confirmed absent by the Grounding Pass") is where it belongs.
+
+Report each as template drift with the task number. These fields are **exception-only**: their presence with a default value IS the defect, never their absence. Do NOT flag the plan-level `⚠️ Breaking change risk:` line in `### Impact Analysis` — that one legitimately reads "none".
+
 ---
 
 ## Stage 2 — Code Quality Review
@@ -164,6 +175,28 @@ Fix all issues found directly. Do not ask for permission to fix — fix and note
 ---
 
 ## Step 2 — Testing
+
+### Definitive global gate
+Run every global invariant for this project ONCE, here, and record the real output:
+- the build — `cargo build`, `npm run build`, or this project's equivalent
+- the type-check — `tsc --noEmit`, `mypy`, or equivalent
+- the full test suite
+
+`/ec-execute` no longer runs these per task, so **this is the authoritative gate** and a failure here is a review failure. Skip cleanly any step this project does not have — a missing build step is not a failure. If the plan exceeds 40 tasks, the evidence audit below may sample rather than re-run everything; this gate never samples.
+
+### Evidence audit
+For each `- [x]` task in the plan, confirm its `Verify (local)` evidence was actually produced:
+- re-run the local verify and compare against the plan's stated expectation
+- flag any task marked done whose local verify now fails, or whose threshold was never measurable
+
+This closes the failure mode where a subagent invents output to clear a threshold. A local verify that was correct when the task ran but was invalidated by a LATER task's change is a plan-ordering defect, not a fabrication — report it as such.
+
+**How to tell the two apart.** A fabrication shows a count BELOW the expectation, or a string that was never written. A plan-ordering defect shows a count ABOVE it, and every extra occurrence is attributable by line number to a later task in the same plan. Always attribute before judging: run the bare `grep -n` and name which task added each extra hit. Only an unattributable discrepancy is a fabrication. Report plan-ordering defects against `/ec-feature`'s count-stability rule, not against the task that ran.
+
+### Scope boundary
+Collect every `File:` value in the plan. Then run `git status --short` (read-only — never stage, commit or revert) and confirm every changed path appears in that list. Report any path that does not as an out-of-scope change, naming the task that should have declared it. Exclude workflow artefacts written by the commands themselves (`.claude/plans/`, `.claude/decisions/`, `.claude/docs/`, review summaries) and build output that belongs in gitignore (for example `token-optimizer/target/`).
+
+### Unit tests
 Ask: "Add unit tests for this feature? (y/n):"
 
 If yes:

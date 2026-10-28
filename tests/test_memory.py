@@ -109,3 +109,149 @@ def test_fts_search_survives_punctuation(db_path, chroma_path):
     engine = MemoryEngine(db_path, chroma_path)
     engine.save_observation("proj", "obs", "worker handles rate limits")
     assert engine._fts_search("proj", 'rate/limits-"x"', 5) != []
+
+
+def test_dedup_increments_seen_count(db_path, chroma_path):
+    """Identical content collapses to one row with a frequency count."""
+    engine = MemoryEngine(db_path, chroma_path)
+    engine.save_observation("proj", "tool_use", "same content")
+    engine.save_observation("proj", "tool_use", "same  content")
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT COUNT(*), MAX(seen_count) FROM observations").fetchone()
+    assert row == (1, 2)
+
+
+def test_dedup_skips_fts_and_chroma_writes(db_path, chroma_path):
+    """A deduped save returns early, leaving the FTS and vector indexes untouched."""
+    engine = MemoryEngine(db_path, chroma_path)
+    engine.save_observation("proj", "tool_use", "indexed exactly once")
+    engine.save_observation("proj", "tool_use", "indexed   exactly once")
+    with sqlite3.connect(db_path) as conn:
+        fts_rows = conn.execute("SELECT COUNT(*) FROM obs_fts").fetchone()[0]
+    assert fts_rows == 1
+    assert engine._get_collection("proj").count() == 1
+
+
+def test_bm25_to_distance_is_monotonic():
+    """A better (more negative) FTS5 rank maps to a smaller distance."""
+    import memory as memory_mod
+    better = memory_mod._bm25_to_distance(-10.0)
+    worse = memory_mod._bm25_to_distance(-1.0)
+    assert 0.0 <= better < worse < 1.0
+
+
+def test_bm25_to_distance_rejects_non_negative_rank():
+    """Missing, zero and positive ranks carry no signal, so they map to the worst distance."""
+    import memory as memory_mod
+    assert memory_mod._bm25_to_distance(None) == 1.0
+    assert memory_mod._bm25_to_distance(0) == 1.0
+    assert memory_mod._bm25_to_distance(5.0) == 1.0
+
+
+def test_rrf_prefers_item_ranked_by_both_paths():
+    """An item on both result lists outranks a higher-placed single-path item."""
+    import memory as memory_mod
+    vector_items = [{"content": "x"}, {"content": "y"}]
+    fts_items = [{"content": "y"}]
+    fused = memory_mod._rrf(vector_items, fts_items, 5)
+    assert [item["content"] for item in fused] == ["y", "x"]
+    assert fused[0]["fused_score"] > fused[1]["fused_score"]
+
+
+def test_rrf_damping_outranks_a_single_path_leader():
+    """Cross-path agreement beats a rank-one hit seen by only one path."""
+    import memory as memory_mod
+    vector_items = [{"content": "a"}, {"content": "b"}, {"content": "c"}, {"content": "t"}]
+    fts_items = [{"content": "d"}, {"content": "e"}, {"content": "g"}, {"content": "t"}]
+    fused = memory_mod._rrf(vector_items, fts_items, 3)
+    assert fused[0]["content"] == "t"
+    assert fused[0]["fused_score"] > fused[1]["fused_score"]
+
+
+def test_rrf_merges_duplicate_content_into_one_entry():
+    """Content reached by both paths appears exactly once in the fused output."""
+    import memory as memory_mod
+    vector_items = [{"content": "shared"}, {"content": "only_vector"}]
+    fts_items = [{"content": "shared"}, {"content": "only_fts"}]
+    fused = memory_mod._rrf(vector_items, fts_items, 10)
+    contents = [item["content"] for item in fused]
+    assert len(contents) == len(set(contents))
+    assert set(contents) == {"shared", "only_vector", "only_fts"}
+
+
+def test_rrf_handles_empty_inputs():
+    """One empty list still ranks the other; two empty lists fuse to nothing."""
+    import memory as memory_mod
+    assert memory_mod._rrf([], [], 5) == []
+    assert memory_mod._rrf([], [], 0) == []
+    only_fts = memory_mod._rrf([], [{"content": "a"}, {"content": "b"}], 5)
+    assert [item["content"] for item in only_fts] == ["a", "b"]
+    only_vector = memory_mod._rrf([{"content": "a"}], [], 5)
+    assert [item["content"] for item in only_vector] == ["a"]
+
+
+def test_search_results_are_source_tagged(db_path, chroma_path):
+    """Every fused search hit records which retrieval path produced it."""
+    engine = MemoryEngine(db_path, chroma_path)
+    engine.save_observation("proj", "obs", "ChromaDB stores embeddings")
+    engine.save_observation("proj", "obs", "SQLite FTS5 ranks with bm25")
+    results = engine.search("proj", "embeddings")
+    assert results
+    assert all(r["source"] in {"fts", "vector"} for r in results)
+
+
+def test_v1_to_v2_migration_adds_dedup_columns(db_path, chroma_path):
+    """Opening a v1 database adds the dedup columns and backfills seen_count."""
+    now = datetime.utcnow().isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS observations "
+            "(id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT, type TEXT, "
+            "content TEXT, metadata TEXT, created_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO observations (project, type, content, metadata, created_at) "
+            "VALUES (?,?,?,?,?)",
+            ("proj", "obs", "written before schema v2", "{}", now)
+        )
+        conn.commit()
+    MemoryEngine(db_path, chroma_path)
+    with sqlite3.connect(db_path) as conn:
+        columns = {r[1] for r in conn.execute("PRAGMA table_info(observations)")}
+        row = conn.execute(
+            "SELECT content_hash, seen_count FROM observations WHERE project='proj'"
+        ).fetchone()
+    assert {"content_hash", "seen_count"} <= columns
+    assert row[0] is None
+    assert row[1] == 1
+
+
+def test_legacy_null_hash_row_does_not_block_save(db_path, chroma_path):
+    """A migrated row with a NULL hash cannot dedup, and saving over it still succeeds."""
+    now = datetime.utcnow().isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS observations "
+            "(id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT, type TEXT, "
+            "content TEXT, metadata TEXT, created_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO observations (project, type, content, metadata, created_at) "
+            "VALUES (?,?,?,?,?)",
+            ("proj", "obs", "legacy content", "{}", now)
+        )
+        conn.commit()
+    engine = MemoryEngine(db_path, chroma_path)
+    engine.save_observation("proj", "obs", "legacy content")
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+    assert count == 2
+
+
+def test_content_hash_normalises_whitespace():
+    """Whitespace differences hash alike, at a stable 32 characters."""
+    import memory as memory_mod
+    assert memory_mod._content_hash("a  b") == memory_mod._content_hash("a b")
+    assert memory_mod._content_hash(" a\n\tb ") == memory_mod._content_hash("a b")
+    assert memory_mod._content_hash("a b") != memory_mod._content_hash("ab")
+    assert len(memory_mod._content_hash("a b")) == 32

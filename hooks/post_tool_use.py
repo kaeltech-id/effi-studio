@@ -29,6 +29,23 @@ def _warn(tag: str, msg: str) -> None:
 WORKER_URL = f"http://localhost:{os.environ.get('EFFICLAUDE_PORT', '37777')}"
 TRACKED_TOOLS = {"Write", "Edit", "Bash", "MultiEdit"}
 START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
+REJECT_FILE = Path.home() / ".efficlaude" / ".observe_rejects.json"
+
+
+def _record_reject(reason, tool_name):
+    try:
+        try:
+            data = json.loads(REJECT_FILE.read_text())
+        except Exception:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        key = f"{reason}:{tool_name}"
+        data[key] = data.get(key, 0) + 1
+        REJECT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        REJECT_FILE.write_text(json.dumps(data))
+    except Exception as e:
+        _warn("post_tool_use", f"reject counter failed: {e}")
 
 
 def get_project_name():
@@ -38,6 +55,81 @@ def get_project_name():
             return json.load(f).get("project_name", "unknown")
     except Exception:
         return os.path.basename(os.getcwd())
+
+
+SIGNAL_MIN_DURATION_MS = int(os.environ.get("EFFICLAUDE_SIGNAL_MS", "5000"))
+_NOISE_PREFIXES = ("curl ", "cat ", "ls ", "echo ", "grep ", "sed -n", "wc ", "head ", "tail ")
+_INTERNAL_DIR = ".claude"
+_EXIT_KEYS = ("exit_code", "exitCode", "returncode", "return_code", "exit_status", "status", "code")
+_DURATION_KEYS = ("duration_ms", "durationMs", "duration", "elapsed_ms", "elapsedMs", "took_ms")
+
+
+def _edited_paths(tool_name, tool_input):
+    try:
+        if tool_name == "MultiEdit":
+            raw = [e.get("file_path", "") for e in tool_input.get("edits", []) or []]
+        else:
+            raw = [tool_input.get("file_path", "")]
+        return [str(p) for p in raw if str(p).strip()]
+    except Exception:
+        return []
+
+
+def _is_internal(path):
+    try:
+        resolved = Path(str(path).strip()).expanduser()
+        if _INTERNAL_DIR in resolved.parts:
+            return True
+        efficlaude = str(Path.home() / ".efficlaude")
+        text = str(resolved)
+        return text == efficlaude or text.startswith(efficlaude + os.sep)
+    except Exception:
+        return True
+
+
+def _coerce_int(value):
+    try:
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def _payload_value(tool_response, keys):
+    if not isinstance(tool_response, dict):
+        return None
+    for key in keys:
+        if key in tool_response:
+            found = _coerce_int(tool_response.get(key))
+            if found is not None:
+                return found
+    return None
+
+
+def _exit_code(tool_response):
+    found = _payload_value(tool_response, _EXIT_KEYS)
+    return found if found is not None else 0
+
+
+def _duration_ms(tool_response):
+    found = _payload_value(tool_response, _DURATION_KEYS)
+    return found if found is not None else 0
+
+
+def _has_signal(tool_name, tool_input, tool_response):
+    """True when this tool call carries evidence worth storing."""
+    try:
+        if tool_name in ("Write", "Edit", "MultiEdit"):
+            return any(not _is_internal(p) for p in _edited_paths(tool_name, tool_input))
+        if tool_name == "Bash":
+            if _exit_code(tool_response) != 0:
+                return True
+            if _duration_ms(tool_response) >= SIGNAL_MIN_DURATION_MS:
+                return True
+            cmd = str(tool_input.get("command", "")).strip()
+            return not cmd.startswith(_NOISE_PREFIXES)
+    except Exception as e:
+        _warn("post_tool_use", f"signal check failed: {e}")
+    return False
 
 
 def build_observation(tool_name, tool_input):
@@ -105,7 +197,20 @@ def main():
     if tool_name not in TRACKED_TOOLS:
         sys.exit(0)
 
-    observation = build_observation(tool_name, data.get("tool_input", {}))
+    tool_input = data.get("tool_input", {})
+    tool_response = data.get("tool_response")
+    if os.getenv("EFFICLAUDE_DEBUG"):
+        try:
+            if isinstance(tool_response, dict):
+                _warn("post_tool_use", f"tool_response keys: {sorted(tool_response)}")
+        except Exception:
+            pass
+
+    if not _has_signal(tool_name, tool_input, tool_response):
+        _record_reject("no_signal", tool_name)
+        sys.exit(0)
+
+    observation = build_observation(tool_name, tool_input)
     if not observation:
         sys.exit(0)
 

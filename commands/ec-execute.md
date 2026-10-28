@@ -41,7 +41,8 @@ LOCK_STATUS=$(echo "$LOCK_RESULT" | python3 -c "import sys,json; print(json.load
 - Show: "(migrated .claude/current-plan.md → {PLAN_FILE})"
 
 Read:
-- `{PLAN_FILE}` — the plan to execute
+- `{PLAN_FILE}` — read the header sections (`### Impact Analysis` through `### Grounding`) and the `### Tasks` checklist ONLY. Do not read `### Per Task Detail` in full — a large plan is tens of thousands of tokens and only one task's block is needed at a time.
+  Then, per task, read just that task's block: locate its start with `grep -n "^\*\*Task {N} —" {PLAN_FILE}`, take the next `^\*\*Task ` match as the end (or end-of-file for the last task), and read only that line range. The `### Grounding` section must be in the header read, because every Verify threshold traces to a baseline recorded there.
 - `.claude/project-config.json`
 - `.claude/context/stack.md`
 - `.claude/context/structure.md`
@@ -52,7 +53,7 @@ Check worker status: `curl -s http://localhost:37777/health`
 - If running: show "(worker online ✓ — memory/docs/graph active)" then load memory and docs:
   `curl -s "http://localhost:37777/memory/search?q={feature_name}&project={project_name}&limit=5"`
   `curl -s "http://localhost:37777/docs/search?q={feature_keywords}&project={project_name}&limit=5"`
-  Pass relevant snippets into each subagent's context.
+  Use these for your own orientation only. Do NOT forward memory or docs snippets into subagent prompts — the relevance floor in `hooks/prompt_submit.py` already decides what is worth injecting, and re-injecting per task multiplies any residual noise by the task count.
 - If offline: show "(worker OFFLINE ⚠️ — memory/docs/graph unavailable)" and continue.
 
 **Resume check:** After reading `{PLAN_FILE}`, count:
@@ -100,12 +101,30 @@ If `AUTO=yes`: do not prompt — abort the chain instead. Delete the sentinel (`
 Read all tasks from `{PLAN_FILE}`. Find all lines matching `- [ ]`.
 Compute: total = count of ALL task lines (both `[x]` and `[ ]`).
 
+### Execution units — co-location fusion
+Before the loop, build execution units from the task list. Opening the same file once per task, re-deriving its conventions each time, and re-running its build each time is pure waste when consecutive tasks edit the same file.
+
+1. Read each pending task's `File:` and `Dependencies:` lines (ranged read, per Step 1).
+2. Fuse CONSECUTIVE pending tasks that share the same `File:` into one unit. A fusion run STOPS at:
+   - a task with a `Dependencies:` edge pointing outside the run of fused tasks
+   - a task whose name contains `GATE` — gates exist to stop work before cost is spent, so fusion must never cross one
+   - a task carrying a `Verify (global)` line — that task is a module boundary
+   - a task with no `File:` line, or whose `File:` names more than one path
+3. Execute units in dependency order. Within a unit: open the file once, apply every task's change, then run each task's `Verify (local)` separately.
+4. Mark `- [x]` for each task in the unit individually, and only after that task's own local verify passes.
+
+Tasks that share a file but are separated by a task on a different file are NOT consecutive and must not be fused.
+
 For each `- [ ]` task in document order:
 1. Show: "▶ Task {current}/{total}: {task name} [{size}]"
-2. Spawn one subagent with full task context (file path, code sample, verify step, relevant memory/docs snippets)
-3. Subagent MUST run the verify step and confirm actual output before claiming done
-4. After subagent confirms complete: edit `{PLAN_FILE}` — replace `- [ ] Task N: {name}` with `- [x] Task N: {name}` for this task only
-5. Show: "✓ Task {current}/{total}: {task name} — verified"
+2. Spawn one subagent with full task context (file path, code sample, verify step)
+3. Each task's `Verify (local)` MUST be run and its real output confirmed before the task is marked done
+4. A task carrying a `Verify (global)` line is a module boundary: run the global invariant after that task's unit completes. If it fails, STOP — do not continue to the next unit
+5. Never substitute a global invariant for a missing local verify. "The project still compiles" is not evidence that this task is correct — it is a repo-wide property that holds whether or not this task did its job
+6. After the task's local verify passes: edit `{PLAN_FILE}` — replace `- [ ] Task N: {name}` with `- [x] Task N: {name}` for this task only
+7. Show: "✓ Task {current}/{total}: {task name} — verified"
+
+A plan written before this convention has no `Verify (global)` lines at all; treat every verify as local and let `/ec-review` catch a broken build at its definitive gate.
 
 Repeat until no `- [ ]` lines remain in `{PLAN_FILE}`.
 
@@ -131,8 +150,7 @@ For each task, spawn one subagent. Each subagent prompt must include:
 - Clean code rules: readable, best practices, no unnecessary comments
 - ⚠️ Breaking change note if flagged in plan
 - The verify step from the plan
-- Relevant memory snippets (if any)
-- Relevant docs snippets (if any — ensures correct API usage)
+- Nothing from memory or docs search — see Step 1. Task-specific context only.
 
 ### Agent Context Injection
 For each task, before spawning subagent, check for `[agent: ec-xxx]` tag in the task line:

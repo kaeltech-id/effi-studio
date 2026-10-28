@@ -234,6 +234,8 @@ Write all of it into the plan's `### Grounding` section verbatim — actual outp
 
 **Traceability rule:** every numeric threshold in a Verify step MUST be derived from a baseline recorded here. Write `== n` when the exact post-change count is known from the baseline plus the edits specified; use `>= n` only when the edit count genuinely varies. A threshold that cannot be traced to a baseline is a planning defect — measure it, do not guess it.
 
+**Count stability rule.** An exact `grep -c "{string}" {file}` → `== n` is only stable while no LATER task in this plan touches that file or adds that string. Co-location fusion makes several tasks per file the norm, so before writing `== n`, scan the remaining tasks: if any later task touches the same file, or adds test fixtures containing the same string, either use `>= n` or anchor the count to a construct unique to this task (a function signature, a full statement) rather than a bare substring. Otherwise `/ec-review`'s evidence audit will re-run the check against a file that has legitimately moved on, and report a plan-ordering defect for a task that was correct when it ran.
+
 Only read-only commands are permitted here (see the No-Code Rule).
 
 ## Step 3 — Write Plan
@@ -309,20 +311,27 @@ A Verify step with no numeric threshold — file existence, exit status, string 
 ### Per Task Detail
 **Task 1 — {name}** `S/M/L`
 - File: {exact path to create/modify}
-- Anchor: {exact existing string the executor must locate, with line number from Grounding — or "new file"}
+- Anchor: {exact existing string the executor must locate, with its line number from Grounding — omit this line entirely when the task creates the file}
 - Reuse: {existing code to use, or "none"}
 - Code sample: {concrete snippet or expected structure}
 - Do not touch: {files, sections, or behaviours this task must leave alone — or "n/a"}
 - Edge cases: loading state / empty state / error state
-- ⚠️ Breaking change: {description or "none"}
+- ⚠️ Breaking change: {what breaks and for whom — omit this line entirely when nothing breaks}
 - Acceptance: {the observable end state, stated independently of any command}
-- Verify: {exact command + expected value, traced to a baseline in ### Grounding}
-- Rollback: {how to undo this task — or "git checkout -- {file}"}
-- Dependencies: {other tasks, or "none"}
+- Verify (local): {a command that FAILS if this task is wrong — a specific grep -c, test -f, or anchor match. Milliseconds. Traced to a baseline in ### Grounding}
+- Verify (global): {omit on most tasks. Only at a module boundary: the whole-project invariant — build, type-check, or test suite}
+- Rollback: {only when undoing this task needs more than reverting the file — omit this line entirely otherwise}
+- Dependencies: {ONLY the tasks whose output this task genuinely requires — "none" is the common and correct answer. Never write "Task N-1" merely because it precedes this one}
 
 **Task 2 — {name}**
 ...
 ```
+
+**Exception-only fields.** `Rollback`, `⚠️ Breaking change` and `Anchor` are written ONLY when their value differs from the mechanical default. A `Rollback` that is merely a revert or delete of that task's own `File:` is derivable from `File:` — omit it. Omitting one of these lines is correct, not an oversight; `/ec-review` treats a default value as the defect, never the absence.
+
+**Honest dependencies.** A dependency means this task cannot start until that task's output exists. A straight 1→2→3→…→N chain is almost always fabricated, and `/ec-execute` now READS this field to fuse co-located work and order execution — so a false edge costs real time, and an empty value is a valid and common answer.
+
+**Two kinds of verification.** Local evidence proves THIS task did what it claims. A global invariant (build, type-check, test suite) proves a repo-wide property and must NOT be attached to every task — a passing whole-project compile says nothing about the task that triggered it, and attaching it everywhere is both slower and less accurate. Place global invariants at module boundaries and let `/ec-review` run the definitive gate. A task whose only honest proof is a compile may carry a global verify; the rule is "not on every task", not "never".
 
 Size guide: S = <1hr · M = 1–3hr · L = >3hr
 
@@ -349,10 +358,15 @@ Before showing the plan, check:
 - [ ] No task says "fill in details", "handle edge cases", or "similar to Task N"
 - [ ] No task would take more than 5 minutes
 - [ ] Dependencies are correctly ordered
-- [ ] Every task has an Anchor that was confirmed to exist by the Grounding Pass, or reads "new file"
+- [ ] Every task that edits an existing file has an Anchor confirmed to exist by the Grounding Pass; new-file tasks omit the line and are recorded in ### Grounding instead
 - [ ] Every numeric threshold in a Verify step traces to a baseline in ### Grounding
 - [ ] Every task has an Acceptance stated independently of its Verify command
 - [ ] No Verify threshold was written without measuring the current value first
+- [ ] No task carries a mechanical Rollback, a "none" Breaking change, or a "new file" Anchor — those lines are omitted
+- [ ] Every task has a Verify (local) that fails if the task is wrong
+- [ ] Global invariants appear only at module boundaries, not on every task
+- [ ] Dependencies name only genuine prerequisites — no fabricated Task N-1 chain
+- [ ] Every file a task claims is new was confirmed absent by the Grounding Pass — never assumed
 - [ ] Design Contract is present and self-contained if the feature has UI scope
 - [ ] Every UI task carries a [design:] tag
 - [ ] A UI feature carries exactly one of ### Design Contract / ### Design Direction — never both, never neither

@@ -3,14 +3,13 @@
 
 ETOK="$HOME/.efficlaude/bin/etok"
 
-_etok_available() {
-  command -v "$ETOK" &>/dev/null
-}
+# Inlined on purpose: a helper function does not survive every shell-snapshot
+# mechanism, and a wrapper calling a missing helper breaks the real command.
 
 # git — optimize status, log, diff, branch, stash list
 git() {
   local sub="${1:-}"
-  if _etok_available; then
+  if [ -x "${ETOK:-}" ]; then
     case "$sub" in
       status|log|diff|branch|"stash")
         command git "$@" 2>&1 | "$ETOK" git "$@"
@@ -24,7 +23,7 @@ git() {
 # npm
 npm() {
   local sub="${1:-}"
-  if _etok_available; then
+  if [ -x "${ETOK:-}" ]; then
     case "$sub" in
       install|i|add|ci)
         command npm "$@" 2>&1 | "$ETOK" npm "$@"
@@ -38,7 +37,7 @@ npm() {
 # yarn
 yarn() {
   local sub="${1:-}"
-  if _etok_available; then
+  if [ -x "${ETOK:-}" ]; then
     case "$sub" in
       install|add)
         command yarn "$@" 2>&1 | "$ETOK" yarn "$@"
@@ -52,7 +51,7 @@ yarn() {
 # pnpm
 pnpm() {
   local sub="${1:-}"
-  if _etok_available; then
+  if [ -x "${ETOK:-}" ]; then
     case "$sub" in
       install|add|i)
         command pnpm "$@" 2>&1 | "$ETOK" pnpm "$@"
@@ -66,7 +65,7 @@ pnpm() {
 # docker
 docker() {
   local sub="${1:-}"
-  if _etok_available; then
+  if [ -x "${ETOK:-}" ]; then
     case "$sub" in
       ps|logs|build)
         command docker "$@" 2>&1 | "$ETOK" docker "$@"
@@ -80,7 +79,7 @@ docker() {
 # cargo
 cargo() {
   local sub="${1:-}"
-  if _etok_available; then
+  if [ -x "${ETOK:-}" ]; then
     case "$sub" in
       test|build|check)
         command cargo "$@" 2>&1 | "$ETOK" cargo "$@"

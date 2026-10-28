@@ -465,3 +465,150 @@ class TestPlanCounts:
         _plan(tmp_path, done=done, todo=todo)
         from session_stop import _plan_counts
         assert _plan_counts("main") == (done, todo)
+
+
+def test_has_signal_rejects_fast_readonly_bash():
+    """A successful read-only probe carries no evidence worth storing."""
+    from post_tool_use import _has_signal
+    assert _has_signal("Bash", {"command": "curl -s localhost:37777/health"}, {"exit_code": 0}) is False
+
+
+def test_has_signal_accepts_edit_outside_claude_dir():
+    """An edit to a real source file is always signal."""
+    from post_tool_use import _has_signal
+    assert _has_signal("Write", {"file_path": "server/memory.py"}, {}) is True
+
+
+def test_has_signal_accepts_failing_command():
+    """A failing probe is informative even when it is read-only."""
+    from post_tool_use import _has_signal
+    assert _has_signal("Bash", {"command": "ls /nope"}, {"exit_code": 2}) is True
+
+
+def test_has_signal_rejects_internal_bookkeeping():
+    """Writes under .claude/ are workflow bookkeeping, not product changes."""
+    from post_tool_use import _has_signal
+    assert _has_signal("Write", {"file_path": ".claude/plans/main.md"}, {}) is False
+    assert _has_signal("Edit", {"file_path": "/Users/admin/proj/.claude/.autoflow"}, {}) is False
+    assert _has_signal("MultiEdit", {"edits": [{"file_path": ".claude/decisions/main.md"}]}, {}) is False
+
+
+def test_has_signal_accepts_multiedit_touching_one_real_file():
+    """A batch is signal as soon as a single edit lands outside .claude/."""
+    from post_tool_use import _has_signal
+    edits = [{"file_path": ".claude/plans/main.md"}, {"file_path": "hooks/post_tool_use.py"}]
+    assert _has_signal("MultiEdit", {"edits": edits}, {}) is True
+
+
+def test_has_signal_rejects_efficlaude_home_writes():
+    """The installed copy under ~/.efficlaude/ is state, not product source."""
+    from pathlib import Path
+    from post_tool_use import _has_signal
+    target = str(Path.home() / ".efficlaude" / "server" / "worker.py")
+    assert _has_signal("Write", {"file_path": target}, {}) is False
+
+
+def test_has_signal_accepts_slow_readonly_bash():
+    """A read-only command that took seconds is worth remembering anyway."""
+    from post_tool_use import _has_signal, SIGNAL_MIN_DURATION_MS
+    payload = {"exit_code": 0, "duration_ms": SIGNAL_MIN_DURATION_MS}
+    assert _has_signal("Bash", {"command": "grep -r token ."}, payload) is True
+    fast = {"exit_code": 0, "duration_ms": SIGNAL_MIN_DURATION_MS - 1}
+    assert _has_signal("Bash", {"command": "grep -r token ."}, fast) is False
+
+
+def test_has_signal_accepts_mutating_command():
+    """A command outside the read-only prefix list is signal on its own."""
+    from post_tool_use import _has_signal
+    assert _has_signal("Bash", {"command": "python3 -m pytest tests/ -q"}, {"exit_code": 0}) is True
+
+
+def test_has_signal_rejects_unknown_tool():
+    """Only Write/Edit/MultiEdit/Bash can carry signal."""
+    from post_tool_use import _has_signal
+    assert _has_signal("Read", {"file_path": "server/memory.py"}, {"exit_code": 0}) is False
+    assert _has_signal("", {}, {}) is False
+
+
+def test_has_signal_never_raises_on_odd_payloads(monkeypatch):
+    """tool_response may be None, a string, or hold unparseable values."""
+    import post_tool_use
+    monkeypatch.setattr(post_tool_use, "_warn", lambda *a, **k: None)
+    odd = [
+        ("Bash", {"command": "cat README.md"}, None),
+        ("Bash", {"command": "cat README.md"}, "exit 0"),
+        ("Bash", {"command": "cat README.md"}, {"exit_code": "boom"}),
+        ("Bash", {"command": None}, {"exit_code": 0}),
+        ("Bash", None, None),
+        ("Write", None, None),
+        ("Write", {"file_path": None}, {}),
+        ("MultiEdit", {"edits": None}, {}),
+        ("MultiEdit", {"edits": ["not-a-dict"]}, {}),
+    ]
+    for tool_name, tool_input, tool_response in odd:
+        assert post_tool_use._has_signal(tool_name, tool_input, tool_response) in (True, False)
+
+
+def test_record_reject_counts_by_reason(tmp_path, monkeypatch):
+    """Rejections are counted so the reject rate stays observable."""
+    import post_tool_use
+    counter = tmp_path / "rejects.json"
+    monkeypatch.setattr(post_tool_use, "REJECT_FILE", counter)
+    post_tool_use._record_reject("no_signal", "Bash")
+    post_tool_use._record_reject("no_signal", "Bash")
+    post_tool_use._record_reject("no_signal", "Write")
+    assert json.loads(counter.read_text()) == {"no_signal:Bash": 2, "no_signal:Write": 1}
+
+
+def test_record_reject_rebuilds_corrupt_counter_file(tmp_path, monkeypatch):
+    """A corrupt counter file is replaced rather than crashing the hook."""
+    import post_tool_use
+    counter = tmp_path / "rejects.json"
+    counter.write_text("[not a dict")
+    monkeypatch.setattr(post_tool_use, "REJECT_FILE", counter)
+    post_tool_use._record_reject("no_signal", "Bash")
+    assert json.loads(counter.read_text()) == {"no_signal:Bash": 1}
+
+
+def test_relevance_floor_rejects_uniform_distances():
+    """Identical distances carry no ranking information — inject nothing."""
+    from prompt_submit import _relevance_floor
+    assert _relevance_floor([{"distance": 0.5}] * 5) == []
+    assert _relevance_floor([{"distance": 0.0}] * 3) == []
+
+
+def test_relevance_floor_keeps_a_clear_winner():
+    """One clearly-better result still gets injected."""
+    from prompt_submit import _relevance_floor, RELEVANCE_CEILING
+    items = [{"distance": d} for d in (0.1, 0.8, 0.85, 0.9, 0.95)]
+    kept = _relevance_floor(items)
+    assert kept == [{"distance": 0.1}]
+    assert 0.8 <= RELEVANCE_CEILING
+    assert {"distance": 0.8} not in kept
+
+
+def test_docs_gate_drops_boilerplate_headings():
+    """Flask's Donate section must never reach a prompt again."""
+    from prompt_submit import _docs_gate
+    body = "z" * 200
+    items = [
+        {"heading": "Donate", "content": body},
+        {"heading": "  CODE OF CONDUCT  ", "content": body},
+        {"heading": "License", "content": body},
+        {"heading": "Blueprints", "content": body},
+    ]
+    assert _docs_gate(items) == [{"heading": "Blueprints", "content": body}]
+
+
+def test_docs_gate_drops_thin_chunks():
+    """A chunk under 80 characters is not worth a prompt."""
+    from prompt_submit import _docs_gate, MIN_DOCS_CONTENT_CHARS
+    exact = {"heading": "Rendering Templates", "content": "x" * MIN_DOCS_CONTENT_CHARS}
+    short = {"heading": "Rendering Templates", "content": "y" * (MIN_DOCS_CONTENT_CHARS - 1)}
+    jinja_link = {"heading": "Templates", "content": "See the Jinja2 documentation for the syntax."}
+    tiny_heading = {"heading": "API", "content": "w" * 200}
+    assert len(jinja_link["content"]) < MIN_DOCS_CONTENT_CHARS
+    assert _docs_gate([exact]) == [exact]
+    assert _docs_gate([short]) == []
+    assert _docs_gate([jinja_link]) == []
+    assert _docs_gate([tiny_heading]) == [tiny_heading]

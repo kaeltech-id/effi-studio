@@ -32,6 +32,11 @@ def _warn(tag: str, msg: str) -> None:
 WORKER_URL = f"http://localhost:{os.environ.get('EFFICLAUDE_PORT', '37777')}"
 MAX_MEMORY_ITEMS = 5
 MAX_DOCS_ITEMS = 3
+RELEVANCE_MARGIN = float(os.environ.get("EFFICLAUDE_RELEVANCE_MARGIN", "0.15"))
+RELEVANCE_CEILING = float(os.environ.get("EFFICLAUDE_RELEVANCE_CEILING", "0.9"))
+MIN_DOCS_CONTENT_CHARS = 80
+_DOCS_STOP_HEADINGS = {"donate", "contributing", "license", "credits", "changelog",
+                       "sponsors", "code of conduct"}
 START_SH = os.path.expanduser("~/.efficlaude/server/start.sh")
 WORKER_RESTART_WAIT_SECS = 5
 VERSION_FILE = os.path.expanduser("~/.efficlaude/VERSION")
@@ -93,6 +98,30 @@ def get_docs_context(project, query):
     encoded_p = urllib.parse.quote(project)
     url = f"{WORKER_URL}/docs/search?q={encoded_q}&project={encoded_p}&limit={MAX_DOCS_ITEMS}"
     return fetch(url) or []
+
+
+def _relevance_floor(items):
+    """Keep only items that clearly beat the pack. Silence beats a wrong answer."""
+    scored = [i for i in items if isinstance(i.get("distance"), (int, float))]
+    if not scored:
+        return []
+    if len(scored) == 1:
+        return [i for i in scored if i["distance"] <= RELEVANCE_CEILING]
+    dists = sorted(i["distance"] for i in scored)
+    median = dists[len(dists) // 2]
+    return [
+        i for i in scored
+        if i["distance"] <= RELEVANCE_CEILING and i["distance"] <= median - RELEVANCE_MARGIN
+    ]
+
+
+def _docs_gate(items):
+    """Drop boilerplate headings and chunks too thin to be worth a prompt."""
+    return [
+        d for d in items
+        if d.get("heading", "").strip().lower() not in _DOCS_STOP_HEADINGS
+        and len(d.get("content", "").strip()) >= MIN_DOCS_CONTENT_CHARS
+    ]
 
 
 def check_update():
@@ -199,10 +228,12 @@ def main():
 
     parts = []
 
+    memory_items = _relevance_floor(memory_items)
     if memory_items:
         mem_lines = [f"- [{m['metadata'].get('type', 'obs')}] {m['content']}" for m in memory_items]
         parts.append("**Relevant project memory:**\n" + "\n".join(mem_lines))
 
+    docs_items = _docs_gate(docs_items)
     if docs_items:
         doc_lines = [f"- [{d['library']} › {d['heading']}] {d['content'][:120]}" for d in docs_items]
         parts.append("**Relevant docs:**\n" + "\n".join(doc_lines))
