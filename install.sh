@@ -31,14 +31,28 @@ fetch_file() {
 
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 
+# A failure prints what went wrong AND what to do about it, on two lines.
+# A symptom alone leaves the user re-reading the script to find the remedy.
+fail() {
+  echo "  ✗ $1"
+  echo "    → $2"
+  exit 1
+}
+
+# Sections are printed, not just commented: the installer's output is read in
+# Studio's install pane, where a flat wall of ✓ lines gives nothing to scan.
+step() {
+  echo ""
+  echo "$1"
+}
+
 echo "Installing EffiClaude..."
 echo ""
 [ "$LOCAL_INSTALL" = true ] && echo "  (local install — copying from repo)"
 
 # ── 1. Check Python ───────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
-  echo "✗ Python 3 not found. Please install Python 3.8+ and re-run."
-  exit 1
+  fail "Python 3 not found" "Install Python 3.8 or newer, then re-run this installer"
 fi
 
 PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
@@ -46,8 +60,7 @@ PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
 
 if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]; }; then
-  echo "✗ Python 3.8+ required (found $PYTHON_VERSION). Please upgrade Python."
-  exit 1
+  fail "Python 3.8+ required (found $PYTHON_VERSION)" "Upgrade Python to 3.8 or newer, then re-run this installer"
 fi
 
 echo "  ✓ Python $PYTHON_VERSION"
@@ -64,8 +77,7 @@ fi
 mkdir -p "$COMMANDS_DIR" "$AGENTS_DIR" "$HOOKS_DIR" "$SERVER_DIR" "$BIN_DIR" "$SHELL_DIR" "$EFFICLAUDE_HOME/chroma"
 
 # ── 3. Install Claude commands ────────────────────────────────────────────────
-echo ""
-echo "Installing commands..."
+step "Installing commands"
 for cmd in "${COMMANDS[@]}"; do
   fetch_file "commands/$cmd.md" "$COMMANDS_DIR/$cmd.md"
   echo "  ✓ /$cmd"
@@ -83,16 +95,14 @@ for cmd in "${LEGACY_COMMANDS[@]}"; do
 done
 
 # ── 3b. Install Claude agents ─────────────────────────────────────────────────
-echo ""
-echo "Installing agents..."
+step "Installing agents"
 for agent in "${AGENTS[@]}"; do
   fetch_file "agents/$agent.md" "$AGENTS_DIR/$agent.md"
   echo "  ✓ @$agent"
 done
 
 # ── 4. Install server files ───────────────────────────────────────────────────
-echo ""
-echo "Installing worker service..."
+step "Installing worker service"
 for file in "${SERVER_FILES[@]}"; do
   fetch_file "server/$file" "$SERVER_DIR/$file"
   echo "  ✓ server/$file"
@@ -100,8 +110,7 @@ done
 chmod +x "$SERVER_DIR/start.sh" "$SERVER_DIR/stop.sh" "$SERVER_DIR/watchdog.sh"
 
 # ── 5. Install hooks ──────────────────────────────────────────────────────────
-echo ""
-echo "Installing hooks..."
+step "Installing hooks"
 for file in "${HOOK_FILES[@]}"; do
   fetch_file "hooks/$file" "$HOOKS_DIR/$file"
   chmod +x "$HOOKS_DIR/$file"
@@ -117,15 +126,13 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 # ── 6. Install Python dependencies ───────────────────────────────────────────
-echo ""
-echo "Installing Python dependencies..."
+step "Installing Python dependencies"
 pip3 install -q -r "$SERVER_DIR/requirements.txt" \
-  || { echo "  ✗ Failed to install Python dependencies. Check requirements.txt."; exit 1; }
+  || fail "Failed to install Python dependencies" "Check pip3 and $SERVER_DIR/requirements.txt, then re-run this installer"
 echo "  ✓ Python dependencies installed"
 
 # ── 7. Register hooks in ~/.claude/settings.json ─────────────────────────────
-echo ""
-echo "Registering hooks..."
+step "Registering hooks"
 
 SETTINGS_FILE="$HOME/.claude/settings.json"
 
@@ -169,8 +176,7 @@ print("  ✓ Hooks registered in ~/.claude/settings.json")
 PYEOF
 
 # ── 8. Install token optimizer (etok) ────────────────────────────────────────
-echo ""
-echo "Installing token optimizer (etok)..."
+step "Installing token optimizer (etok)"
 
 # Source cargo env so rustup-installed cargo is visible in non-interactive shells
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
@@ -223,8 +229,7 @@ if [ "$ETOK_INSTALLED" = true ]; then
 fi
 
 # ── 9. Register daemon ────────────────────────────────────────────────────────
-echo ""
-echo "Registering auto-start daemon..."
+step "Registering auto-start daemon"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
   PLIST_DEST="$HOME/Library/LaunchAgents/com.efficlaude.worker.plist"
@@ -257,8 +262,7 @@ else
 fi
 
 # ── 10. Restart worker (stop + start to load new code) ───────────────────────
-echo ""
-echo "Restarting worker..."
+step "Restarting worker"
 bash "$SERVER_DIR/stop.sh" 2>/dev/null || true
 sleep 1
 bash "$SERVER_DIR/start.sh"

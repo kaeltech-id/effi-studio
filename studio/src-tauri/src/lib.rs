@@ -3,6 +3,7 @@ mod plan;
 mod projects;
 mod pty;
 mod shell_env;
+mod tree;
 mod watcher;
 
 use std::collections::HashMap;
@@ -63,6 +64,15 @@ fn pty_close(reg: tauri::State<pty::SessionRegistry>, id: String) -> Result<(), 
 /// digests, so this cannot collide with one.
 const INSTALL_SESSION: &str = "__install__";
 
+/// Exposed rather than hardcoded in the frontend: the install pane must
+/// subscribe to this id BEFORE install_efficlaude opens the session, for the
+/// reason recorded at terminal-pane.tsx:42 — a late subscription drops the
+/// opening output. Two copies of the literal would eventually disagree.
+#[tauri::command]
+fn install_session_id() -> &'static str {
+    INSTALL_SESSION
+}
+
 /// Running the installer in the PTY puts its output and its prompts in the
 /// terminal the user is already looking at.
 #[tauri::command]
@@ -111,11 +121,20 @@ fn start_watch(app: &tauri::AppHandle, id: &str, path: &str) {
 // projects.rs: the watcher set is lib.rs's concern, and wrapping is what keeps
 // it exactly equal to the configured set.
 #[tauri::command]
-async fn add_project(app: tauri::AppHandle) -> Result<Option<projects::Project>, String> {
+async fn add_project(app: tauri::AppHandle) -> Result<Option<projects::ProjectView>, String> {
     let added = projects::add_project(app.clone()).await?;
     if let Some(p) = &added {
         start_watch(&app, &p.id, &p.path);
     }
+    Ok(added)
+}
+
+/// Wrapped for the same reason add_project is: a promoted folder must start
+/// being watched, and that is lib.rs's concern rather than projects.rs's.
+#[tauri::command]
+fn promote_project(app: tauri::AppHandle, path: String) -> Result<projects::ProjectView, String> {
+    let added = projects::promote_project(path)?;
+    start_watch(&app, &added.id, &added.path);
     Ok(added)
 }
 
@@ -161,7 +180,7 @@ pub fn run() {
             app.manage(pty::SessionRegistry::default());
             app.manage(WatcherRegistry::default());
             let handle = app.handle().clone();
-            for p in projects::list_projects() {
+            for p in projects::stored_projects() {
                 start_watch(&handle, &p.id, &p.path);
             }
             Ok(())
@@ -179,7 +198,10 @@ pub fn run() {
             doctor::run_doctor,
             install_efficlaude,
             projects::claude_override,
-            projects::set_claude_override
+            projects::set_claude_override,
+            tree::list_children,
+            install_session_id,
+            promote_project
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

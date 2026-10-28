@@ -8,7 +8,10 @@ import '@xterm/xterm/css/xterm.css';
 interface TerminalPaneProps {
   projectId: string;
   cwd: string;
-  program: string;
+  /** null = attach only: subscribe to an already-running session and never
+   *  open one. The installer's PTY is opened by install_efficlaude, so a pane
+   *  that called ptyOpen would spawn a second, empty shell beside it. */
+  program: string | null;
 }
 
 export function TerminalPane({ projectId, cwd, program }: TerminalPaneProps) {
@@ -57,7 +60,7 @@ export function TerminalPane({ projectId, cwd, program }: TerminalPaneProps) {
     observer.observe(host);
 
     void subscribed
-      .then(() => api.ptyOpen(projectId, cwd, program))
+      .then(() => (program ? api.ptyOpen(projectId, cwd, program) : undefined))
       .then(() => api.ptyResize(projectId, term.rows, term.cols))
       .catch((err) => term.write(`\r\n\x1b[31m${String(err)}\x1b[0m\r\n`));
 

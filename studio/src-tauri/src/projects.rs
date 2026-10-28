@@ -1,3 +1,4 @@
+use crate::tree::{git_mark, GitMark};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -6,6 +7,33 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub path: String,
+}
+
+/// A separate view model on purpose. `Project` is the PERSISTED shape in
+/// studio.json and must not grow a derived field: a git marker written to disk
+/// would be read back stale after the user initialises or deletes a repo
+/// outside the app. ProjectView is recomputed on every read instead.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectView {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub git_mark: GitMark,
+}
+
+impl From<&Project> for ProjectView {
+    fn from(p: &Project) -> Self {
+        let path = PathBuf::from(&p.path);
+        ProjectView {
+            id: p.id.clone(),
+            name: p.name.clone(),
+            path: p.path.clone(),
+            // No stop_at for a root the user added explicitly: if it sits inside
+            // a larger repository, saying so is correct.
+            git_mark: git_mark(&path, None),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -53,7 +81,7 @@ use tauri_plugin_dialog::DialogExt;
 
 /// Plain fn, not a command: lib.rs wraps it so adding a project also starts
 /// its watcher.
-pub async fn add_project(app: tauri::AppHandle) -> Result<Option<Project>, String> {
+pub async fn add_project(app: tauri::AppHandle) -> Result<Option<ProjectView>, String> {
     // The native panel is both the UX and the macOS file-access grant for the folder.
     let Some(dir) = app.dialog().file().blocking_pick_folder() else {
         return Ok(None);
@@ -69,16 +97,46 @@ pub async fn add_project(app: tauri::AppHandle) -> Result<Option<Project>, Strin
     let mut cfg = load();
     // A second add of the same folder returns the existing row rather than a duplicate.
     if let Some(existing) = cfg.projects.iter().find(|p| p.id == id) {
-        return Ok(Some(existing.clone()));
+        return Ok(Some(ProjectView::from(existing)));
     }
     let proj = Project { id, name, path: abs };
     cfg.projects.push(proj.clone());
     save(&cfg)?;
-    Ok(Some(proj))
+    Ok(Some(ProjectView::from(&proj)))
+}
+
+/// add_project without the panel. The macOS file-access grant was already
+/// given when the ancestor was picked, so a second dialog would ask for
+/// nothing new — and asking again for a folder the user just clicked in the
+/// tree would read as a bug.
+pub fn promote_project(path: String) -> Result<ProjectView, String> {
+    let abs = PathBuf::from(&path);
+    let name = abs
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+    let id = project_id(&path);
+
+    let mut cfg = load();
+    // Promoting an already-configured folder returns the existing row, the
+    // same contract add_project has above.
+    if let Some(existing) = cfg.projects.iter().find(|p| p.id == id) {
+        return Ok(ProjectView::from(existing));
+    }
+    let proj = Project { id, name, path };
+    cfg.projects.push(proj.clone());
+    save(&cfg)?;
+    Ok(ProjectView::from(&proj))
 }
 
 #[tauri::command]
-pub fn list_projects() -> Vec<Project> {
+pub fn list_projects() -> Vec<ProjectView> {
+    load().projects.iter().map(ProjectView::from).collect()
+}
+
+/// lib.rs starts a watcher per configured project and needs the stored rows,
+/// not the view model.
+pub fn stored_projects() -> Vec<Project> {
     load().projects
 }
 

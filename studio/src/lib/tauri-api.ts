@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { Doctor, Project, ProjectState } from './types';
+import type { Doctor, Project, ProjectState, TreeLevel } from './types';
 
 /**
  * The single typed boundary to the Rust side. Components import from here and
@@ -14,11 +14,18 @@ export const api = {
   runDoctor: (overridePath: string | null = null) =>
     invoke<Doctor>('run_doctor', { overridePath }),
   installEfficlaude: () => invoke<void>('install_efficlaude'),
+  installSessionId: () => invoke<string>('install_session_id'),
 
   claudeOverride: () => invoke<string | null>('claude_override'),
   setClaudeOverride: (path: string | null) => invoke<void>('set_claude_override', { path }),
 
   listProjects: () => invoke<Project[]>('list_projects'),
+
+  listChildren: (path: string, stopAt: string | null = null) =>
+    invoke<TreeLevel>('list_children', { path, stopAt }),
+
+  promoteProject: (path: string) => invoke<Project>('promote_project', { path }),
+
   addProject: () => invoke<Project | null>('add_project'),
   removeProject: (id: string) => invoke<void>('remove_project', { id }),
   readState: (path: string) => invoke<ProjectState>('read_project_state', { path }),

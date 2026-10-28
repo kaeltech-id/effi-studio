@@ -1,1153 +1,950 @@
-## Feature: Pipeline Jujur — honest write, honest rank, lean artifacts
+## Feature: Studio Project Tree with Git Markers and a Visible Installer
 
 ### Impact Analysis
-- Files affected: `server/memory.py`, `server/worker.py`, `server/embedder.py` (new), `server/purge_noise.py` (new), `hooks/post_tool_use.py`, `hooks/prompt_submit.py`, `commands/ec-feature.md`, `commands/ec-execute.md`, `commands/ec-review.md`, `token-optimizer/src/filters/git.rs`, `token-optimizer/src/filters/cargo.rs`, `shell/effi-shell.sh`, `install.sh`, `tests/test_hooks.py`, `tests/test_command_docs.py`, `tests/test_memory.py`
+- Files affected: `studio/src-tauri/src/tree.rs` (new), `studio/src-tauri/src/lib.rs`, `studio/src-tauri/src/projects.rs`, `studio/src/lib/types.ts`, `studio/src/lib/tauri-api.ts`, `studio/src/components/git-mark.tsx` (new), `studio/src/components/tree-row.tsx` (new), `studio/src/components/project-sidebar.tsx`, `studio/src/components/terminal-pane.tsx`, `studio/src/components/doctor-screen.tsx`, `studio/src/App.tsx`, `install.sh`
 - ⚠️ Breaking change risk:
-  - SQLite schema v1 → v2 on `observations` (additive columns only, `_MIGRATIONS` handles it)
-  - `CHROMA_SCHEMA_VERSION` 2 → 3 forces a one-time vector-store rebuild; `_migrate_chroma_layout` already implements the wipe-and-rebuild path
-  - `/memory/search` response gains a `source` field and returns honest distances — `hooks/prompt_submit.py` is the only in-repo consumer and is updated in the same plan; `commands/*.md` read it only as display text
-  - `shell/effi-shell.sh` wrapper semantics change (helper dependency removed); behaviour for users is identical when `etok` is present
-  - Legacy non-prefixed commands are deleted from `~/.claude/commands/` by the installer
+  - `list_projects` and `add_project` change return type from `Project` to `ProjectView` (adds `gitMark`). Internal IPC only — no external consumer — but `lib.rs:114` wraps `add_project` and must change signature in the same cycle or the crate will not compile.
+  - `TerminalPane`'s `program` prop widens from `string` to `string | null`. The existing call site at `App.tsx:124` passes a non-null string and is unaffected.
+  - `~/.efficlaude/studio.json` on-disk shape is deliberately NOT changed: `gitMark` lives on the view model only, so a config written by the current build still loads and no stale mark is ever read from disk.
 
 ### Reusable Existing Code
-- `_MIGRATIONS` + `_migrate()` at `server/memory.py:26,116` — versioned DDL path already exists; add v2 rather than hand-rolling a migration
-- `_migrate_chroma_layout()` at `server/memory.py:42` — existing marker-file wipe/rebuild; bump `CHROMA_SCHEMA_VERSION` to reuse it for the embedder swap
-- `_fts_sanitize()` at `server/memory.py:36` — keep as-is; it already guards FTS5 against punctuation
-- `_prune_type()` / `TYPE_CAPS` at `server/memory.py:188,17` — capping already exists; the signal gate reduces inflow rather than duplicating pruning
-- `_warn()` at `hooks/post_tool_use.py:14` and `hooks/prompt_submit.py:17` — identical silent-fail logger; use it for every new failure path
-- `super::generic::process()` at `token-optimizer/src/filters/git.rs:12` — already the "I don't recognise this" fallback; the lossy-safety rule routes through it instead of inventing a new path
-- `fetch_file()` at `install.sh:26` — use for any new server file; do not hand-roll a copy
-- `ONNXMiniLM_L6_V2` from `chromadb.utils.embedding_functions` — the existing default embedder, confirmed present; it is the fallback when no multilingual model is installed
+- `plan.rs:160-171` (`current_branch`) — the precedent for reading git state from `.git` directly instead of invoking the `git` binary, with the recorded reason (a GUI app has no reliable PATH). `tree.rs` follows it.
+- `lib.rs:94-108` (`WatcherRegistry` + `start_watch`) — keyed by project id and already tolerant of an unwatchable folder; a promoted child needs no new mechanism, only a new id.
+- `lib.rs:64` (`INSTALL_SESSION = "__install__"`) — the reserved PTY id already exists; it is exposed to the frontend rather than redeclared there.
+- `pty.rs:37-56` (`start_reader`) — already emits `pty://output` and `pty://exit` for any id including `__install__`, so the install pane needs no new event.
+- `terminal-pane.tsx:38-44` — the subscribe-before-open ordering, and its recorded reason (a late subscription drops the opening banner); the install pane depends on the same ordering.
+- `history-panel.tsx:6` (`WINDOW` + `+N older` tail) — the established pattern for capping a long list, reused for the per-level child cap.
+- `doctor-screen.tsx:18` — glyph-and-weight carries pass/fail because the palette has no spare color; the git marker follows that rule instead of introducing a hue.
+- `stage-rail.tsx:22-31` (`StageRail`) — rendered unchanged on project rows; container rows omit it.
+- `projects.rs:43-50` (`project_id`) — path-derived id, so a promoted child keeps its identity across restarts with no uuid dependency.
+
+### Design Direction
+- Dials: ENERGY 1 · RHYTHM 1 · MOTION 1 — carried forward verbatim from the previous Studio cycle, not re-chosen. The app is an instrument panel watched for long stretches while the real work runs in the terminal beside it, so it must recede (ENERGY 1). The tree only adds rows to that panel and must read as more of the same repeated shape, which is what makes a deep list scannable (RHYTHM 1). The only motion is a disclosure chevron rotating; a tree that slid, faded, or staggered would teach the eye to ignore the one motion that carries meaning, a checkbox flipping (MOTION 1).
+- Palette: ground `#0E1116`, surface `#161A21`, border `#232935`, text `#E6E9EF`, muted `#8A93A5`, accent `#4C9AFF` — reason: the app sits beside a terminal all day so it must survive a dark room, and restricting the accent to the active project and the stage badge keeps a running project locatable without reading. The git marker spends no new hue: `repo` at text weight, `in-repo` at muted weight, `plain` as an unfilled glyph, the same discipline `doctor-screen.tsx:18` already uses.
+- Typography: SF Pro (system) for all chrome at a three-step scale; SF Mono for the terminal, task text, counts, and paths — reason: directory names are chrome and belong to the system face, while counts and paths only align when monospaced.
+- Identity motif: the fixed four-dot stage rail — brainstorm · feature · execute · review — rendered identically in the sidebar row, the project header, and every history entry. In the tree it appears only on rows that are actual projects, never on container rows, so the rail keeps meaning "this folder runs the workflow".
+- Rules: apply ~/.claude/agents/ec-antislop.md in full — hard gates, purpose gates, quality locks
 
 ### Grounding
-Measured 2026-10-28 on this machine — real command output only.
+Measured 2026-10-28 — real command output only, never predicted.
 
-- Baseline corpus composition: `sqlite3 ~/.efficlaude/efficlaude.db "SELECT type, COUNT(*) FROM observations GROUP BY type ORDER BY 2 DESC"` →
-  `tool_use|14629` `review|723` `feature_plan|694` `execution|676` `decision|658` `setup|17` `reference|9` `project|8` `feedback|7` `general|4` `selfhealing|3` `deployment|2`
-  → total 17430, `tool_use` share = 14629/17430 = **83.9%**
-- **Measured correction to the premise, found during execution (Task 7).** That 83.9% is a GLOBAL figure spanning **350 distinct projects**, not one project's retrieval pool. `TYPE_CAPS["tool_use"] = 200` (`server/memory.py:19`) is enforced per project by `_prune_type`, so every project is pinned at exactly 200 `tool_use` rows. For `project='EffiClaude'` the real composition is `tool_use 200, feature_plan 45, review 45, execution 44, decision 36, general 2, selfhealing 1, setup 1` — total 374, so **53.5%** noise, not 84%. Since `search()` filters by project, 53.5% is the number that actually degrades retrieval accuracy. The source analysis's claim that "every retrieval path draws from a pool that is 84% garbage" therefore overstates the per-query case, though `tool_use` is still the single largest type in the pool and the write-side gate remains the right fix. The 84% figure is accurate as a STORAGE statement — it is what drives the 293 MB Chroma store across 350 projects, which is what `server/purge_noise.py` (Task 8) addresses.
-- Consequence for Task 7, recorded rather than fixed: a project-scoped `/memory/stats` can make the REJECT rate observable but cannot make the corpus skew observable, because per-type pruning has already flattened every project to the 200 cap. Exposing the skew would need an unscoped or global mode (`project=*`, or a separate route). That is outside Task 7's declared boundary and was deliberately not added — it belongs to a later cycle.
-- Baseline store size: `du -sh ~/.efficlaude/chroma ~/.efficlaude/efficlaude.db` → `293M` chroma, `32M` sqlite
-- Baseline test result: `python3 -m pytest tests/ -q` → **157 passed, 1 warning in 3.01s**
-- Baseline retrieval, four benchmark queries via `/memory/search?limit=5` (recorded verbatim):
-  - `auto-flow sentinel stop hook driver` → best 0.5398, all `[0.5398, 0.775, 1.1923, 1.2292, 1.2542]`, types `[tool_use, tool_use, decision, review, execution]`, path Chroma
-  - `bagaimana cara kerja memory engine` → best 1.1882, all `[1.1882, 1.2107, 1.222, 1.246, 1.2788]`, types `[execution, decision, feature_plan, decision, review]`, path Chroma
-  - `scroll bug transfer list` → best 0.5000, all `[0.5, 0.5, 0.5, 0.5, 0.5]`, types `[feature_plan, tool_use, review, execution, feature_plan]`, path **FTS (every distance identical — the D3 placeholder)**
-  - `token optimizer etok` → best 1.0608, all `[1.0608, 1.1953, 1.2645, 1.3172, 1.3701]`, types `[tool_use × 5]`, path Chroma
-- Dependency probe: `chromadb 1.5.8`, `onnxruntime 1.19.2`, `numpy 2.0.2` present; `sentence_transformers` **MISSING**, `torch` **MISSING**
-- FTS5 ranking probe: `SELECT content, rank, bm25(t) FROM t WHERE t MATCH ? ORDER BY rank` → returns `-2.236866351422218` for both `rank` and `bm25(t)`; **`ORDER BY rank` is available and ascending = best-first**
-- Baseline line counts: `wc -l` → `hooks/post_tool_use.py` 124 · `hooks/prompt_submit.py` 230 · `server/memory.py` 447 · `server/worker.py` 356 · `commands/ec-feature.md` 407 · `commands/ec-execute.md` 267 · `commands/ec-review.md` 279 · `shell/effi-shell.sh` 92 · `install.sh` 265 · `tests/test_hooks.py` 467 · `tests/test_command_docs.py` 353 · `tests/test_memory.py` 111 · `tests/conftest.py` 15 · `token-optimizer/src/filters/git.rs` 180 · `token-optimizer/src/filters/cargo.rs` 70
-- Test harness conventions (measured, not assumed):
-  - `tests/conftest.py:5` inserts `../server` on `sys.path`, and defines the `db_path` and `chroma_path` fixtures (`tmp_path`-based) that every memory test already uses — do not re-implement them
-  - `tests/test_memory.py` **already exists with 111 lines and 10 tests**; `from memory import MemoryEngine` at line 4 works because of conftest. Task 41 APPENDS to it
-  - `tests/test_hooks.py:9` inserts `../hooks` on `sys.path` at module level, then each test does `from <module> import <name>` inside the test body and carries a one-line docstring — match that style
-  - Two existing memory tests constrain this plan and must keep passing unchanged: `test_search_empty_collection` (line 24) asserts `search()` returns exactly `[]` on an empty store, which the RRF path in Task 13 must preserve; `test_reconcile_chromadb_fills_missing` (line 41) hand-builds an `observations` table with the v1 column set, so the Task 1 migration must successfully ALTER it rather than assume the engine created it
-- Baseline string counts (`grep -c`):
-  - `server/memory.py`: `ORDER BY rank` → 0 · `ORDER BY o.created_at DESC` → 1 · `"distance": 0.5` → 1 · `content_hash` → 0 · `seen_count` → 0 · `"source"` → 0 · `embedding_function` → 0
-  - `hooks/post_tool_use.py`: `_has_signal` → 0 · `_record_reject` → 0
-  - `hooks/prompt_submit.py`: `_relevance_floor` → 0 · `MIN_DOCS_CHUNKS` → 0
-  - `commands/ec-feature.md`: `exception-only` → 0
-  - `commands/ec-execute.md`: `Pass relevant snippets into each subagent` → 1 · `co-location` → 0
-  - `commands/ec-review.md`: `evidence audit` → 0
-  - `token-optimizer/src/filters/git.rs`: `unstaged` → 5 · `Changes to be committed` → 0 · `mod tests` → 0
-  - `token-optimizer/src/filters/cargo.rs`: `Finished` → 1
-  - `shell/effi-shell.sh`: `_etok_available` → 7 (1 definition + 6 call sites at lines 13, 27, 41, 55, 69, 83)
-  - `install.sh`: `LEGACY_COMMANDS` → 0
-- Live reproduction of D10-C: every `git` invocation from this session's shell emits `git:2: command not found: _etok_available`
-- Legacy command families present: `ls ~/.claude/commands/` → `brainstorm.md`, `execute.md`, `feature.md`, `git.md`, `review.md`, `setup.md` alongside 12 `ec-` prefixed files
-- Verified anchors:
-  - `SCHEMA_VERSION = 1` → `server/memory.py:16`
-  - `_MIGRATIONS: dict[int, list[str]] = {` → `server/memory.py:26`
-  - `_CHROMA_FALLBACK_THRESHOLD = float(os.getenv('EFFICLAUDE_FTS_THRESHOLD', '1.2'))` → `server/memory.py:29`
-  - `CHROMA_SCHEMA_VERSION = 2` → `server/memory.py:31`
-  - `CREATE TABLE IF NOT EXISTS observations` → `server/memory.py:87`
-  - `return self.chroma_client.get_or_create_collection(SHARED_MEM_COLLECTION)` → `server/memory.py:186`
-  - `def _fts_search(self, project: str, query: str, limit: int) -> list:` → `server/memory.py:246`
-  - `ORDER BY o.created_at DESC` → `server/memory.py:257`
-  - `"distance": 0.5` → `server/memory.py:265`
-  - `def save_observation(self, project: str, obs_type: str, content: str, metadata=None) -> None:` → `server/memory.py:273`
-  - `def search(self, project: str, query: str, limit: int = 5) -> list:` → `server/memory.py:310`
-  - `if all(item['distance'] > _CHROMA_FALLBACK_THRESHOLD for item in items):` → `server/memory.py:329`
-  - `@app.route('/memory/search')` → `server/worker.py:144`
-  - `TRACKED_TOOLS = {"Write", "Edit", "Bash", "MultiEdit"}` → `hooks/post_tool_use.py:30`
-  - `def post_observation(project, content, obs_type="tool_use"):` → `hooks/post_tool_use.py:57`
-  - `observation = build_observation(tool_name, data.get("tool_input", {}))` → `hooks/post_tool_use.py:108`
-  - `MAX_MEMORY_ITEMS = 5` → `hooks/prompt_submit.py:33`
-  - `mem_lines = [f"- [{m['metadata'].get('type', 'obs')}] {m['content']}" for m in memory_items]` → `hooks/prompt_submit.py:203`
-  - `doc_lines = [f"- [{d['library']} › {d['heading']}] {d['content'][:120]}" for d in docs_items]` → `hooks/prompt_submit.py:207`
-  - `- Anchor: {exact existing string the executor must locate, with line number from Grounding — or "new file"}` → `commands/ec-feature.md:312`
-  - `- ⚠️ Breaking change: {description or "none"}` → `commands/ec-feature.md:317`
-  - `- Verify: {exact command + expected value, traced to a baseline in ### Grounding}` → `commands/ec-feature.md:319`
-  - `- Rollback: {how to undo this task — or "git checkout -- {file}"}` → `commands/ec-feature.md:320`
-  - `- Dependencies: {other tasks, or "none"}` → `commands/ec-feature.md:321`
-  - `- \`{PLAN_FILE}\` — the plan to execute` → `commands/ec-execute.md:44`
-  - `  Pass relevant snippets into each subagent's context.` → `commands/ec-execute.md:55`
-  - `Read all tasks from \`{PLAN_FILE}\`. Find all lines matching \`- [ ]\`.` → `commands/ec-execute.md:100`
-  - `## Stage 1.5 — Template Drift Check` → `commands/ec-review.md:91`
-  - `## Step 2 — Testing` → `commands/ec-review.md:166`
-  - `fn status(input: &str) -> String {` → `token-optimizer/src/filters/git.rs:16`
-  - `} else if trimmed.starts_with("modified:") || trimmed.starts_with("deleted:") {` → `token-optimizer/src/filters/git.rs:29` (the unreachable branch)
-  - `fn log(input: &str) -> String {` → `token-optimizer/src/filters/git.rs:70`
-  - `if line.starts_with("commit ") {` → `token-optimizer/src/filters/git.rs:75`
-  - `if trimmed.starts_with("error") || trimmed.starts_with("warning") || trimmed.starts_with("Compiling") || trimmed.starts_with("Finished") || trimmed.starts_with("Blocking") {` → `token-optimizer/src/filters/cargo.rs:54`
-  - `_etok_available() {` → `shell/effi-shell.sh:6`
-  - `COMMANDS=("ec-setup" "ec-feature" "ec-brainstorm" "ec-execute" "ec-review" "ec-git" "ec-export" "ec-import" "ec-mode" "ec-next" "ec-selfhealing")` → `install.sh:14`
-  - `for cmd in "${COMMANDS[@]}"; do` → `install.sh:69`
-  - `from memory import MemoryEngine` → `tests/test_memory.py:4`
-  - `def test_fts_search_survives_punctuation(db_path, chroma_path):` → `tests/test_memory.py:108` (last test — Task 41 appends after it)
-  - `sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'hooks'))` → `tests/test_hooks.py:9`
-  - `server/embedder.py`, `server/purge_noise.py` → new file — no anchor
+Baseline line counts (`wc -l`):
+- `studio/src/lib/types.ts` → 48
+- `studio/src/lib/tauri-api.ts` → 57
+- `studio/src/components/project-sidebar.tsx` → 74
+- `studio/src/components/doctor-screen.tsx` → 121
+- `studio/src/components/terminal-pane.tsx` → 73
+- `studio/src/App.tsx` → 143
+- `studio/src-tauri/src/lib.rs` → 194
+- `studio/src-tauri/src/projects.rs` → 108
+- `studio/src-tauri/src/plan.rs` → 217
+- `install.sh` → 274
 
-**Design scope:** this feature has no UI scope — no `### Design Contract`, no `### Design Direction`, no `[design:]` tags.
+New files confirmed ABSENT on disk (not assumed):
+- `studio/src-tauri/src/tree.rs` → absent
+- `studio/src/components/git-mark.tsx` → absent
+- `studio/src/components/tree-row.tsx` → absent
 
-**Planning defect found during execution — fabricated dependencies in this plan's own tail.** Tasks 39→40→41→42→43 were written as a straight `Task N-1` chain, which is exactly the anti-pattern Task 23 adds a rule against and Task 29 teaches `/ec-review` to flag. The real edges are: Task 39 (`install.sh` legacy-command removal) depends on nothing — it has no relationship to the etok module gate at Task 38; Task 40 (hook tests) depends only on Tasks 4-6; Task 42 (command-doc tests) depends only on Tasks 19-31; Task 41 (memory tests) genuinely depends on the memory read path (10-13, 15); Task 43 genuinely depends on everything. The three false edges were corrected in place and the tasks executed against their real prerequisites. Recorded here rather than silently rewritten, because this plan is also the first test subject of the rules it introduces — and it failed that test in the same way the source analysis measured the Studio plan failing it (40 of 41 dependency lines reading "Task N-1").
+Baseline string counts (`grep -c`) — every one of these is 0 today, so each Verify below traces 0 → n:
+- `pub enum GitMark` in tree.rs → 0
+- `pub fn git_mark` in tree.rs → 0
+- `const SKIP_DIRS` in tree.rs → 0
+- `pub struct TreeChild` in tree.rs → 0
+- `pub async fn list_children` in tree.rs → 0
+- `tokio::task::spawn_blocking` in tree.rs → 0   (the bare word `spawn_blocking` also appears in Task 5's doc comment, so the count is anchored on the call)
+- `mod tree;` in lib.rs → 0
+- `tree::list_children` in lib.rs → 0
+- `fn install_session_id` in lib.rs → 0
+- `pub struct ProjectView` in projects.rs → 0
+- `export type GitMark` in types.ts → 0
+- `export interface TreeChild` in types.ts → 0
+- `gitMark: GitMark;` in types.ts → 0
+- `listChildren:` in tauri-api.ts → 0
+- `installSessionId:` in tauri-api.ts → 0
+- `export function GitMarkGlyph` in git-mark.tsx → 0
+- `export function TreeRow` in tree-row.tsx → 0
+- `aria-expanded` in project-sidebar.tsx → 0
+- `MAX_CHILDREN` in project-sidebar.tsx → 0
+- `program: string | null` in terminal-pane.tsx → 0
+- `installSessionId` in doctor-screen.tsx → 0
+- `TerminalPane` in doctor-screen.tsx → 0
+- `onToggle` in App.tsx → 0
+- `onPromote` in App.tsx → 0
+- `installSessionId` in App.tsx → 0
+- `^fail()` in install.sh → 0
+- `fail "` in install.sh → 0
+- `^step()` in install.sh → 0
+- `step "` in install.sh → 0
 
-**Planning note on the embedder (D4).** The decision assumed a direct swap to `paraphrase-multilingual-MiniLM-L12-v2`. The dependency probe above shows `sentence_transformers` and `torch` are both absent, so that swap through `SentenceTransformerEmbeddingFunction` would add roughly 2 GB of dependencies — a severe regression on the very footprint the source analysis criticises, and a violation of the decision's own "zero external services" constraint. This plan therefore delivers the decision's *intent* — retrieval that is genuinely useful, not merely honest — by two means that need no new dependency: honest BM25 lexical ranking fused with the vector path by reciprocal rank fusion (replacing the 1.2 cliff that the grounding shows every query sitting on), plus a capability-gated multilingual ONNX embedder that uses the already-present `onnxruntime` and silently falls back to the existing default when no model is installed. The relative relevance floor sits on the fused score, so a weak embedder produces silence rather than noise. Tasks 14, 15 and 16 carry this.
+Baseline counts that are non-zero and are therefore stated as the number a task must preserve or reach:
+- `✗` failure sites in install.sh → 3, at `install.sh:40`, `install.sh:49`, `install.sh:123`
+- section banner lines matching `^echo "[A-Z].*\.\.\."$` in install.sh → 10, of which `install.sh:34` is the product banner and the remaining 9 are section headers at lines 68, 87, 95, 104, 121, 128, 173, 227, 261
+
+Baseline build results:
+- `cd studio && npm run build` → exit 0 (`tsc` clean; vite built 31 modules in 417ms)
+- `cd studio && cargo check --manifest-path src-tauri/Cargo.toml` → exit 0 (`Finished dev profile [unoptimized + debuginfo] in 26.03s`)
+- Test suite: none — `studio/package.json` has no `test` script and there are no `*.test.*` / `*.spec.*` files. No test baseline exists to regress.
+
+Verified anchors (one per task that edits an existing file):
+- `pub struct Project {` → `studio/src-tauri/src/projects.rs:5`
+- `pub async fn add_project` → `studio/src-tauri/src/projects.rs:56`
+- `mod doctor;` → `studio/src-tauri/src/lib.rs:1`
+- `const INSTALL_SESSION: &str = "__install__";` → `studio/src-tauri/src/lib.rs:64`
+- `.invoke_handler(tauri::generate_handler![` → `studio/src-tauri/src/lib.rs:169`
+- `async fn add_project(app: tauri::AppHandle)` → `studio/src-tauri/src/lib.rs:114`
+- `export interface Project {` → `studio/src/lib/types.ts:3`
+- `listProjects: () => invoke<Project[]>('list_projects'),` → `studio/src/lib/tauri-api.ts:21`
+- `interface ProjectSidebarProps {` → `studio/src/components/project-sidebar.tsx:4`
+- `interface TerminalPaneProps {` → `studio/src/components/terminal-pane.tsx:8`
+- `interface DoctorScreenProps {` → `studio/src/components/doctor-screen.tsx:28`
+- `const handleAdd = useCallback(async () => {` → `studio/src/App.tsx:55`
+- `<ProjectSidebar` → `studio/src/App.tsx:101`
+- `<DoctorScreen` → `studio/src/App.tsx:83`
+- `echo "✗ Python 3 not found. Please install Python 3.8+ and re-run."` → `install.sh:40`
+- `echo "Installing commands..."` → `install.sh:68`
+- tree.rs, git-mark.tsx, tree-row.tsx → new file — no anchor
+
+
+Baselines added during self-review (all 0 today):
+- `promote_project` in projects.rs → 0
+- `promote_project` in lib.rs → 0
+- `promoteProject:` in tauri-api.ts → 0
+- `<TreeRow` in project-sidebar.tsx → 0
+- `handleToggle` in App.tsx → 0
+- `handlePromote` in App.tsx → 0
 
 ### Tasks
-- [x] Task 1: Add schema v2 migration for content_hash and seen_count [S] [agent: ec-python] — extend `_MIGRATIONS` with additive ALTER TABLE statements and bump `SCHEMA_VERSION`
-- [x] Task 2: Add content_hash index and helper [S] [agent: ec-python] — index on `(project, content_hash)` plus a `_content_hash()` function
-- [x] Task 3: Dedup writes in save_observation [M] [agent: ec-python] — on hash collision bump `seen_count` and refresh `created_at` instead of inserting
-- [x] Task 4: Add _has_signal predicate to post_tool_use [M] [agent: ec-python] — decide whether a tool call carries evidence worth storing
-- [x] Task 5: Wire the signal gate into post_tool_use main [S] [agent: ec-python] — reject unsignalled observations before spawning the observe subprocess
-- [x] Task 6: Add _record_reject counter [S] [agent: ec-python] — count rejections by reason to a JSON file so the reject rate is observable
-- [x] Task 7: Add /memory/stats endpoint [S] [agent: ec-python] — expose type composition and reject counts over HTTP
-- [x] Task 8: Add purge_noise maintenance script [M] [agent: ec-python] — delete unsignalled historical `tool_use` rows from SQLite, FTS and Chroma together
-- [x] Task 9: Run the memory write-path module gate [S] [agent: ec-unit-test] — global invariant checkpoint for Tasks 1-8
-- [x] Task 10: Rank FTS results by BM25 [S] [agent: ec-python] — replace `ORDER BY o.created_at DESC` with `ORDER BY rank`
-- [x] Task 11: Return honest FTS distances [M] [agent: ec-python] — map `bm25()` into [0,1] and drop the hardcoded `0.5`
-- [x] Task 12: Tag every result with its retrieval source [S] [agent: ec-python] — add `source` of `fts` or `vector` on both paths
-- [x] Task 13: Fuse the two retrieval paths with RRF [M] [agent: ec-python] — replace the 1.2 threshold cliff with reciprocal rank fusion
-- [x] Task 14: Add capability-gated multilingual ONNX embedder [L] [agent: ec-python] — new `server/embedder.py` using the present `onnxruntime`, with fallback
-- [x] Task 15: Wire the embedder into _get_collection [M] [agent: ec-python] — pass `embedding_function` and bump `CHROMA_SCHEMA_VERSION` to force a rebuild
-- [x] Task 16: Add the relative relevance floor to prompt_submit [M] [agent: ec-python] — inject nothing unless a result beats the median by a margin
-- [x] Task 17: Gate docs injection behind a quality bar [M] [agent: ec-python] — require a minimum chunk count and relevance before any library is injected
-- [x] Task 18: Run the memory read-path module gate [S] [agent: ec-unit-test] — global invariant checkpoint for Tasks 10-17
-- [x] Task 19: Make Rollback exception-only in the plan template [S] — write it only when it differs from the mechanical default
-- [x] Task 20: Make Breaking change exception-only in the plan template [S] — omit the line entirely when there is no breaking change
-- [x] Task 21: Make Anchor exception-only in the plan template [S] — omit it for new files instead of writing "new file"
-- [x] Task 22: Split Verify into local evidence and global invariants [M] — define both kinds and where each runs
-- [x] Task 23: Require honest Dependencies in ec-feature [M] — real edges, allowed to be empty, never a synthetic chain
-- [x] Task 24: Update the ec-feature self-review checklist [S] — add checks for the exception-only fields, the verify split and honest dependencies
-- [x] Task 25: Switch ec-execute to ranged plan reads [M] — read header plus checklist, then one line range per task
-- [x] Task 26: Consume Dependencies and fuse co-located tasks in ec-execute [L] — build the graph, merge consecutive same-file tasks into one unit
-- [x] Task 27: Stop passing memory snippets into every subagent [S] — remove the line that multiplies injection by the task count
-- [x] Task 28: Run global invariants at module boundaries in ec-execute [M] — move compile and suite runs out of per-task verification
-- [x] Task 29: Enforce exception-only fields in the ec-review drift check [M] — fail a plan that carries mechanical Rollback or Breaking change lines
-- [x] Task 30: Add the definitive compile gate and evidence audit to ec-review [M] — run global invariants once and audit `- [x]` claims against recorded evidence
-- [x] Task 31: Add a scope boundary check to ec-review [S] — assert the working tree touches only files listed in the plan
-- [x] Task 32: Fix git status staged/unstaged classification [M] — track the section header instead of the identical text prefix
-- [x] Task 33: Support --oneline in the git log filter [M] — recognise the short format instead of collapsing it to an empty table
-- [x] Task 34: Apply the lossy-safety rule to the git filters [S] — return the input unchanged when no structure is recognised
-- [x] Task 35: Keep the artefact path in the cargo build filter [M] — retain the line after `Finished ... at:` and dedup repeats
-- [x] Task 36: Remove the helper dependency from the shell wrappers [M] — inline the availability test so the wrappers work in any shell
-- [x] Task 37: Add Rust tests for the git and cargo filters [L] — cover both bugs, the oneline format and the lossy-safety rule
-- [x] Task 38: Run the etok module gate [S] — global invariant checkpoint for Tasks 32-37
-- [x] Task 39: Remove legacy non-prefixed commands in install.sh [M] — delete the duplicate command family on install
-- [x] Task 40: Add Python tests for the hook changes [L] [agent: ec-unit-test] — cover the signal gate, reject counter, relevance floor and docs gate
-- [x] Task 41: Add Python tests for the memory changes [L] [agent: ec-unit-test] — cover dedup, BM25 ranking, honest distance, source tagging and RRF
-- [x] Task 42: Add command-doc tests for the template changes [M] [agent: ec-unit-test] — assert the exception-only rules, verify split and ranged reads are documented
-- [x] Task 43: Sync installed copies and run the final gate [M] — copy changed commands, hooks and server files into place, then run every global invariant
+- [x] Task 1: Create tree.rs with GitMark enum [S] — new Rust module declaring the tri-state git marker, serialized camelCase for the frontend
+- [x] Task 2: Add git_mark resolver to tree.rs [S] — resolve repo / in-repo / plain by testing `.git` as file or directory with a bounded ancestor walk
+- [x] Task 3: Add SKIP_DIRS and MAX_CHILDREN consts to tree.rs [S] — the skip set and per-level cap as named constants with their reasons
+- [x] Task 4: Add TreeChild and TreeLevel structs to tree.rs [S] — the per-level payload the frontend renders
+- [x] Task 5: Add list_children command to tree.rs [M] — async, directories only, off the async worker via spawn_blocking, capped
+- [x] Task 6: Register tree module and list_children in lib.rs [S] — wire the new module and command into the Tauri handler
+- [x] Task 7: Add install_session_id command to lib.rs [S] — expose the reserved PTY id so the frontend subscribes before install opens the session
+- [x] Task 8: Add ProjectView and stored_projects to projects.rs [M] — view model carrying gitMark, leaving the persisted shape untouched
+- [x] Task 9: Add promote_project to projects.rs [S] — add a known path as a project without a second folder dialog
+- [x] Task 10: Update lib.rs wrappers for the view model and promotion [M] — match the new return types, wrap promote_project, switch watcher startup to stored rows
+- [x] Task 11: Add GitMark, TreeChild, TreeLevel and Project.gitMark to types.ts [S] [agent: ec-typescript] — the TS mirror of the Rust wire types
+- [x] Task 12: Add listChildren, installSessionId and promoteProject wrappers to tauri-api.ts [S] [agent: ec-typescript] — the typed boundary for the three new commands
+- [x] Task 13: Create git-mark.tsx with GitMarkGlyph [S] [agent: ec-react] [design: direction#GitMarker] — tri-state marker in glyph and weight only, no new hue
+- [x] Task 14: Create tree-row.tsx with TreeRow [M] [agent: ec-react] [design: direction#ProjectTree] — one row: indent, chevron, folder glyph, label, marker, rail on projects only
+- [x] Task 15: Rewrite project-sidebar.tsx as the disclosure tree [L] [agent: ec-react] [design: direction#ProjectTree] — roots, expansion, lazy children, +N more tail, header, empty state
+- [x] Task 16: Add expansion state and handleToggle to App.tsx [M] [agent: ec-react] — in-memory expanded set and child cache, lazily filled on expand
+- [x] Task 17: Add handlePromote to App.tsx and wire the sidebar [M] [agent: ec-react] — promote a child to a real project with its own terminal and watcher
+- [x] Task 18: Allow attach-only mode in terminal-pane.tsx [S] [agent: ec-react] — a null program subscribes without opening a session
+- [x] Task 19: Render the install pane in doctor-screen.tsx [M] [agent: ec-react] [design: direction#InstallPane] — stream install.sh output and re-check automatically on exit
+- [x] Task 20: Pass installSessionId into DoctorScreen from App.tsx [S] [agent: ec-react] — fetch the reserved id and hand it to the doctor screen
+- [x] Task 21: Add a fail helper to install.sh and route the three failure sites through it [S] — every failure line states the remedy, not only the symptom
+- [x] Task 22: Add a step helper to install.sh and route the nine section headers through it [S] — section output reads as sections rather than loose echoes
 
 ### Per Task Detail
 
-**Task 1 — Add schema v2 migration for content_hash and seen_count** `S`
-- File: `server/memory.py`
-- Anchor: `_MIGRATIONS: dict[int, list[str]] = {` → line 26
-- Reuse: the existing `_migrate()` loop at line 116 already applies `_MIGRATIONS[v]` in order and records the version; add data, not machinery
+**Task 1 — Create tree.rs with GitMark enum** `S`
+- File: `studio/src-tauri/src/tree.rs`
+- Reuse: none — the serde camelCase convention is copied from `plan.rs:177-179` and `doctor.rs:57-58`
 - Code sample:
-```python
-SCHEMA_VERSION = 2
-_MIGRATIONS: dict[int, list[str]] = {
-    # 1 = baseline — no DDL changes needed, just establishes the versioning system
-    2: [
-        "ALTER TABLE observations ADD COLUMN content_hash TEXT",
-        "ALTER TABLE observations ADD COLUMN seen_count INTEGER NOT NULL DEFAULT 1",
-        "CREATE INDEX IF NOT EXISTS idx_obs_project_hash ON observations(project, content_hash)",
-    ],
-}
-```
-- Do not touch: `TYPE_CAPS`, `CHROMA_SCHEMA_VERSION`, `_CHROMA_FALLBACK_THRESHOLD`, and the `CREATE TABLE` in `_init_db` — new installs get the columns from the migration path, so the baseline DDL stays untouched and both paths converge
-- Edge cases: migration must be idempotent against a database already at v2 (the `_migrate()` range loop handles this); one failing `ALTER TABLE` must not abort the remaining statements in the list — check whether `_migrate()` wraps each statement individually and make it do so if it does not
-- Acceptance: a database opened by the engine reports schema version 2 and `observations` has both new columns
-- Verify (local): `grep -c "content_hash" server/memory.py` → `== 2` and `grep -c "seen_count" server/memory.py` → `== 1` (baseline 0 and 0)
+  ```rust
+  use serde::Serialize;
+  use std::path::{Path, PathBuf};
+
+  /// Three states, not a boolean: a folder inside a repository is neither a
+  /// repository nor unrelated to one, and collapsing the two would mislabel
+  /// every subdirectory of every project.
+  #[derive(Serialize, Clone, Copy, PartialEq)]
+  #[serde(rename_all = "camelCase")]
+  pub enum GitMark {
+      /// This directory holds `.git` itself.
+      Repo,
+      /// An ancestor holds `.git`; this directory is tracked but is not the root.
+      InRepo,
+      /// Neither this directory nor any ancestor within range holds `.git`.
+      Plain,
+  }
+  ```
+- Do not touch: `plan.rs` — its `current_branch` stays where it is; `tree.rs` does not absorb it
+- Edge cases: the enum has no fallible state; a path that cannot be read resolves to `Plain` in Task 2 rather than erroring
+- Acceptance: a new Rust module exists declaring exactly three git marker states, serialized in the camelCase the frontend already expects everywhere else
+- Verify (local): `grep -c "pub enum GitMark" studio/src-tauri/src/tree.rs` → `== 1` (baseline 0)
 - Dependencies: none
 
-**Task 2 — Add content_hash helper** `S`
-- File: `server/memory.py`
-- Anchor: `def _fts_sanitize(query: str) -> str:` → line 36
-- Reuse: module-level helper style already established by `_fts_sanitize`; add `import hashlib` beside the existing imports
+**Task 2 — Add git_mark resolver to tree.rs** `S`
+- File: `studio/src-tauri/src/tree.rs`
+- Anchor: `pub enum GitMark` — appended after the enum created in Task 1
+- Reuse: `plan.rs:160-171` — the same decision to read `.git` from disk rather than invoke `git`, for the same recorded reason
 - Code sample:
-```python
-def _content_hash(content: str) -> str:
-    """Stable hash for dedup — whitespace-normalised so reruns collapse."""
-    return hashlib.sha256(' '.join(content.split()).encode()).hexdigest()[:32]
-```
-- Do not touch: `_fts_sanitize` — it serves a different purpose and must keep its current behaviour
-- Edge cases: content differing only in whitespace or line breaks must hash identically, which is the whole point; empty content must not raise; the 32-character truncation must be documented as collision-tolerant, since a false dedup merely merges two identical-looking observations
-- Acceptance: `_content_hash` returns the same 32-character value for inputs differing only in whitespace
-- Verify (local): `python3 -c "import sys; sys.path.insert(0,'server'); import memory; a=memory._content_hash('a  b'); b=memory._content_hash('a b'); print(a==b, len(a))"` → prints `True 32`
+  ```rust
+  /// `.git` is tested with `exists()`, not `is_dir()`: in a linked worktree or a
+  /// submodule it is a FILE containing a gitdir pointer, and treating that as
+  /// "not a repository" would mislabel exactly the layouts most likely to appear.
+  fn is_repo(dir: &Path) -> bool {
+      dir.join(".git").exists()
+  }
+
+  /// `stop_at` bounds the walk — the parent of the folder the user added. Walking
+  /// to `/` would let an unrelated repository far up the filesystem mark every
+  /// folder on the machine as tracked.
+  pub fn git_mark(dir: &Path, stop_at: Option<&Path>) -> GitMark {
+      if is_repo(dir) {
+          return GitMark::Repo;
+      }
+      let mut cur = dir.parent();
+      while let Some(p) = cur {
+          if is_repo(p) {
+              return GitMark::InRepo;
+          }
+          if Some(p) == stop_at {
+              break;
+          }
+          cur = p.parent();
+      }
+      GitMark::Plain
+  }
+  ```
+- Do not touch: `plan.rs:163` — `current_branch` keeps reading `.git/HEAD` itself; this function does not replace it
+- Edge cases: an unreadable or deleted directory returns `Plain` because `exists()` is false rather than an error; `stop_at: None` walks to the filesystem root, which is the correct behaviour for a root the user added explicitly
+- Acceptance: given any directory, the resolver reports Repo when that directory holds `.git`, InRepo when a bounded ancestor does, and Plain otherwise, including when `.git` is a file rather than a directory
+- Verify (local): `grep -c "pub fn git_mark" studio/src-tauri/src/tree.rs` → `== 1` (baseline 0)
 - Dependencies: Task 1
 
-**Task 3 — Dedup writes in save_observation** `M`
-- File: `server/memory.py`
-- Anchor: `'INSERT INTO observations (project, type, content, metadata, created_at) VALUES (?,?,?,?,?)'` → line 278
-- Reuse: the existing `with _lock:` / `sqlite3.connect` block and the `chroma_ok` rollback below it — extend, do not restructure
+**Task 3 — Add SKIP_DIRS and MAX_CHILDREN consts to tree.rs** `S`
+- File: `studio/src-tauri/src/tree.rs`
+- Anchor: `pub fn git_mark` — the constants go above it, near the top of the module
+- Reuse: `history-panel.tsx:6` — the named-cap-plus-tail pattern this constant mirrors on the Rust side
 - Code sample:
-```python
-h = _content_hash(content)
-existing = conn.execute(
-    'SELECT id FROM observations WHERE project=? AND content_hash=?', (project, h)
-).fetchone()
-if existing:
-    conn.execute(
-        'UPDATE observations SET seen_count = seen_count + 1, created_at = ? WHERE id = ?',
-        (now, existing[0])
-    )
-    conn.commit()
-    return
-```
-placed before the INSERT; the INSERT then also writes `content_hash`.
-- Do not touch: the `chroma_ok` failure path that deletes the row from `observations` and `obs_fts` — a deduped write must return before reaching it, so Chroma is not touched for a duplicate
-- Edge cases: a duplicate must not add a second Chroma document or FTS row; rows written before this change have `content_hash` NULL, and SQL equality never matches NULL to NULL, so legacy rows simply never dedup — acceptable, but confirm it does not raise; the early return skips the `_prune_type` cap call at line 306, which is correct only because no row was added — state that in a comment
-- Acceptance: observing identical content twice leaves one row with `seen_count` 2, one FTS row and one Chroma document
-- Verify (local): `grep -c "seen_count = seen_count + 1" server/memory.py` → `== 1` (baseline 0)
-- ⚠️ Breaking change: repeated observations no longer produce separate rows, so `get_recent` returns fewer, denser entries — intended, and `seen_count` preserves the frequency signal
-- Dependencies: Task 2
+  ```rust
+  /// Build and dependency directories are skipped by name. Expanding a project
+  /// root must not offer `node_modules` as something to browse, and a user who
+  /// opens one has no workflow to run inside it.
+  const SKIP_DIRS: [&str; 6] = ["node_modules", "target", "dist", "build", ".next", "venv"];
 
-**Task 4 — Add _has_signal predicate to post_tool_use** `M`
-- File: `hooks/post_tool_use.py`
-- Anchor: `def build_observation(tool_name, tool_input):` → line 43
-- Reuse: `_warn()` at line 14 for any failure; the module already imports `os` and `json`
+  /// One level of a directory is capped and the remainder reported as a count,
+  /// the same contract `history-panel.tsx` uses for archived runs. A folder with
+  /// thousands of entries must cost a bounded render, not a proportional one.
+  const MAX_CHILDREN: usize = 50;
+  ```
+- Do not touch: the hidden-entry rule is not expressed here — dot-prefixed names are filtered in Task 5, because `.claude` and `.git` are both hidden and both excluded for their own reasons
+- Edge cases: a project genuinely named `build` or `dist` is skipped; accepted deliberately, since the user can still add it as a root explicitly through the folder panel
+- Acceptance: the skip set and the per-level cap exist as named constants with their reasons stated, so changing either is a one-line edit in one place
+- Verify (local): `grep -c "const SKIP_DIRS" studio/src-tauri/src/tree.rs` → `== 1` (baseline 0)
+- Dependencies: Task 1
+
+**Task 4 — Add TreeChild and TreeLevel structs to tree.rs** `S`
+- File: `studio/src-tauri/src/tree.rs`
+- Anchor: `const MAX_CHILDREN` — the structs go after the constants
+- Reuse: `plan.rs:177-179` — the camelCase-on-the-wire convention and its recorded reason (a silent mismatch surfaces as `undefined` in a panel rather than a type error)
 - Code sample:
-```python
-SIGNAL_MIN_DURATION_MS = int(os.environ.get("EFFICLAUDE_SIGNAL_MS", "5000"))
-_NOISE_PREFIXES = ("curl ", "cat ", "ls ", "echo ", "grep ", "sed -n", "wc ", "head ", "tail ")
+  ```rust
+  /// One directory entry as the sidebar renders it. `has_children` is a cheap
+  /// probe, not a listing: the chevron must be hidden on a leaf, and finding
+  /// that out must not cost a full recursive read.
+  #[derive(Serialize, Clone)]
+  #[serde(rename_all = "camelCase")]
+  pub struct TreeChild {
+      pub name: String,
+      pub path: String,
+      pub git_mark: GitMark,
+      pub has_children: bool,
+  }
 
+  /// The children of one level plus how many the cap held back, so the sidebar
+  /// can render a truthful "+N more" instead of silently losing rows.
+  #[derive(Serialize, Clone)]
+  #[serde(rename_all = "camelCase")]
+  pub struct TreeLevel {
+      pub children: Vec<TreeChild>,
+      pub hidden: usize,
+  }
+  ```
+- Do not touch: `projects.rs` `Project` — a tree child is not a project until it is promoted, and conflating the two would persist browsing state
+- Edge cases: a child with no readable subdirectories reports `has_children: false` and renders without a chevron; an unreadable child still appears, marked `Plain`, rather than vanishing
+- Acceptance: the wire types for one expanded level exist, carrying each child's name, absolute path, git marker and whether it can be expanded further, plus a count of rows the cap withheld
+- Verify (local): `grep -c "pub struct TreeChild" studio/src-tauri/src/tree.rs` → `== 1` AND `grep -c "pub struct TreeLevel" studio/src-tauri/src/tree.rs` → `== 1` (both baseline 0)
+- Dependencies: Task 1, Task 3
 
-def _has_signal(tool_name, tool_input, tool_response):
-    """True when this tool call carries evidence worth storing."""
-    if tool_name in ("Write", "Edit", "MultiEdit"):
-        return any(not _is_internal(p) for p in _edited_paths(tool_name, tool_input))
-    if tool_name == "Bash":
-        if _exit_code(tool_response) != 0:
-            return True
-        if _duration_ms(tool_response) >= SIGNAL_MIN_DURATION_MS:
-            return True
-        cmd = str(tool_input.get("command", "")).strip()
-        return not cmd.startswith(_NOISE_PREFIXES)
-    return False
-```
-with `_is_internal(p)` true when the path is inside `.claude/` or `~/.efficlaude/`, `_edited_paths` reusing the same key extraction as `build_observation`, and `_exit_code` / `_duration_ms` reading whatever the hook payload provides and defaulting to `0`.
-- Do not touch: `build_observation` and `TRACKED_TOOLS` — classification stays where it is; this task only adds the predicate
-- Edge cases: `tool_response` may be absent, a string, or a dict — never raise, default to "no signal information"; a read-only probe that exits non-zero still counts as signal, because a failing probe is informative; a `Write` to a path outside the repo must still count; `_edited_paths` must handle `MultiEdit`'s `edits` list shape
-- Acceptance: the predicate returns False for a successful fast `curl` against the worker and True for an edit to a file outside `.claude/`
-- Verify (local): `python3 -c "import sys; sys.path.insert(0,'hooks'); import post_tool_use as p; print(p._has_signal('Bash', {'command':'curl -s localhost:37777/health'}, {'exit_code':0}), p._has_signal('Write', {'file_path':'server/memory.py'}, {}))"` → prints `False True`
-- Dependencies: none
-
-**Task 5 — Wire the signal gate into post_tool_use main** `S`
-- File: `hooks/post_tool_use.py`
-- Anchor: `observation = build_observation(tool_name, data.get("tool_input", {}))` → line 108
-- Reuse: the existing `sys.exit(0)` early-return style used at lines 102, 106 and 110 — the hook must stay silent on every path
+**Task 5 — Add list_children command to tree.rs** `M`
+- File: `studio/src-tauri/src/tree.rs`
+- Anchor: `pub struct TreeLevel` — the command goes after the structs
+- Reuse: `doctor.rs:68-69` and `plan.rs:190-192` — both are infallible-by-design commands that return a value in every case; this one follows suit, because a folder that cannot be read is a UI state, not an error dialog
 - Code sample:
-```python
-tool_input = data.get("tool_input", {})
-if not _has_signal(tool_name, tool_input, data.get("tool_response")):
-    _record_reject("no_signal", tool_name)
-    sys.exit(0)
+  ```rust
+  /// `spawn_blocking`, not a bare async fn: `read_dir` is blocking, and running it
+  /// on a tokio worker would stall every other command while a slow or networked
+  /// directory is enumerated.
+  #[tauri::command]
+  pub async fn list_children(path: String, stop_at: Option<String>) -> TreeLevel {
+      tokio::task::spawn_blocking(move || {
+          let root = PathBuf::from(&path);
+          let stop = stop_at.map(PathBuf::from);
+          let Ok(entries) = std::fs::read_dir(&root) else {
+              return TreeLevel { children: Vec::new(), hidden: 0 };
+          };
 
-observation = build_observation(tool_name, tool_input)
-```
-- Do not touch: the `--observe` subprocess branch at lines 90-96 — it is the child process and must keep writing unconditionally, or the gate would be applied twice
-- Edge cases: the gate must sit after the `TRACKED_TOOLS` check so untracked tools are not counted as rejections; a malformed payload must still exit 0 silently
-- Carried forward from Task 4 (measured finding, not speculation): `_duration_ms` accepts the aliases `duration_ms`, `durationMs`, `duration`, `elapsed_ms`, `elapsedMs`, `took_ms`, and treats a bare `duration` as **milliseconds**. The real PostToolUse payload shape is undocumented in this repo. If it emits `duration` in seconds, the duration branch silently never fires — which fails safe (slow commands are missed, noise is never promoted to signal) but makes `SIGNAL_MIN_DURATION_MS` dead. While wiring the gate in, log the observed `tool_response` keys once via `_warn` under `EFFICLAUDE_DEBUG`, so the real shape can be confirmed from evidence rather than assumed
-- Acceptance: a successful fast read-only Bash call produces no observe subprocess, while an edit outside `.claude/` still does
-- Verify (local): `grep -c "_has_signal" hooks/post_tool_use.py` → `== 2` (baseline 0: one definition from Task 4, one call site here)
-- Dependencies: Task 4
+          let mut dirs: Vec<PathBuf> = entries
+              .filter_map(Result::ok)
+              .map(|e| e.path())
+              .filter(|p| p.is_dir())
+              .filter(|p| {
+                  let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+                      return false;
+                  };
+                  // Hidden entries and build directories are both excluded, for
+                  // different reasons: `.git` and `.claude` are machinery, and
+                  // SKIP_DIRS holds nothing the workflow ever runs in.
+                  !name.starts_with('.') && !SKIP_DIRS.contains(&name)
+              })
+              .collect();
+          dirs.sort();
 
-**Task 6 — Add _record_reject counter** `S`
-- File: `hooks/post_tool_use.py`
-- Anchor: `WORKER_URL = f"http://localhost:{os.environ.get('EFFICLAUDE_PORT', '37777')}"` → line 29
-- Reuse: `_warn()` for failures; the `Path.home() / ".efficlaude"` location pattern from `_warn` at line 16
+          let hidden = dirs.len().saturating_sub(MAX_CHILDREN);
+          let children = dirs
+              .into_iter()
+              .take(MAX_CHILDREN)
+              .map(|p| TreeChild {
+                  name: p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                  path: p.to_string_lossy().into_owned(),
+                  git_mark: git_mark(&p, stop.as_deref()),
+                  has_children: has_listable_child(&p),
+              })
+              .collect();
+          TreeLevel { children, hidden }
+      })
+      .await
+      .unwrap_or(TreeLevel { children: Vec::new(), hidden: 0 })
+  }
+
+  /// Stops at the first qualifying entry — the chevron needs a yes or no, never
+  /// a count, so this must not become a second full listing.
+  fn has_listable_child(dir: &Path) -> bool {
+      std::fs::read_dir(dir)
+          .map(|mut it| {
+              it.any(|e| {
+                  e.ok()
+                      .filter(|e| e.path().is_dir())
+                      .and_then(|e| e.file_name().to_str().map(|n| {
+                          !n.starts_with('.') && !SKIP_DIRS.contains(&n)
+                      }))
+                      .unwrap_or(false)
+              })
+          })
+          .unwrap_or(false)
+  }
+  ```
+- Do not touch: `watcher.rs` — expanding a level attaches no watcher, which is what keeps watcher count tied to selection rather than to browsing
+- Edge cases: unreadable directory returns an empty level rather than erroring; a macOS permission denial behaves identically; a level with exactly `MAX_CHILDREN` entries reports `hidden: 0`; symlinked directories are followed by `is_dir()`, matching what the Finder panel granted
+- Acceptance: expanding any directory yields its immediate subdirectories in sorted order with hidden and build directories excluded, each carrying its git marker and whether it can expand further, with any overflow reported as a count — and the call never blocks the async runtime
+- Verify (local): `grep -c "pub async fn list_children" studio/src-tauri/src/tree.rs` → `== 1` AND `grep -c "tokio::task::spawn_blocking" studio/src-tauri/src/tree.rs` → `== 1` (both baseline 0; anchored on the call rather than the bare word, because this task's own doc comment contains "spawn_blocking" and a bare-substring count could only reach 1 by deleting that comment)
+- Dependencies: Task 2, Task 3, Task 4
+
+**Task 6 — Register tree module and list_children in lib.rs** `S`
+- File: `studio/src-tauri/src/lib.rs`
+- Anchor: `mod doctor;` at `lib.rs:1` for the module declaration, and `.invoke_handler(tauri::generate_handler![` at `lib.rs:169` for the command
+- Reuse: the existing handler list at `lib.rs:169-183` — appended to, not restructured
 - Code sample:
-```python
-REJECT_FILE = Path.home() / ".efficlaude" / ".observe_rejects.json"
+  ```rust
+  // line 1 region, keeping the existing alphabetical order:
+  mod doctor;
+  mod plan;
+  mod projects;
+  mod pty;
+  mod shell_env;
+  mod tree;
+  mod watcher;
 
-
-def _record_reject(reason: str, tool_name: str) -> None:
-    """Count rejected observations so the reject rate stays observable."""
-    try:
-        data = json.loads(REJECT_FILE.read_text()) if REJECT_FILE.exists() else {}
-        key = f"{reason}:{tool_name}"
-        data[key] = data.get(key, 0) + 1
-        REJECT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        REJECT_FILE.write_text(json.dumps(data))
-    except Exception as e:
-        _warn("post_tool_use", f"reject counter failed: {e}")
-```
-- Do not touch: `_warn` itself — reuse it, do not duplicate its log-rotation logic
-- Edge cases: a corrupt or unreadable counter file must not crash the hook — fall back to an empty dict; concurrent hook invocations may interleave writes, so a lost increment is acceptable and must never raise; the counter must never be written during tests against the real home directory
-- Acceptance: after a rejected observation the file exists and the relevant counter is at least 1
-- Verify (local): `grep -c "_record_reject" hooks/post_tool_use.py` → `== 2` (baseline 0: definition plus the Task 5 call site)
+  // inside generate_handler![ … ], appended after projects::set_claude_override:
+              projects::set_claude_override,
+              tree::list_children
+  ```
+- Do not touch: the order of the existing handler entries, and the `.plugin()` / `.setup()` / `.on_window_event()` chains — this task adds two lines and changes nothing else
+- Edge cases: none — a missing registration is a compile-time failure at the handler macro, not a runtime one
+- Acceptance: the tree module is part of the crate and `list_children` is callable from the frontend
+- Verify (local): `grep -c "mod tree;" studio/src-tauri/src/lib.rs` → `== 1` AND `grep -c "tree::list_children" studio/src-tauri/src/lib.rs` → `== 1` (both baseline 0)
 - Dependencies: Task 5
 
-**Task 7 — Add /memory/stats endpoint** `S`
-- File: `server/worker.py`
-- Anchor: `@app.route('/memory/search')` → line 144
-- Reuse: the existing route style — `_valid_project`, `_err`, and `jsonify` as used by the neighbouring `/memory/context` handler at line 159
+**Task 7 — Add install_session_id command to lib.rs** `S`
+- File: `studio/src-tauri/src/lib.rs`
+- Anchor: `const INSTALL_SESSION: &str = "__install__";` at `lib.rs:64`
+- Reuse: `lib.rs:64` — the constant stays the single definition of the reserved id; this task exposes it rather than duplicating the literal in TypeScript
 - Code sample:
-```python
-@app.route('/memory/stats')
-def memory_stats() -> Response:
-    project = request.args.get('project', '')
-    if not _valid_project(project):
-        return _err('invalid project')
-    return jsonify(engine.stats(project))
-```
-with a matching `stats()` on `MemoryEngine` returning `{"types": {...}, "total": n, "rejects": {...}}`, reading the reject file written in Task 6.
-- Do not touch: existing routes and the rate limiter — add a route, change no handler
-- Edge cases: the reject file may not exist yet → return an empty dict, never an error; an unknown project returns zero counts rather than a 404; `stats()` must not load the whole corpus into memory, so use `GROUP BY` in SQL
-- Acceptance: `GET /memory/stats?project=EffiClaude` returns type composition and a rejects object
-- Verify (local): `grep -c "/memory/stats" server/worker.py` → `== 1` (baseline 0)
+  ```rust
+  /// Exposed rather than hardcoded in the frontend: the install pane must
+  /// subscribe to this id BEFORE install_efficlaude opens the session, for the
+  /// reason recorded at terminal-pane.tsx:42 — a late subscription drops the
+  /// opening output. Two copies of the literal would eventually disagree.
+  #[tauri::command]
+  fn install_session_id() -> &'static str {
+      INSTALL_SESSION
+  }
+  ```
+  and in the handler list, appended after `tree::list_children`:
+  ```rust
+              tree::list_children,
+              install_session_id
+  ```
+- Do not touch: `install_efficlaude` at `lib.rs:68-90` — its body, its idempotence check at `lib.rs:82-84`, and its resource resolution stay exactly as they are
+- Edge cases: none — the command is a constant read with no failure path
+- Acceptance: the frontend can obtain the reserved install PTY id from the backend instead of restating the string literal
+- Verify (local): `grep -c "fn install_session_id" studio/src-tauri/src/lib.rs` → `== 1` (baseline 0)
 - Dependencies: Task 6
 
-**Task 8 — Add purge_noise maintenance script** `M`
-- File: `server/purge_noise.py` (new file)
-- Reuse: `MemoryEngine`'s existing `_purge_fts_orphans()` at `server/memory.py:216` for the FTS cleanup step, and the Chroma collection handle from `_get_collection`
+**Task 8 — Add ProjectView and stored_projects to projects.rs** `M`
+- File: `studio/src-tauri/src/projects.rs`
+- Anchor: `pub struct Project {` at `projects.rs:5`
+- Reuse: `tree::git_mark` from Task 2; `projects.rs:43-50` (`project_id`) stays untouched
 - Code sample:
-```python
-"""Delete historical unsignalled tool_use observations from all three stores.
+  ```rust
+  use crate::tree::{git_mark, GitMark};
 
-Selects ids where type='tool_use' and the content matches a noise prefix, then
-deletes from observations, obs_fts and the Chroma collection together, printing
-a before/after count. Refuses to run without --yes; --dry-run writes nothing.
-"""
-```
-- Do not touch: rows of any type other than `tool_use`; the `decision`, `review`, `feature_plan` and `execution` corpora are the system's actual value and must survive untouched
-- Edge cases: must be re-runnable; a Chroma delete for an id absent from the vector store must not abort the SQLite delete; `--dry-run` must write nothing; delete from Chroma last, since `_purge_fts_orphans` can repair SQLite/FTS drift but nothing repairs a half-deleted vector store; the script must print the backup command it expects to have been run
-- Acceptance **(corrected mid-execution — the original was arithmetically impossible)**: a dry run reports the count it would delete and writes nothing; a real run deletes only noise-shaped `Ran command:` rows, leaves every file-edit `tool_use` row intact, leaves every other type's count unchanged, leaves zero FTS orphans, and drops the Chroma count by exactly the number of rows deleted.
-- Verify (local): `python3 server/purge_noise.py --dry-run` → reports a candidate count and states that nothing was written; `python3 server/purge_noise.py` with no flags → refuses with a non-zero exit and prints the backup command
-- **Why the original criteria were withdrawn.** They demanded `tool_use` below 25% of the corpus and a dry-run candidate count above 10000. Measured: 14,638 `tool_use` rows, of which **12,146 are `Ran command:` and 2,492 are file edits** (`Wrote file:` / `Edited file:` / `Multi-edited:`), against 2,802 non-`tool_use` rows. Reaching 25% requires `tool_use <= 2802/3 = 934` rows, so it can only be done by deleting the file-edit rows — which this task's own "Do not touch" forbids. Deleting *every* recorded command, the absolute ceiling for any command-prefix rule, still leaves **47.2%**. The honest prefix rule matches ~3,463 rows (80.0%). The task's own prescribed fixture ends at 5/13 = 38.5%, independently proving the threshold was mis-specified rather than the rule too narrow. Both numbers were predicted rather than derived from the composition — the same traceability failure as Task 10's threshold.
-- **The real lever, recorded not applied.** `tool_use` is already bounded: `TYPE_CAPS["tool_use"] = 200` (`server/memory.py:19`), enforced per project by `_prune_type`, so the 14,638 rows are ~73 projects sitting at the cap rather than an unbounded pile. The only change that reaches 25% is lowering that cap (a one-line, non-destructive edit that `_prune_type` already enforces). That alters retrieval depth for all 350 projects, is outside this decision's scope, and is the user's call — so it is a recommendation for a later cycle, not part of this one. The purge script reclaims storage; the write-side gate from Tasks 4-6 is what stops regrowth.
-- Rollback: restore `~/.efficlaude/efficlaude.db` and `~/.efficlaude/chroma/` from the copy taken before the run
-- ⚠️ Breaking change: destructive to the historical corpus. The script must refuse to run without an explicit `--yes` flag, and must print the backup command when invoked without one
-- Dependencies: Task 3
+  /// A separate view model on purpose. `Project` is the PERSISTED shape in
+  /// studio.json and must not grow a derived field: a git marker written to disk
+  /// would be read back stale after the user initialises or deletes a repo
+  /// outside the app. ProjectView is recomputed on every read instead.
+  #[derive(Serialize, Clone)]
+  #[serde(rename_all = "camelCase")]
+  pub struct ProjectView {
+      pub id: String,
+      pub name: String,
+      pub path: String,
+      pub git_mark: GitMark,
+  }
 
-**Task 9 — Run the memory write-path module gate** `S`
-- File: none — verification only
-- Reuse: the existing suite; no new test infrastructure
-- Do not touch: any source file; if the gate fails, the fix belongs to the task that introduced the failure, not here
-- Edge cases: a failure here means an earlier task is incomplete — report which task and stop rather than patching around it; the engine construction writes to the paths given, so use a scratch directory, never `~/.efficlaude/`
-- **Lesson learned running this gate (worth carrying into `ec-execute.md`).** The first run of this gate reported `1 failed, 178 passed` — but the failure was `test_execute_does_not_forward_memory_snippets`, a test belonging to a DIFFERENT module whose agent was concurrently running a deliberate mutation check (it re-inserts the snippet line to prove the test bites, then restores it). File mtimes 16:09:18/16:09:26 against a 16:09:39 clock confirmed the race. A global invariant run while another unit is mid-mutation produces a meaningless verdict — which is an argument FOR the module-boundary design, not against it: **a gate must run when its module is quiescent.** The write-path engine checks in this gate passed cleanly throughout; only the shared suite was contaminated
-- Acceptance: the write-path changes leave the suite green and the engine importable against a fresh database
-- Verify (global): `python3 -m pytest tests/ -q` → `157 passed` or more, 0 failed (baseline 157 passed), and constructing `MemoryEngine` against a scratch db/chroma path exits 0
+  impl From<&Project> for ProjectView {
+      fn from(p: &Project) -> Self {
+          let path = PathBuf::from(&p.path);
+          ProjectView {
+              id: p.id.clone(),
+              name: p.name.clone(),
+              path: p.path.clone(),
+              // No stop_at for a root the user added explicitly: if it sits inside
+              // a larger repository, saying so is correct.
+              git_mark: git_mark(&path, None),
+          }
+      }
+  }
+
+  #[tauri::command]
+  pub fn list_projects() -> Vec<ProjectView> {
+      load().projects.iter().map(ProjectView::from).collect()
+  }
+
+  /// lib.rs starts a watcher per configured project and needs the stored rows,
+  /// not the view model.
+  pub fn stored_projects() -> Vec<Project> {
+      load().projects
+  }
+  ```
+  `add_project` keeps its body and changes only its return type to `Result<Option<ProjectView>, String>`, mapping both the duplicate early return and the newly pushed row through `ProjectView::from`.
+- Do not touch: `StudioConfig` at `projects.rs:11-17`, `load`/`save` at `projects.rs:27-41`, `config_path` and its comment at `projects.rs:19-23`, `project_id` at `projects.rs:45-50`, and the duplicate-add early return logic at `projects.rs:71-73` — behaviour unchanged. `claude_override` and `set_claude_override` at `projects.rs:95-108` are untouched.
+- ⚠️ Breaking change: `list_projects` and `add_project` change their IPC return type. `lib.rs:164` currently calls `projects::list_projects()` for watcher startup and will no longer type-check — Task 10 switches that call site to `stored_projects()`, so the crate is expected to be uncompilable between this task and Task 10.
+- Edge cases: a project whose folder was deleted on disk still returns a row, marked `Plain`, so the user can see and remove it rather than having it silently disappear
+- Acceptance: both project commands hand the frontend a git marker computed at the moment of the call, while `~/.efficlaude/studio.json` keeps exactly the fields it has today
+- Verify (local): `grep -c "pub struct ProjectView" studio/src-tauri/src/projects.rs` → `== 1` AND `grep -c "pub fn stored_projects" studio/src-tauri/src/projects.rs` → `== 1` (both baseline 0)
+- Dependencies: Task 2
+
+**Task 9 — Add promote_project to projects.rs** `S`
+- File: `studio/src-tauri/src/projects.rs`
+- Anchor: `pub async fn add_project` at `projects.rs:56`
+- Reuse: `add_project` at `projects.rs:56-78` — this is the same function with the dialog removed; `project_id` at `projects.rs:45-50` gives the promoted folder the same stable path-derived id it would get through the panel
+- Code sample:
+  ```rust
+  /// add_project without the panel. The macOS file-access grant was already
+  /// given when the ancestor was picked, so a second dialog would ask for
+  /// nothing new — and asking again for a folder the user just clicked in the
+  /// tree would read as a bug.
+  pub fn promote_project(path: String) -> Result<ProjectView, String> {
+      let abs = PathBuf::from(&path);
+      let name = abs
+          .file_name()
+          .map(|s| s.to_string_lossy().into_owned())
+          .unwrap_or_else(|| path.clone());
+      let id = project_id(&path);
+
+      let mut cfg = load();
+      // Promoting an already-configured folder returns the existing row, the
+      // same contract add_project has at projects.rs:71.
+      if let Some(existing) = cfg.projects.iter().find(|p| p.id == id) {
+          return Ok(ProjectView::from(existing));
+      }
+      let proj = Project { id, name, path };
+      cfg.projects.push(proj.clone());
+      save(&cfg)?;
+      Ok(ProjectView::from(&proj))
+  }
+  ```
+- Do not touch: `add_project` at `projects.rs:56-78` — it keeps the dialog and stays the entry point for the Add Folder button; this is a sibling, not a refactor of it
+- Edge cases: promoting a path that is already a project is a no-op returning the existing row; a path whose folder has since been deleted is still stored, and `read_project_state` already returns a safe value for it (`plan.rs:190-192`); `save` failure propagates as `Err` so the frontend does not show a project that was not persisted
+- Acceptance: a folder the user activated in the tree becomes a stored project with a stable id and no second dialog, and promoting it twice stores it once
+- Verify (local): `grep -c "pub fn promote_project" studio/src-tauri/src/projects.rs` → `== 1` (baseline 0)
 - Dependencies: Task 8
 
-**Task 10 — Rank FTS results by BM25** `S`
-- File: `server/memory.py`
-- Anchor: `ORDER BY o.created_at DESC` → line 257
-- Reuse: nothing new — FTS5 already computes `rank`, confirmed available by the grounding probe
+**Task 10 — Update lib.rs wrappers for the view model and promotion** `M`
+- File: `studio/src-tauri/src/lib.rs`
+- Anchor: `async fn add_project(app: tauri::AppHandle)` at `lib.rs:114`
+- Reuse: the wrapper pattern and its recorded reason at `lib.rs:110-112` — wrapping is what keeps the watcher set exactly equal to the configured set; `start_watch` at `lib.rs:99-108` is reused unchanged by the new wrapper
 - Code sample:
-```sql
-SELECT o.id, o.type, o.content, o.metadata, o.created_at, f.rank
-FROM obs_fts f
-JOIN observations o ON f.rowid = o.id
-WHERE f.content MATCH ? AND o.project = ?
-ORDER BY rank
-LIMIT ?
-```
-- Do not touch: `get_recent()` at line 338, which legitimately orders by `created_at` — only the `_fts_search` ordering changes
-- Edge cases: `rank` is only available when the query uses `MATCH`, which this one does; more negative is a better match, so plain ascending order is correct; the result tuple grows by one column, so the row indices in the dict comprehension below must be checked
-- Acceptance: an FTS query returns its best lexical match first rather than its most recent match
-- Verify (local): `grep -c "ORDER BY rank" server/memory.py` → `== 1` (baseline 0); `grep -c "ORDER BY o.created_at DESC" server/memory.py` → `== 0` (baseline 1); `grep -c "ORDER BY created_at DESC" server/memory.py` → `== 2` (baseline 2 — `get_recent` at line 368 and `_prune_summaries` at line 413, both untouched)
-- **Corrected mid-execution.** The original threshold said the aliased form would still count 1 after the edit, attributing the survivor to `get_recent`. That was wrong: `get_recent` uses the UNALIASED `ORDER BY created_at DESC`, so the single aliased occurrence at baseline was `_fts_search`'s own and the specified edit necessarily drives it to 0. The baseline was measured correctly but the post-change prediction was not derived from it — exactly the traceability failure the Step 2.5 rule exists to prevent. The unaliased count is the check that actually proves `get_recent` was left alone
-- Dependencies: none
+  ```rust
+  #[tauri::command]
+  async fn add_project(app: tauri::AppHandle) -> Result<Option<projects::ProjectView>, String> {
+      let added = projects::add_project(app.clone()).await?;
+      if let Some(p) = &added {
+          start_watch(&app, &p.id, &p.path);
+      }
+      Ok(added)
+  }
 
-**Task 11 — Return honest FTS distances** `M`
-- File: `server/memory.py`
-- Anchor: `"distance": 0.5` → line 265
-- Reuse: the existing list-comprehension result shape so callers keep working unchanged
-- Code sample:
-```python
-def _bm25_to_distance(rank: float) -> float:
-    """FTS5 rank is negative and unbounded; map to [0,1] where lower is better."""
-    try:
-        score = -float(rank)
-    except (TypeError, ValueError):
-        return 1.0
-    return round(1.0 / (1.0 + score), 4) if score > 0 else 1.0
-```
-used as `"distance": _bm25_to_distance(r[5])`.
-- Do not touch: the Chroma distance values in `search()` — they are already real and must not be rescaled, or the two paths become incomparable in a different way
-- Edge cases: `rank` may be `None` if the row is missing from FTS → return 1.0 (worst); a zero or positive rank must not divide by zero; the mapping must be monotonic so ordering by distance matches ordering by rank
-- Acceptance: two results with different BM25 ranks get different distances, and the better match gets the lower number
-- Verify (local): `grep -c '"distance": 0.5' server/memory.py` → `== 0` (baseline 1) and `python3 -c "import sys; sys.path.insert(0,'server'); import memory; print(memory._bm25_to_distance(-5.0) < memory._bm25_to_distance(-1.0), memory._bm25_to_distance(None))"` → prints `True 1.0`
-- Dependencies: Task 10
+  /// Wrapped for the same reason add_project is: a promoted folder must start
+  /// being watched, and that is lib.rs's concern rather than projects.rs's.
+  #[tauri::command]
+  fn promote_project(app: tauri::AppHandle, path: String) -> Result<projects::ProjectView, String> {
+      let added = projects::promote_project(path)?;
+      start_watch(&app, &added.id, &added.path);
+      Ok(added)
+  }
+  ```
+  the setup closure at `lib.rs:164` reads stored rows:
+  ```rust
+              for p in projects::stored_projects() {
+                  start_watch(&handle, &p.id, &p.path);
+              }
+  ```
+  and `promote_project` is appended to the handler list after `install_session_id`.
+- Do not touch: `start_watch` at `lib.rs:99-108`, `remove_project` at `lib.rs:122-132`, `kill_all_sessions` at `lib.rs:139-148`, and the `RunEvent` handling at `lib.rs:186-193` — all unchanged
+- Edge cases: promoting a folder that is already watched inserts over the same key in `WatcherRegistry`, dropping the old watcher as the comment at `lib.rs:127` describes — correct, not a leak; a promoted folder that cannot be watched is tolerated by `start_watch`'s early return at `lib.rs:100-102`
+- Acceptance: the crate compiles with the view model threaded through both wrappers, promotion starts exactly one watcher, and startup still watches every configured project
+- Verify (local): `grep -c "projects::stored_projects()" studio/src-tauri/src/lib.rs` → `== 1` AND `grep -c "projects::promote_project" studio/src-tauri/src/lib.rs` → `== 1` (both baseline 0)
+- Verify (global): `cd studio && cargo check --manifest-path src-tauri/Cargo.toml` → exit 0. This is the Rust module boundary — Tasks 1-10 are the whole backend change, and the baseline recorded this exact command at exit 0 before any edit.
+- Dependencies: Task 9
 
-**Task 12 — Tag every result with its retrieval source** `S`
-- File: `server/memory.py`
-- Anchor: `{"content": doc, "metadata": meta, "distance": dist}` → line 322 (vector path), plus the FTS result dict at line 262
-- Reuse: both result builders already construct a dict — add one key to each
+**Task 11 — Add GitMark, TreeChild, TreeLevel and Project.gitMark to types.ts** `S`
+- File: `studio/src/lib/types.ts`
+- Anchor: `export interface Project {` at `types.ts:3`
+- Reuse: the file's existing convention of plain exported interfaces with no runtime code, and the `STAGES` precedent at `types.ts:36` for a value mirroring the Rust side
 - Code sample:
-```python
-{"content": doc, "metadata": meta, "distance": dist, "source": "vector"}
-```
-and `"source": "fts"` in `_fts_search`.
-- Do not touch: `get_recent()` and `export()` result shapes — they are not retrieval paths and gain nothing from a source field
-- Edge cases: the field must be present on every retrieval result, never conditionally, or consumers cannot rely on it; `hooks/prompt_submit.py` reads keys by name so it is unaffected
-- Acceptance: every item returned by `search()` carries a `source` of exactly `fts` or `vector`
-- Verify (local): `grep -c '"source"' server/memory.py` → `== 2` (baseline 0)
-- **Finding carried forward (Task 12's shape goal met, information goal not).** `_rrf` keys on `item['content']` and `setdefault` keeps the FIRST object seen; the vector path is iterated first, so any document found by both paths survives as the vector object and reports `source: "vector"` even though FTS contributed to its score. Across seven probe queries on two corpora, no fused result ever reported `source: "fts"` — the vector path overfetches `limit * _PROJECT_OVERFETCH` = 25 candidates, which on a small corpus already contains everything FTS can match. `source: "fts"` therefore surfaces only when the store is empty, Chroma errors, the admissibility gate drops the vector ranking, or an FTS hit falls outside the vector top-`limit`. The honest discriminator today is `fused_score`: a value above ~2/(60+limit) means both paths scored the item. Making the tag carry real signal (a `vector+fts` literal, or per-path contributions) is a follow-up task — the edit was deliberately not widened, since this task specifies exactly two literals
+  ```ts
+  /** Mirrors the Rust GitMark in tree.rs. Three states, not a boolean: a folder
+   *  inside a repository is neither a repository nor unrelated to one. */
+  export type GitMark = 'repo' | 'inRepo' | 'plain';
+
+  export interface Project {
+    id: string;
+    name: string;
+    path: string;
+    gitMark: GitMark;
+  }
+
+  /** One directory as the sidebar renders it. `hasChildren` decides whether a
+   *  chevron is drawn at all, so a leaf never offers an empty expansion. */
+  export interface TreeChild {
+    name: string;
+    path: string;
+    gitMark: GitMark;
+    hasChildren: boolean;
+  }
+
+  export interface TreeLevel {
+    children: TreeChild[];
+    hidden: number;
+  }
+  ```
+- Do not touch: `Stage`, `Task`, `HistoryEntry`, `ProjectState`, `STAGES`, `Doctor`, `doctorBlocking` — all unchanged. `doctorBlocking` at `types.ts:46-48` keeps treating the worker as optional.
+- Edge cases: `'inRepo'` must match the camelCase serde rename from Task 1 exactly; a mismatch would render the fallback state rather than raise a type error, which is why the union is written as string literals
+- Acceptance: the TypeScript side declares the same three marker states and the same per-level payload the Rust commands emit, and every project now carries a marker
+- Verify (local): `grep -c "export type GitMark" studio/src/lib/types.ts` → `== 1` AND `grep -c "export interface TreeChild" studio/src/lib/types.ts` → `== 1` AND `grep -c "gitMark: GitMark;" studio/src/lib/types.ts` → `== 2` (one on `Project`, one on `TreeChild`; baseline 0 for all three, and no later task touches this file)
+- Dependencies: Task 1
+
+**Task 12 — Add listChildren, installSessionId and promoteProject wrappers to tauri-api.ts** `S`
+- File: `studio/src/lib/tauri-api.ts`
+- Anchor: `listProjects: () => invoke<Project[]>('list_projects'),` at `tauri-api.ts:21`
+- Reuse: the `api` object pattern and its recorded reason at `tauri-api.ts:5-9` — one wrapper per command is what keeps a renamed argument a type error instead of a silent undefined
+- Code sample:
+  ```ts
+  import type { Doctor, Project, ProjectState, TreeLevel } from './types';
+
+  // … inside the api object, beside the other project commands:
+    listChildren: (path: string, stopAt: string | null = null) =>
+      invoke<TreeLevel>('list_children', { path, stopAt }),
+
+    promoteProject: (path: string) => invoke<Project>('promote_project', { path }),
+
+    installSessionId: () => invoke<string>('install_session_id'),
+  ```
+- Do not touch: `onPtyOutput` at `tauri-api.ts:35-43`, `onPtyExit` at `tauri-api.ts:45-49`, `onProjectState` at `tauri-api.ts:51-57` — the install pane reuses `onPtyExit` exactly as it is, with no new event
+- Edge cases: `stopAt` defaults to `null` so a root expansion walks unbounded, matching the `None` default on the Rust side; argument names stay camelCase because Tauri converts them to snake_case itself
+- Acceptance: components can list a directory level, promote a folder, and obtain the reserved install session id through the same typed boundary as every other command, with no direct `invoke` call outside this file
+- Verify (local): `grep -c "listChildren:" studio/src/lib/tauri-api.ts` → `== 1` AND `grep -c "promoteProject:" studio/src/lib/tauri-api.ts` → `== 1` AND `grep -c "installSessionId:" studio/src/lib/tauri-api.ts` → `== 1` (all baseline 0, and no later task touches this file)
 - Dependencies: Task 11
 
-**Task 13 — Fuse the two retrieval paths with RRF** `M`
-- File: `server/memory.py`
-- Anchor: `if all(item['distance'] > _CHROMA_FALLBACK_THRESHOLD for item in items):` → line 329
-- Reuse: `_fts_search()` and the existing Chroma query above it — fusion consumes both, it does not replace either
+**Task 13 — Create git-mark.tsx with GitMarkGlyph** `S`
+- File: `studio/src/components/git-mark.tsx`
+- Reuse: `doctor-screen.tsx:18` — glyph and weight carry state because the palette has no spare color; this component applies the same rule rather than adding a hue
 - Code sample:
-```python
-def _rrf(vector_items: list, fts_items: list, limit: int, k: int = 60) -> list:
-    """Reciprocal rank fusion — ordering only, so the two scales never need calibrating."""
-    scored: dict = {}
-    for items in (vector_items, fts_items):
-        for rank, item in enumerate(items, start=1):
-            entry = scored.setdefault(item['content'], {"item": item, "score": 0.0})
-            entry["score"] += 1.0 / (k + rank)
-    ranked = sorted(scored.values(), key=lambda e: -e["score"])
-    out = []
-    for e in ranked[:limit]:
-        item = dict(e["item"])
-        item["fused_score"] = round(e["score"], 6)
-        out.append(item)
-    return out
-```
-`search()` runs both paths and returns `_rrf(...)`.
-- Do not touch: `_CHROMA_FALLBACK_THRESHOLD` must remain defined and honoured as a degenerate-vector-path guard — when the vector store is empty or errors, the FTS-only path must still work exactly as it does today
-- Edge cases: either path may return an empty list — handle both empty, one empty, and both populated; content appearing on both paths must merge into one entry with the summed score, never appear twice; the function must not require numpy; ties must resolve deterministically or result order becomes unstable between calls
-- Acceptance: a query where the lexical and semantic paths disagree returns a merged ordering rather than one path's results wholesale, and the benchmark queries no longer flip between paths at a threshold
-- Verify (local): `python3 -c "import sys; sys.path.insert(0,'server'); import memory; a=[{'content':'x','distance':0.2},{'content':'y','distance':0.3}]; b=[{'content':'y','distance':0.1}]; print([i['content'] for i in memory._rrf(a,b,2)])"` → prints `['y', 'x']` because `y` is ranked by both paths
-- ⚠️ Breaking change: `search()` no longer returns results from exactly one path, and every result gains a `fused_score`. `hooks/prompt_submit.py` is the only in-repo consumer and is updated in Task 16
-- Dependencies: Task 12
+  ```tsx
+  import type { GitMark } from '../lib/types';
 
-**Task 14 — Add capability-gated multilingual ONNX embedder** `L`
-- File: `server/embedder.py` (new file)
-- Reuse: `onnxruntime` 1.19.2 and `chromadb`'s embedding-function interface, both confirmed present; `logger.warn` for failures, matching the import at `server/memory.py:11`
+  /** Weight and fill carry the state, never a new color: the palette has six
+   *  entries and the accent is already spoken for by the active project and the
+   *  stage badge. A repo reads at text weight, a tracked child at muted weight,
+   *  and an untracked folder as an outline. */
+  const MARK = {
+    repo: { glyph: '◆', className: 'text-text', label: 'git repository' },
+    inRepo: { glyph: '◇', className: 'text-muted', label: 'inside a git repository' },
+    plain: { glyph: '·', className: 'text-border', label: 'not a git repository' },
+  } as const;
+
+  export function GitMarkGlyph({ mark }: { mark: GitMark }) {
+    const m = MARK[mark];
+    return (
+      <span
+        title={m.label}
+        aria-label={m.label}
+        className={`w-3 shrink-0 text-center font-mono text-xs ${m.className}`}
+      >
+        {m.glyph}
+      </span>
+    );
+  }
+  ```
+- Do not touch: `styles.css` — no token is added; the three states reuse `text`, `muted` and `border`
+- Edge cases: a fixed `w-3` keeps every row's label starting at the same x regardless of which glyph is drawn, the same alignment reasoning as the `0/0` count at `project-sidebar.tsx:46-49`; `title` and `aria-label` carry the state for a reader, since a glyph alone does not
+- Acceptance: the three git states are visually distinguishable at a glance using only existing palette entries, are labelled for assistive technology, and occupy identical width so rows stay aligned
+- Verify (local): `grep -c "export function GitMarkGlyph" studio/src/components/git-mark.tsx` → `== 1` (baseline 0)
+- Dependencies: Task 11
+
+**Task 14 — Create tree-row.tsx with TreeRow** `M`
+- File: `studio/src/components/tree-row.tsx`
+- Reuse: `project-sidebar.tsx:34-59` — the split hit-target row (one button to act, one to remove) is the layout this generalises; `StageRail` from `stage-rail.tsx:22`; `GitMarkGlyph` from Task 13
 - Code sample:
-```python
-"""Optional multilingual embedder. Falls back to Chroma's default when absent.
+  ```tsx
+  import type { GitMark, ProjectState } from '../lib/types';
+  import { GitMarkGlyph } from './git-mark';
+  import { StageRail } from './stage-rail';
 
-The model is NOT bundled: it is loaded from ~/.efficlaude/models/multilingual/
-(model.onnx + tokenizer.json) when present. Returns None when unavailable so
-callers keep the existing default embedding function.
-"""
-MODEL_DIR = Path.home() / ".efficlaude" / "models" / "multilingual"
+  interface TreeRowProps {
+    name: string;
+    path: string;
+    gitMark: GitMark;
+    depth: number;
+    /** undefined = a leaf, so no chevron is drawn and nothing is expandable. */
+    expanded?: boolean;
+    active?: boolean;
+    /** Present only on rows that are real projects; container rows get no rail. */
+    state?: ProjectState | null;
+    onToggle?: () => void;
+    onActivate: () => void;
+    onRemove?: () => void;
+  }
 
-
-def available() -> bool:
-    return (MODEL_DIR / "model.onnx").exists() and (MODEL_DIR / "tokenizer.json").exists()
-
-
-def get_embedding_function():
-    """Return a Chroma-compatible embedding function, or None to use the default."""
-```
-The implementation tokenises with `tokenizers`, runs an `onnxruntime.InferenceSession`, mean-pools over the attention mask and L2-normalises to a 384-dim vector.
-- Do not touch: `server/requirements.txt` must not gain `sentence-transformers` or `torch`. If `tokenizers` is not already available transitively through chromadb, `available()` must return False rather than the module adding a dependency
-- Edge cases: model files present but corrupt → `available()` is true but session construction fails, so `get_embedding_function()` must catch and return None; output dimensionality must be asserted to be 384 or the function returns None, because a mismatch would silently corrupt the collection; an empty input list returns an empty list; the module must import cleanly even when `onnxruntime` is missing
-- Acceptance: with no model installed, `available()` is False and `get_embedding_function()` returns None without raising; with a valid model installed it returns a callable producing 384-dim unit vectors
-- Verify (local): `python3 -c "import sys; sys.path.insert(0,'server'); import embedder; print(embedder.available(), embedder.get_embedding_function())"` → prints `False None` on this machine, where no model is installed
-- Rollback: delete `server/embedder.py` and revert Task 15 — the default embedder is restored because the wiring is capability-gated
-- Dependencies: none
-
-**Task 15 — Wire the embedder into _get_collection** `M`
-- File: `server/memory.py`
-- Anchor: `return self.chroma_client.get_or_create_collection(SHARED_MEM_COLLECTION)` → line 186
-- Reuse: `_migrate_chroma_layout()` at line 42 — bumping `CHROMA_SCHEMA_VERSION` reuses the existing marker-file wipe, so no new migration code is needed
-- Code sample:
-```python
-CHROMA_SCHEMA_VERSION = 3   # was 2 — forces one rebuild when the embedder changes
-
-def _get_collection(self, project=None):
-    kwargs = {}
-    if self._embedding_function is not None:
-        kwargs["embedding_function"] = self._embedding_function
-    return self.chroma_client.get_or_create_collection(SHARED_MEM_COLLECTION, **kwargs)
-```
-with `self._embedding_function` resolved once in `__init__` via `embedder.get_embedding_function()`, wrapped so an import failure yields None.
-- Do not touch: `SHARED_MEM_COLLECTION`'s name — renaming it would orphan the store instead of migrating it
-- Edge cases: `get_or_create_collection` raises when an existing collection was created with a different embedding function, which is exactly why `CHROMA_SCHEMA_VERSION` is bumped — confirm the wipe runs before first collection access; when `embedder` is unavailable the call must be byte-for-byte equivalent to today's; `_migrate_chroma_layout` currently only wipes when it finds legacy `mem_`/`docs_` collections, so check it actually triggers on a version bump alone and extend it if not; a 293 MB store rebuild must not run inside a request
-- Acceptance: on this machine, where no model is installed, retrieval behaves as before with no rebuild loop; with a model installed the collection is rebuilt once and the marker file prevents a second wipe
-- Verify (local): `grep -c "embedding_function" server/memory.py` → `== 5` (baseline 0) and `grep -c "CHROMA_SCHEMA_VERSION = 3" server/memory.py` → `== 1`
-- **Threshold corrected mid-execution (the fifth such defect in this plan).** The original said `== 2`, which was unreachable for the edits this very task specifies: the `_get_collection` sample alone contains 2 matching lines, and the task also mandates resolving `self._embedding_function` in `__init__` via `embedder.get_embedding_function()`, so 4 is the floor. Actual is 5: the resolver's `return embedder.get_embedding_function()`, the `__init__` assignment, the `rebuild=` argument, the `is not None` guard, and the `kwargs[...]` assignment. The baseline of 0 was right; the predicted post-change value was again not derived from the specified edits
-- **Latent hard crash found and prevented — the most consequential finding of this cycle.** The comment claiming a `CHROMA_SCHEMA_VERSION` bump forces a rebuild was FALSE. `_migrate_chroma_layout` gated its wipe on `if legacy:` — finding `mem_%`/`docs_%` collections — so bumping to 3 merely wrote a new marker and wiped nothing. The consequence is not a silent mismatch but a hard failure: chromadb 1.5.8 raises `ValueError: An embedding function already exists in the collection configuration, and a new one is provided` on every `_get_collection()` call against an existing store once a model is installed. Verified by direct reproduction. Fixed by scoping the marker to the embedder mode (`.layout_v3` without a custom EF, `.layout_v3_ef` with one) and treating the opposite mode's marker as staleness, which closes BOTH directions — installing a model and later removing one, the latter otherwise hitting the symmetric conflict against a persisted custom EF that Chroma cannot reconstruct because this EF is not in its registry. A four-phase simulation with a stub 384-dim EF confirmed: wipe once on install, no second wipe, `_reconcile_chromadb()` repopulating from SQLite, and recovery rather than a raise on removal
-- ⚠️ Breaking change: the one-time vector-store rebuild discards existing embeddings. SQLite remains the source of truth and `_reconcile_chromadb()` at line 146 already repopulates from it
-- Dependencies: Task 14
-
-**Task 16 — Add the relative relevance floor to prompt_submit** `M`
-- File: `hooks/prompt_submit.py`
-- Anchor: `mem_lines = [f"- [{m['metadata'].get('type', 'obs')}] {m['content']}" for m in memory_items]` → line 203
-- Reuse: `MAX_MEMORY_ITEMS` at line 33 and the existing `if memory_items:` guard — the change is a filter in front of an existing branch
-- Code sample:
-```python
-RELEVANCE_MARGIN = float(os.environ.get("EFFICLAUDE_RELEVANCE_MARGIN", "0.15"))
-RELEVANCE_CEILING = float(os.environ.get("EFFICLAUDE_RELEVANCE_CEILING", "0.9"))
-
-
-def _relevance_floor(items):
-    """Keep only items that clearly beat the pack. Silence beats a wrong answer."""
-    scored = [i for i in items if isinstance(i.get("distance"), (int, float))]
-    if not scored:
-        return []
-    if len(scored) == 1:
-        return [i for i in scored if i["distance"] <= RELEVANCE_CEILING]
-    dists = sorted(i["distance"] for i in scored)
-    median = dists[len(dists) // 2]
-    return [
-        i for i in scored
-        if i["distance"] <= RELEVANCE_CEILING and i["distance"] <= median - RELEVANCE_MARGIN
-    ]
-```
-applied as `memory_items = _relevance_floor(memory_items)` before line 203.
-- Do not touch: the `update_msg`, `staleness_msg` and `mode_indicator` parts — they are not retrieval output and must still render when memory is empty
-- Edge cases: a single result is its own median and would always be filtered, so the one-item case is handled against the ceiling alone; all-equal distances (the old FTS placeholder shape) must yield zero items, which is the intended behaviour; a missing or non-numeric `distance` must not raise; when the floor empties the list the `**Relevant project memory:**` header must not be emitted at all
-- Acceptance: a prompt with no relevant memory produces no memory block, and a prompt with one clearly-better result still injects it
-- Verify (local): `python3 -c "import sys; sys.path.insert(0,'hooks'); import prompt_submit as p; print(len(p._relevance_floor([{'distance':0.5}]*5)), len(p._relevance_floor([{'distance':0.1},{'distance':0.8},{'distance':0.85},{'distance':0.9},{'distance':0.95}])))"` → prints `0 1`
+  export function TreeRow({
+    name, path, gitMark, depth, expanded, active, state,
+    onToggle, onActivate, onRemove,
+  }: TreeRowProps) {
+    return (
+      <li className="group flex items-center">
+        {/* Indent is padding on the row, not a nested list: a flat list keeps
+            every row the same height and keeps keyboard order linear. */}
+        <div className="flex min-w-0 flex-1 items-center" style={{ paddingLeft: `${depth * 12}px` }}>
+          {expanded === undefined ? (
+            <span className="w-5 shrink-0" />
+          ) : (
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={expanded}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} ${name}`}
+              className="w-5 shrink-0 font-mono text-xs text-muted"
+            >
+              {/* The one rotation in the app. MOTION 1 allows a chevron and
+                  nothing else. */}
+              {expanded ? '▾' : '▸'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onActivate}
+            title={path}
+            className={`flex min-w-0 flex-1 items-center gap-2 border-l-2 px-2 py-1.5 text-left ${
+              active ? 'border-accent bg-ground' : 'border-transparent'
+            }`}
+          >
+            <GitMarkGlyph mark={gitMark} />
+            {/* Truncate, never wrap: every row stays one line tall. */}
+            <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
+            {state && <StageRail stage={state.stage} />}
+            {state && (
+              <span className="font-mono text-xs text-muted">
+                {state.done}/{state.total}
+              </span>
+            )}
+          </button>
+        </div>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            title={`Remove ${name}`}
+            aria-label={`Remove ${name}`}
+            className="px-2 font-mono text-muted opacity-0 group-hover:opacity-100"
+          >
+            ✕
+          </button>
+        )}
+      </li>
+    );
+  }
+  ```
+- Do not touch: `stage-rail.tsx` — `StageRail` is consumed unchanged, including its default `sm` size
+- Edge cases: a leaf renders a fixed-width spacer so its label aligns with expandable siblings; a container row passes no `state` and therefore shows no rail and no counts, keeping the rail's meaning intact; `onRemove` is omitted on child rows, so only roots can be removed
+- Acceptance: one row component renders at any depth with chevron and label as separate hit targets, always shows a git marker, and shows the stage rail and task counts only when the row is an actual project
+- Verify (local): `grep -c "export function TreeRow" studio/src/components/tree-row.tsx` → `== 1` AND `grep -c "aria-expanded" studio/src/components/tree-row.tsx` → `== 1` (both baseline 0 — new file)
 - Dependencies: Task 13
 
-**Task 17 — Gate docs injection behind a quality bar** `M`
-- File: `hooks/prompt_submit.py`
-- Anchor: `doc_lines = [f"- [{d['library']} › {d['heading']}] {d['content'][:120]}" for d in docs_items]` → line 207
-- Reuse: the filter-in-front-of-an-existing-branch shape established by Task 16
+**Task 15 — Rewrite project-sidebar.tsx as the disclosure tree** `L`
+- File: `studio/src/components/project-sidebar.tsx`
+- Anchor: `interface ProjectSidebarProps {` at `project-sidebar.tsx:4`
+- Reuse: `TreeRow` from Task 14; `history-panel.tsx:6` for the capped-list-with-tail pattern; the existing empty-state copy at `project-sidebar.tsx:24-27` and its recorded reason (the first thing a new user sees should say what to do)
 - Code sample:
-```python
-MIN_DOCS_CHUNKS = int(os.environ.get("EFFICLAUDE_MIN_DOCS_CHUNKS", "5"))
-_DOCS_STOP_HEADINGS = {"donate", "contributing", "license", "credits", "changelog",
-                       "sponsors", "code of conduct"}
+  ```tsx
+  import type { Project, ProjectState, TreeLevel } from '../lib/types';
+  import { TreeRow } from './tree-row';
 
+  /** Mirrors MAX_CHILDREN in tree.rs. The cap is enforced there; this is only
+   *  how the withheld count is phrased. */
+  const MAX_CHILDREN = 50;
 
-def _docs_gate(items):
-    """Drop boilerplate headings and chunks too thin to be worth a prompt."""
-    return [
-        d for d in items
-        if d.get("heading", "").strip().lower() not in _DOCS_STOP_HEADINGS
-        and len(d.get("content", "").strip()) >= 80
-    ]
-```
-applied as `docs_items = _docs_gate(docs_items)` before line 207.
-- Do not touch: `get_docs_context` and the `/docs/search` endpoint — the gate is applied to the response, leaving the docs engine free to index whatever it likes
-- Edge cases: the 80-character floor applies to content, not heading, so a short but useful heading survives; a missing `heading` or `content` key must not raise; when the gate empties the list the docs header must not be emitted; `MIN_DOCS_CHUNKS` is declared here but only enforceable if the payload exposes a per-library chunk count — if it does not, enforce it where the library is registered and say so rather than leaving a dead constant
-- Acceptance: the Flask `Donate`, `Contributing` and bare-Jinja-link chunks measured in the source analysis are no longer injected, and a substantive docs chunk still is
-- Verify (local): `python3 -c "import sys; sys.path.insert(0,'hooks'); import prompt_submit as p; print(len(p._docs_gate([{'heading':'Donate','content':'x'*200},{'heading':'Contributing','content':'y'*200},{'heading':'Blueprints','content':'z'*200}])))"` → prints `1`
+  interface ProjectSidebarProps {
+    projects: Project[];
+    activeId: string | null;
+    states: Record<string, ProjectState>;
+    /** Expanded absolute paths. Session state only — never persisted, so
+        browsing can never disagree with studio.json. */
+    expanded: Set<string>;
+    /** Keyed by absolute path; absent means "not loaded yet". */
+    levels: Record<string, TreeLevel>;
+    onSelect: (id: string) => void;
+    onToggle: (path: string) => void;
+    onPromote: (path: string) => void;
+    onAdd: () => void;
+    onRemove: (id: string) => void;
+  }
+  ```
+  The body renders each configured project as a root `<TreeRow>` at depth 0 (with `state`, `active`, `onRemove`), then recurses through `levels[path]` for every expanded path, rendering each child at `depth + 1`. A child that is already a configured project renders with that project's `state` and selects on activate; a child that is not renders without a rail and calls `onPromote` on activate. A level with `hidden > 0` ends in a non-interactive tail row reading `+{hidden} more`. A path that is expanded but absent from `levels` renders a single muted `loading…` row at the child depth. A short labelled header bar sits above the list, and `Add Folder…` stays the bottom-anchored action it is today.
+- Do not touch: the `Add Folder…` button's position and behaviour at `project-sidebar.tsx:65-71` — it stays the bottom-anchored full-width action; only its styling is brought in line
+- Edge cases: an empty project list keeps the existing instructional copy; an expanded directory with no qualifying children renders an explicit muted `empty` row rather than collapsing silently, so the chevron's promise is kept; `hidden > 0` is phrased as a count, never as a silent truncation; recursion depth is unbounded but every level is lazy, so depth costs only what the user opened
+- Acceptance: the sidebar shows configured projects as roots, reveals a folder's immediate subdirectories when its chevron is used, marks every row's git status, offers a stage rail only on real projects, states how many rows a cap withheld, and still offers Add Folder at the bottom
+- Verify (local): `grep -c "<TreeRow" studio/src/components/project-sidebar.tsx` → `>= 1` AND `grep -c "^const MAX_CHILDREN" studio/src/components/project-sidebar.tsx` → `== 1` (anchored on the declaration: this task's own comment and the tail row's tooltip both name MAX_CHILDREN, so a bare-substring count could only reach 1 by deleting one of them) (both baseline 0; the row count is `>=` because roots and children are rendered from the same component in a number of call sites the implementation chooses)
+- Dependencies: Task 14
+
+**Task 16 — Add expansion state and handleToggle to App.tsx** `M`
+- File: `studio/src/App.tsx`
+- Anchor: `const handleAdd = useCallback(async () => {` at `App.tsx:55`
+- Reuse: the keyed-by-id `states` map at `App.tsx:19` and its recorded reason (a slow callback must never write one project's state into another's panel) — `levels` is keyed by absolute path for the same reason
+- Code sample:
+  ```tsx
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [levels, setLevels] = useState<Record<string, TreeLevel>>({});
+
+  const handleToggle = useCallback(async (path: string) => {
+    let open = false;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+        open = true;
+      }
+      return next;
+    });
+    // Load once per path and keep it: collapsing and re-expanding must not
+    // re-read the disk, and nothing is read for a path never opened. A failed
+    // listing caches an empty level so the row settles on "empty" instead of
+    // retrying on every render.
+    if (!open || levels[path]) return;
+    const level = await api.listChildren(path).catch(() => ({ children: [], hidden: 0 }));
+    setLevels((prev) => ({ ...prev, [path]: level }));
+  }, [levels]);
+  ```
+  `handleAdd` at `App.tsx:55-62` additionally drops the cached level for the added path's parent, so a folder added while its parent is expanded appears without a collapse/reopen cycle.
+- Do not touch: `states` at `App.tsx:19`, the `onProjectState` subscription at `App.tsx:48-53`, and `loadProjects` at `App.tsx:33-41` — the watcher path is unchanged, and expanding a path starts no watcher
+- Edge cases: toggling twice quickly ends in a consistent set because the update is functional; `levels` is never persisted, so a restart starts fully collapsed; a listing rejection is caught and cached rather than surfaced as an unhandled rejection
+- Acceptance: expanding a row reads its children exactly once and keeps them for the session, collapsing re-renders with no disk read, and no directory is read before the user opens it
+- Verify (local): `grep -c "handleToggle" studio/src/App.tsx` → `>= 1` AND `grep -c "setLevels" studio/src/App.tsx` → `>= 1` (both baseline 0; `>=` because each name appears at its definition and at every wiring site the implementation needs)
+- Dependencies: Task 12, Task 15
+
+**Task 17 — Add handlePromote to App.tsx and wire the sidebar** `M`
+- File: `studio/src/App.tsx`
+- Anchor: `<ProjectSidebar` at `App.tsx:101`
+- Reuse: `handleAdd` at `App.tsx:55-62` — promotion is the same post-add sequence (append, select, read state) with the folder panel replaced by a known path; `api.promoteProject` from Task 12
+- Code sample:
+  ```tsx
+  /** A child the user activated. It becomes a real project — persisted, watched,
+   *  with its own terminal — because a workspace deliberately promoted should
+   *  still be there after a relaunch. */
+  const handlePromote = useCallback(async (path: string) => {
+    // A rejected promotion means the folder was not persisted, so nothing is
+    // added to the list — surfacing a project that does not exist on the Rust
+    // side would leave a row that cannot be removed.
+    const added = await api.promoteProject(path).catch(() => null);
+    if (!added) return;
+    setProjects((prev) => (prev.some((p) => p.id === added.id) ? prev : [...prev, added]));
+    setActiveId(added.id);
+    const state = await api.readState(added.path);
+    setStates((prev) => ({ ...prev, [added.id]: state }));
+  }, []);
+  ```
+  and the sidebar receives the new props:
+  ```tsx
+        <ProjectSidebar
+          projects={projects}
+          activeId={activeId}
+          states={states}
+          expanded={expanded}
+          levels={levels}
+          onSelect={setActiveId}
+          onToggle={(p) => void handleToggle(p)}
+          onPromote={(p) => void handlePromote(p)}
+          onAdd={handleAdd}
+          onRemove={(id) => void handleRemove(id)}
+        />
+  ```
+- Do not touch: `handleRemove` at `App.tsx:64-74` — removing a promoted child uses the identical path, including the `ptyClose` tolerance at `App.tsx:66`; the always-mounted pane loop at `App.tsx:122-126` and its recorded reason (unmounting would kill a running `/ec-execute`) picks up the new project automatically
+- Edge cases: promoting an already-configured path returns the existing row instead of duplicating it, matching `projects.rs:71-73`; a promoted child stays a child row of its parent and gains a rail rather than moving in the tree; a rejected promotion leaves the UI untouched
+- Acceptance: activating a child folder makes it a watched project with its own terminal and stage rail, it survives a restart, and a second promotion of the same folder adds nothing
+- Verify (local): `grep -c "handlePromote" studio/src/App.tsx` → `>= 1` AND `grep -c "onPromote=" studio/src/App.tsx` → `== 1` (both baseline 0)
+- Verify (global): `cd studio && npm run build` → exit 0. This is the tree module boundary — Tasks 11-17 are the whole tree change, and the baseline recorded this exact command at exit 0 before any edit.
 - Dependencies: Task 16
 
-**Task 18 — Run the memory read-path module gate** `S`
-- File: none — verification only
-- Reuse: the existing suite plus the four benchmark queries recorded in `### Grounding`
-- Do not touch: any source file
-- Edge cases: the worker must be restarted before the benchmark queries are re-run, or they will exercise the old code still resident in memory; the benchmark comparison is observational at this point, since no multilingual model is installed on this machine — record the numbers, do not gate on them
-- Acceptance: the suite is green, the worker serves `/memory/search` with honest distances and a `source` field, and the four benchmark queries are re-measured and recorded for comparison against the baseline
-- Verify (global): `python3 -m pytest tests/ -q` → `157 passed` or more, 0 failed, and a `/memory/search` response for `token optimizer etok` contains more than one distinct distance value and a `source` field on every item (baseline: 5 items, distances `[1.0608, 1.1953, 1.2645, 1.3172, 1.3701]`, no `source` field)
-- Dependencies: Task 17
-
-**Task 19 — Make Rollback exception-only in the plan template** `S`
-- File: `commands/ec-feature.md`
-- Anchor: `- Rollback: {how to undo this task — or "git checkout -- {file}"}` → line 320
-- Reuse: the surrounding Per Task Detail template; change one line and add one rule
+**Task 18 — Allow attach-only mode in terminal-pane.tsx** `S`
+- File: `studio/src/components/terminal-pane.tsx`
+- Anchor: `interface TerminalPaneProps {` at `terminal-pane.tsx:8`
+- Reuse: the entire existing effect — subscriptions, `ResizeObserver`, byte-level write, and the subscribe-before-open ordering at `terminal-pane.tsx:44` all stay as they are
 - Code sample:
-```
-- Rollback: {only when undoing this task needs more than reverting the file — omit this line entirely otherwise}
-```
-plus a rule immediately under the template: `**Exception-only fields.** Rollback, Breaking change and Anchor are written ONLY when their value differs from the mechanical default. A Rollback that is just a file revert or delete is derivable from "File:" — omit it.`
-- Do not touch: the `Edge cases:`, `Acceptance:`, `Do not touch:` and `Reuse:` template lines — the source analysis measured these as the plan's actual value
-- Edge cases: the rule must make clear that omitting the line is correct rather than an oversight, so the `/ec-review` drift check added in Task 29 does not flag its absence
-- Acceptance: the template no longer suggests a default Rollback value, and the exception-only rule is stated once in the command
-- Verify (local): `grep -ci "exception-only" commands/ec-feature.md` → `>= 1` (baseline 0)
+  ```tsx
+  interface TerminalPaneProps {
+    projectId: string;
+    cwd: string;
+    /** null = attach only: subscribe to an already-running session and never
+     *  open one. The installer's PTY is opened by install_efficlaude, so a pane
+     *  that called ptyOpen would spawn a second, empty shell beside it. */
+    program: string | null;
+  }
+  ```
+  and the open step becomes conditional while the subscribe step does not:
+  ```tsx
+      void subscribed
+        .then(() => (program ? api.ptyOpen(projectId, cwd, program) : undefined))
+        .then(() => api.ptyResize(projectId, term.rows, term.cols))
+        .catch((err) => term.write(`\r\n\x1b[31m${String(err)}\x1b[0m\r\n`));
+  ```
+- Do not touch: the `onData` write at `terminal-pane.tsx:46-48` — the install script may prompt, so the pane stays writable; the `ResizeObserver` zero-size guard at `terminal-pane.tsx:52-53` and its reason
+- Edge cases: `ptyResize` against a session that does not exist yet rejects and is swallowed by the existing `.catch`, which writes the message into the terminal instead of throwing — identical to how a failed open is already handled; `program` stays in the effect's dependency array at `terminal-pane.tsx:70` so switching modes re-initialises cleanly
+- Acceptance: a pane given a null program renders a terminal attached to an existing session's output without spawning a process, and a pane given a program behaves exactly as it does today
+- Verify (local): `grep -c "program: string | null" studio/src/components/terminal-pane.tsx` → `== 1` (baseline 0)
 - Dependencies: none
 
-**Task 20 — Make Breaking change exception-only in the plan template** `S`
-- File: `commands/ec-feature.md`
-- Anchor: `- ⚠️ Breaking change: {description or "none"}` → line 317
-- Reuse: the exception-only rule added in Task 19 — reference it, do not restate it
+**Task 19 — Render the install pane in doctor-screen.tsx** `M`
+- File: `studio/src/components/doctor-screen.tsx`
+- Anchor: `interface DoctorScreenProps {` at `doctor-screen.tsx:28`
+- Reuse: `TerminalPane` in attach-only mode from Task 18; `onPtyExit` from `tauri-api.ts:45` unchanged; the `Check` sub-component at `doctor-screen.tsx:13-26` unchanged
 - Code sample:
-```
-- ⚠️ Breaking change: {what breaks and for whom — omit this line entirely when nothing breaks}
-```
-- Do not touch: the `### Impact Analysis` section's `⚠️ Breaking change risk:` line, which is a plan-level summary and legitimately says "none"
-- Edge cases: the per-task line and the plan-level line must stay textually distinguishable, or the review check in Task 29 cannot tell them apart
-- Acceptance: the template no longer offers `"none"` as a per-task value
-- Verify (local): `grep -c 'Breaking change: {description or "none"}' commands/ec-feature.md` → `== 0` (baseline 1)
+  ```tsx
+  const [installing, setInstalling] = useState(false);
+
+  // Subscribed when the pane mounts, before onInstall opens the session, for
+  // the reason recorded at terminal-pane.tsx:42.
+  useEffect(() => {
+    if (!installing || !installSessionId) return;
+    const unlisten = onPtyExit(installSessionId, () => onRecheck());
+    return () => void unlisten.then((off) => off());
+  }, [installing, installSessionId, onRecheck]);
+  ```
+  the Install button sets `installing` and calls `onInstall`, and is disabled until `installSessionId` is non-null; while `installing`, the pane renders below the checks:
+  ```tsx
+  {installing && installSessionId && (
+    <div className="mt-4 h-64 border border-border">
+      <TerminalPane projectId={installSessionId} cwd="" program={null} />
+    </div>
+  )}
+  ```
+- Do not touch: the `doctorBlocking` usage at `doctor-screen.tsx:44`, the claude-path override form at `doctor-screen.tsx:57-76` and its recorded reason, and the three `Check` rows — the worker row stays optional
+- Edge cases: clicking Install twice is already idempotent on the backend (`lib.rs:82-84`), and `installing` is a boolean so the pane mounts once; an install that fails still emits `pty://exit`, so the re-check runs and the screen reports the still-failing rows rather than hanging; the pane has a fixed height so a long install scrolls inside it instead of pushing the buttons off screen
+- Acceptance: pressing Install EffiClaude shows the installer's own output as it runs, in the same screen, and the checks refresh by themselves the moment the installer finishes — no dead button and no manual Re-check required
+- Verify (local): `grep -c "TerminalPane" studio/src/components/doctor-screen.tsx` → `== 2` (the import and the one render site) AND `grep -c "installSessionId" studio/src/components/doctor-screen.tsx` → `>= 2` (both baseline 0; the id count is `>=` because it appears in the props interface, the destructure, the effect guard and dependency list, and the pane — a number the implementation decides)
+- Dependencies: Task 18
+
+**Task 20 — Pass installSessionId into DoctorScreen from App.tsx** `S`
+- File: `studio/src/App.tsx`
+- Anchor: `<DoctorScreen` at `App.tsx:83`
+- Reuse: the existing `check` callback at `App.tsx:21-27`, passed through as `onRecheck` unchanged; the id is fetched once in an effect, mirroring how `check` and `loadProjects` each run once at `App.tsx:29-31` and `App.tsx:43-45`
+- Code sample:
+  ```tsx
+  const [installId, setInstallId] = useState<string | null>(null);
+
+  // A failed fetch leaves it null, which disables the Install button rather
+  // than letting a click open a session no pane is subscribed to.
+  useEffect(() => {
+    void api.installSessionId().then(setInstallId).catch(() => {});
+  }, []);
+  ```
+  and at the call site:
+  ```tsx
+          <DoctorScreen
+            doctor={doctor}
+            installSessionId={installId}
+            onInstall={() => void api.installEfficlaude()}
+            …
+  ```
+- Do not touch: the gate condition at `App.tsx:80` — `(doctorBlocking(doctor) && !dismissedDoctor) || !program` keeps deciding when the doctor screen shows; this task adds one prop and one effect
+- Edge cases: the id arrives asynchronously, so Install stays disabled until it does — otherwise a click would open a session no pane is subscribed to, which is exactly today's bug; a failed fetch leaves Re-check and the claude-path override fully usable
+- Acceptance: the doctor screen receives the backend's reserved install session id, and Install cannot be pressed before the pane is able to subscribe to it
+- Verify (local): `grep -c "installSessionId" studio/src/App.tsx` → `>= 2` (the api call and the prop; baseline 0)
+- Verify (global): `cd studio && npm run build` → exit 0. This is the App wiring boundary and the last frontend task; the baseline recorded this exact command at exit 0 before any edit.
 - Dependencies: Task 19
 
-**Task 21 — Make Anchor exception-only in the plan template** `S`
-- File: `commands/ec-feature.md`
-- Anchor: `- Anchor: {exact existing string the executor must locate, with line number from Grounding — or "new file"}` → line 312
-- Reuse: the exception-only rule from Task 19
-- Code sample:
-```
-- Anchor: {exact existing string the executor must locate, with its line number from Grounding — omit this line entirely when the task creates the file}
-```
-- Do not touch: the `### Grounding` requirement that new files are recorded there as `new file — no anchor`; the grounding record stays explicit even though the per-task line is omitted
-- Edge cases: `commands/ec-execute.md:126` injects the `Anchor:` string into the subagent prompt and already handles a missing line ("if the task has no such line, inject nothing and proceed as normal") — confirm that clause still reads correctly now that absence is the normal case for a new file
-- Acceptance: the template omits Anchor for new-file tasks while Grounding still records them
-- Verify (local): `grep -c 'or "new file"' commands/ec-feature.md` → `== 0` (baseline 1)
-- Dependencies: Task 19
-
-**Task 22 — Split Verify into local evidence and global invariants** `M`
-- File: `commands/ec-feature.md`
-- Anchor: `- Verify: {exact command + expected value, traced to a baseline in ### Grounding}` → line 319
-- Reuse: the existing traceability rule in `## Step 2.5` — the split extends it rather than replacing it
-- Code sample:
-```
-  - Verify (local): {a command that FAILS if this task is wrong — a specific grep -c, test -f, or anchor match. Milliseconds. Traced to a baseline in ### Grounding}
-  - Verify (global): {omit on most tasks. Only at a module boundary: the whole-project invariant — build, type-check, or test suite}
-```
-(The two lines above are the template text to insert, shown indented here only so this plan's own module-boundary detection does not mistake Task 22 for a gate. Insert them at the left margin.)
-plus a rule: `**Two kinds of verification.** Local evidence proves THIS task did what it claims. A global invariant (build, type-check, test suite) proves a repo-wide property and must NOT be attached to every task — a passing whole-project compile says nothing about the task that triggered it. Place global invariants at module boundaries and let /ec-review run the definitive gate.`
-- Do not touch: the traceability rule itself — numeric thresholds must still trace to a measured baseline
-- Edge cases: a task whose only honest proof is a compile (a pure type-signature change, say) must still be allowed a global verify — the rule says "must not be attached to every task", not "never"; module-boundary tasks must be identifiable from the plan text alone so `/ec-execute` can find them
-- Acceptance: the template distinguishes the two kinds and states where each belongs
-- Verify (local): `grep -c "Verify (local)" commands/ec-feature.md` → `>= 1` and `grep -c "Verify (global)" commands/ec-feature.md` → `>= 1` (baseline 0 and 0)
-- Dependencies: Task 21
-
-**Task 23 — Require honest Dependencies in ec-feature** `M`
-- File: `commands/ec-feature.md`
-- Anchor: `- Dependencies: {other tasks, or "none"}` → line 321
-- Reuse: the existing self-review checklist item "Dependencies are correctly ordered" — tighten it rather than adding a parallel rule
-- Code sample:
-```
-- Dependencies: {ONLY the tasks whose output this task genuinely requires — "none" is the common and correct answer. Never write "Task N-1" merely because it precedes this one}
-```
-plus a rule: `**Honest dependencies.** A dependency means this task cannot start until that task's output exists. A straight 1→2→3→…→N chain is almost always fabricated, and /ec-execute now reads this field to fuse and order work — a false edge costs real time.`
-- Do not touch: the flat-format rules — honest dependencies are recorded in a field, never as grouping or phase headers in the task list
-- Edge cases: a genuinely sequential plan will legitimately produce a chain, so the rule must forbid fabricating edges rather than forbidding chains; an empty value must be valid and must not trip the self-review checklist
-- Acceptance: the template states that "none" is the common answer and explains that the field is now consumed
-- Verify (local): `grep -c "Honest dependencies" commands/ec-feature.md` → `== 1` (baseline 0)
-- Dependencies: Task 22
-
-**Task 24 — Update the ec-feature self-review checklist** `S`
-- File: `commands/ec-feature.md`
-- Anchor: `## Step 4 — Self-Review Before Presenting` → line 349
-- Reuse: the existing checklist format — add items in the same `- [ ]` style
-- Code sample:
-```
-  - [ ] No task carries a mechanical Rollback, a "none" Breaking change, or a "new file" Anchor — those lines are omitted
-  - [ ] Every task has a Verify (local) that fails if the task is wrong
-  - [ ] Global invariants appear only at module boundaries, not on every task
-  - [ ] Dependencies name only genuine prerequisites — no fabricated Task N-1 chain
-```
-(The four checklist items above are the template text to insert, shown indented here only so this plan's own `- [ ]` task counter does not read them as pending tasks. Insert them at the left margin.)
-- Do not touch: the existing checklist items, including the design-related ones — this feature has no UI scope but the checklist serves every future feature
-- Edge cases: the new items must not contradict Task 22's allowance for a task whose only honest proof is a global invariant
-- Acceptance: the checklist enforces all four new template rules
-- Verify (local): `grep -c "fails if the task is wrong" commands/ec-feature.md` → `== 1` (baseline 0)
-- Dependencies: Task 23
-
-**Task 25 — Switch ec-execute to ranged plan reads** `M`
-- File: `commands/ec-execute.md`
-- Anchor: `- \`{PLAN_FILE}\` — the plan to execute` → line 44
-- Reuse: the existing Resume check at line 58, which already counts `- [x]` / `- [ ]` lines and therefore only needs the checklist, not the whole plan
-- Code sample:
-```
-- `{PLAN_FILE}` — read the header sections (`### Impact Analysis` through `### Grounding`) and the `### Tasks` checklist ONLY. Do not read `### Per Task Detail` in full.
-  Then, per task, read just that task's block: locate its start with a grep for the task's own `**Task {N} —` heading, take the next such heading as the end (or end-of-file for the last task), and read only that range.
-```
-- Do not touch: the Resume check's counting logic — it works on the checklist, which is still read in full
-- Edge cases: the last task's block ends at end-of-file where there is no following heading — the range must fall back to the end of the file; a plan whose Per Task Detail is out of numeric order must still resolve, so locate by the task's own heading rather than by offset; the header read must include `### Grounding`, because Verify thresholds trace to it
-- Acceptance: executing a task reads its own block rather than the entire plan
-- Verify (local): `grep -c "Do not read \`### Per Task Detail\` in full" commands/ec-execute.md` → `== 1` (baseline 0)
-- Dependencies: Task 24
-
-**Task 26 — Consume Dependencies and fuse co-located tasks in ec-execute** `L`
-- File: `commands/ec-execute.md`
-- Anchor: `Read all tasks from \`{PLAN_FILE}\`. Find all lines matching \`- [ ]\`.` → line 100
-- Reuse: the existing sequential loop and its `- [x]` marking step — fusion changes what one iteration covers, not how completion is recorded
-- Code sample:
-```
-### Execution units
-Before the loop, build execution units from the task list:
-1. Read each pending task's `File:` and `Dependencies:` lines (ranged read, per Step 1).
-2. Fuse CONSECUTIVE pending tasks that share the same `File:` into one unit, stopping a fusion at:
-   - a task with a `Dependencies:` edge pointing outside the run of fused tasks
-   - a task whose name contains `GATE`
-   - a task carrying a `Verify (global)` line
-3. Execute units in dependency order. Within a unit: open the file once, apply every task's change, then run each task's `Verify (local)`.
-4. Mark `- [x]` for each task in the unit individually, only after its own local verify passes.
-```
-- Do not touch: the `### Evidence Rule` at line 165 and the threshold-mismatch stop at line 174 — every fused task still proves itself individually, so a unit cannot hide a failed task
-- Edge cases: a unit whose middle task fails must leave the earlier tasks marked `[x]` and the rest `[ ]` so resume works; fusion must never cross a GATE task, since gates exist to stop work before cost is spent; a task with no `File:` line cannot be fused; two tasks sharing a file but separated by a task on another file are not consecutive and must not be fused
-- Acceptance: a plan with three consecutive tasks on one file executes as a single unit with one file open and three individual local verifies
-- Verify (local): `grep -c "Fuse CONSECUTIVE" commands/ec-execute.md` → `== 1` and `grep -ci "co-location\|co-located" commands/ec-execute.md` → `>= 1` (baseline 0)
-- ⚠️ Breaking change: `/ec-execute` no longer spawns exactly one subagent per task, so progress appears in bursts. The `- [x]` count still advances per task, which is what the auto-flow driver's progress signal in `hooks/session_stop.py` reads
-- Dependencies: Task 25
-
-**Task 27 — Stop passing memory snippets into every subagent** `S`
-- File: `commands/ec-execute.md`
-- Anchor: `  Pass relevant snippets into each subagent's context.` → line 55
-- Reuse: nothing — this is a deletion plus a one-line replacement
-- Code sample:
-```
-  Use these for your own orientation only. Do NOT forward memory or docs snippets into subagent prompts — the relevance floor in hooks/prompt_submit.py already decides what is worth injecting, and re-injecting per task multiplies any residual noise by the task count.
-```
-Also remove `relevant memory/docs snippets` from the Step 3 spawn description at line 105 and the two bullets at lines 134-135.
-- Do not touch: the `### Agent Context Injection` and `### Design Block Injection` blocks — those inject task-specific material already known to be relevant, which is a different thing
-- Edge cases: lines 134-135 list memory and docs snippets as subagent prompt contents and must be removed too, or the command contradicts itself; the worker-online status line at 52 stays, since knowing the worker is up is still useful
-- Acceptance: no instruction anywhere in `ec-execute.md` forwards memory or docs snippets into a subagent prompt
-- Verify (local): `grep -c "Pass relevant snippets into each subagent" commands/ec-execute.md` → `== 0` (baseline 1) and `grep -ci "relevant memory snippets\|memory/docs snippets" commands/ec-execute.md` → `== 0`
-- Dependencies: Task 26
-
-**Task 28 — Run global invariants at module boundaries in ec-execute** `M`
-- File: `commands/ec-execute.md`
-- Anchor: `3. Subagent MUST run the verify step and confirm actual output before claiming done` → line 106
-- Reuse: the Evidence Rule's existing insistence on real command output — this task changes which commands run when, not the evidence standard
-- Code sample:
-```
-3. Each task's `Verify (local)` MUST be run and its real output confirmed before the task is marked done.
-4. A task carrying a `Verify (global)` line is a module boundary: run the global invariant after that task's unit completes. If it fails, STOP — do not continue to the next unit.
-5. Never substitute a global invariant for a missing local verify. "The project still compiles" is not evidence that this task is correct.
-```
-- Do not touch: the threshold-mismatch stop at line 174 — it already forbids editing content to satisfy a number and must keep applying to local verifies
-- Edge cases: a plan written before this change has no `Verify (global)` lines at all, so every verify is treated as local — that must not break execution, and the final `/ec-review` gate still catches a broken build; a global invariant failing at a boundary must stop the run rather than roll back completed tasks
-- Acceptance: global invariants run at boundaries and a boundary failure halts the run
-- Verify (local): `grep -c "is not evidence that this task is correct" commands/ec-execute.md` → `== 1` (baseline 0)
-- Dependencies: Task 27
-
-**Task 29 — Enforce exception-only fields in the ec-review drift check** `M`
-- File: `commands/ec-review.md`
-- Anchor: `## Stage 1.5 — Template Drift Check` → line 91
-- Reuse: the existing Stage 1.5 structure, which already reads a command file and reports drift — add a plan-lint subsection rather than a new stage
-- Code sample:
-```
-### Plan lint — exception-only fields
-Read the plan that was executed (or its archived copy) and flag:
-- any `Rollback:` line that is merely a revert or delete of that task's own `File:`
-- any per-task `⚠️ Breaking change:` line whose value is `none`
-- any `Anchor:` line reading `new file`
-- any `Dependencies:` values forming a straight `Task N-1` chain across more than 3 consecutive tasks
-Report each as template drift with the task number. These fields are exception-only; their presence with a default value IS the defect.
-```
-- Do not touch: the GIT RULES drift check in the same stage — it is unrelated and must keep working
-- Edge cases: the plan may already be archived by the time review runs, so the check must look in `.claude/plans/archive/` as well; the plan-level `⚠️ Breaking change risk:` line in `### Impact Analysis` legitimately says "none" and must not be flagged; a 3-task plan with a genuine chain must not be flagged, which is why the threshold is "more than 3 consecutive"
-- Acceptance: a plan seeded with a mechanical Rollback line is reported as drift, and a plan without those fields passes clean
-- Verify (local): `grep -ci "exception-only" commands/ec-review.md` → `>= 1` (baseline 0)
-- Dependencies: Task 28
-
-**Task 30 — Add the definitive compile gate and evidence audit to ec-review** `M`
-- File: `commands/ec-review.md`
-- Anchor: `## Step 2 — Testing` → line 166
-- Reuse: the existing Step 2 testing section — the gate belongs with it rather than in a new step
-- Code sample:
-```
-### Definitive global gate
-Run every global invariant for this project ONCE, here, and record the real output:
-- the build (`cargo build`, `npm run build`, or the project's equivalent)
-- the type-check (`tsc --noEmit`, `mypy`, or equivalent)
-- the full test suite
-Execution no longer runs these per task, so this is the authoritative gate. A failure here is a review failure.
-
-### Evidence audit
-For each `- [x]` task in the plan, confirm its `Verify (local)` evidence was actually produced:
-- re-run the local verify and compare against the plan's stated expectation
-- flag any task marked done whose local verify now fails, or whose threshold was never measurable
-This closes the failure mode where a subagent invents output to clear a threshold.
-```
-- Do not touch: Stage 1 and Stage 2 review content — the gate is additive
-- Edge cases: re-running every local verify may be slow on a large plan — cap it by sampling when the plan exceeds 40 tasks, and say so in the command; a project with no build or type-check step must skip those cleanly rather than report a failure; a local verify that was correct at execution time but invalidated by a later task's change must be reported as a plan-ordering defect, not a fabrication
-- Acceptance: review runs the global invariants once and audits every completed task's local evidence
-- Verify (local): `grep -ci "evidence audit" commands/ec-review.md` → `>= 1` (baseline 0)
-- Dependencies: Task 29
-
-**Task 31 — Add a scope boundary check to ec-review** `S`
-- File: `commands/ec-review.md`
-- Anchor: the `### Definitive global gate` heading added in Task 30 — place this check immediately after it
-- Reuse: the plan's `File:` lines as the authoritative scope list
-- Code sample:
-```
-### Scope boundary
-Collect every `File:` value in the plan. Then run `git status --short` and confirm every changed path appears in that list. Report any path that does not as an out-of-scope change, naming the task that should have declared it.
-```
-- Do not touch: the GIT RULES — this check only reads git state; it must never stage, commit or revert anything
-- Edge cases: `.claude/` artefacts (the plan, review docs, the archived plan) are written by the workflow itself and must be excluded from the comparison; generated paths such as `token-optimizer/target/` must be excluded via gitignore rather than flagged; a plan that legitimately deletes a file still shows it in `git status`, so match on path, not on change type
-- Acceptance: a change to a file absent from every `File:` line is reported, while workflow artefacts are not
-- Verify (local): `grep -c "Scope boundary" commands/ec-review.md` → `== 1` (baseline 0)
-- Dependencies: Task 30
-
-**Task 32 — Fix git status staged/unstaged classification** `M`
-- File: `token-optimizer/src/filters/git.rs`
-- Anchor: `} else if trimmed.starts_with("modified:") || trimmed.starts_with("deleted:") {` → line 29 (the unreachable branch)
-- Reuse: the existing `staged` / `unstaged` / `untracked` vectors and the output builder at lines 39-61 — only the classification changes
-- Code sample:
-```rust
-enum Section { None, Staged, Unstaged, Untracked }
-let mut section = Section::None;
-// ...
-} else if line.starts_with("Changes to be committed:") {
-    section = Section::Staged;
-} else if line.starts_with("Changes not staged for commit:") {
-    section = Section::Unstaged;
-} else if line.starts_with("Untracked files:") {
-    section = Section::Untracked;
-} else if line.starts_with('\t') {
-    let trimmed = line.trim();
-    match section {
-        Section::Staged => staged.push(truncate_line(trimmed, 120)),
-        Section::Unstaged => unstaged.push(truncate_line(trimmed, 120)),
-        _ => untracked.push(truncate_line(trimmed, 80)),
-    }
-}
-```
-- Do not touch: the `nothing to commit` early return at line 34 and the `header` capture at line 23 — both already behave correctly
-- Edge cases: `Unmerged paths:` is a fourth section whose entries must not be silently classified as untracked — handle it explicitly and record the choice; git's hint lines between a section header and its entries start with two spaces rather than a tab, so they must not be captured as entries; `git status --short` emits no section headers at all, so that form must fall through to the lossy-safety fallback rather than be misclassified
-- Acceptance: on a repo with both staged and unstaged modifications, the filter reports each under the correct heading
-- Verify (local): `grep -c "Changes to be committed" token-optimizer/src/filters/git.rs` → `== 1` (baseline 0)
-- ⚠️ Breaking change: output for the same input changes — files previously mislabelled "Staged" now appear under "Unstaged". That is the fix; any consumer that trusted the old labels was being misled
-- Dependencies: none
-
-**Task 33 — Support --oneline in the git log filter** `M`
-- File: `token-optimizer/src/filters/git.rs`
-- Anchor: `if line.starts_with("commit ") {` → line 75
-- Reuse: the existing 20-commit truncation and `... (n more commits)` suffix at lines 87-94 — it applies to both formats
-- Code sample:
-```rust
-fn is_oneline(line: &str) -> bool {
-    let mut parts = line.splitn(2, ' ');
-    match (parts.next(), parts.next()) {
-        (Some(sha), Some(rest)) => {
-            (7..=40).contains(&sha.len())
-                && sha.chars().all(|c| c.is_ascii_hexdigit())
-                && !rest.trim().is_empty()
-        }
-        _ => false,
-    }
-}
-```
-`log()` detects the format from the first non-empty line and dispatches either to a oneline path that keeps each line as-is (truncated) or to the existing verbose path.
-- Do not touch: `format_commit` at line 97 — the verbose path must keep working exactly as it does now
-- Edge cases: `--oneline --graph` prefixes lines with `*`, `|` and `/`, which are not hex, so graph output must reach the lossy-safety fallback rather than be dropped; a verbose log whose subject begins with a hex-looking word must not be misread as oneline, so detect on the first line only; `--oneline` with decorations such as `(HEAD -> main)` must survive
-- Acceptance: `git log --oneline -40` through the filter preserves its commits instead of collapsing to an 8-byte empty table
-- Verify (local): `git log --oneline -40 | ~/.efficlaude/bin/etok git log | wc -c` → `> 8` (baseline: 8 bytes, per the source analysis)
-- Dependencies: Task 32
-
-**Task 34 — Apply the lossy-safety rule to the git filters** `S`
-- File: `token-optimizer/src/filters/git.rs`
-- Anchor: `fn log(input: &str) -> String {` → line 70
-- Reuse: `super::generic::process` at line 12 is already the unrecognised-input path; the new guard returns the input itself where even generic compression would lose structure
-- Code sample:
-```rust
-// At the end of log(): if nothing was recognised, hand back the input untouched.
-if commits.is_empty() {
-    return input.to_string();
-}
-```
-and the same guard in `status()` where `out.is_empty()` currently calls `generic::process`.
-- Do not touch: `diff()`, `branch()` and `stash_list()` beyond adding the same guard where they can produce near-empty output from non-empty input
-- Edge cases: genuinely empty input must return empty rather than be treated as a parse failure; a filter that recognises some structure should keep its compressed output rather than falling back wholesale; the rule is about losing structure, not about a low compression ratio
-- Acceptance: any git filter given input it cannot parse returns that input unchanged rather than a near-empty result
-- Verify (local): `printf 'not git output at all\nsecond line\n' | ~/.efficlaude/bin/etok git log | wc -l` → `== 2`
-- Dependencies: Task 33
-
-**Task 35 — Keep the artefact path in the cargo build filter** `M`
-- File: `token-optimizer/src/filters/cargo.rs`
-- Anchor: `if trimmed.starts_with("error") || trimmed.starts_with("warning") || trimmed.starts_with("Compiling") || trimmed.starts_with("Finished") || trimmed.starts_with("Blocking") {` → line 54
-- Reuse: the existing warning-grouping logic at lines 62-67 — extend the dedup to cover repeated `Finished` blocks
-- Code sample:
-```rust
-let lines: Vec<&str> = input.lines().collect();
-for (i, line) in lines.iter().enumerate() {
-    let trimmed = line.trim();
-    let keep = trimmed.starts_with("error") || trimmed.starts_with("warning")
-        || trimmed.starts_with("Compiling") || trimmed.starts_with("Finished")
-        || trimmed.starts_with("Blocking");
-    if keep {
-        out.push(truncate_line(trimmed, 120));
-        // A "Finished ... at:" line is followed by the artefact path — the only
-        // thing a build's output is actually wanted for.
-        if trimmed.ends_with("at:") {
-            if let Some(next) = lines.get(i + 1) {
-                if !next.trim().is_empty() {
-                    out.push(next.trim().to_string());
-                }
-            }
-        }
-    }
-}
-```
-plus a consecutive-duplicate dedup before joining.
-- Do not touch: `test()` — it has its own failure-capture logic and is not implicated
-- Edge cases: the path line must NOT be truncated, since a truncated path is useless — that is why it is pushed whole; multiple bundles each produce their own `Finished ... at:` plus path pair and all must survive; the ordinary `Finished dev [unoptimized] target(s)` line does not end in `at:` and must not pull in the following line
-- Acceptance: a tauri build's `Finished 1 bundle at:` lines each retain their artefact path, and repeated identical pairs appear once
-- Verify (local): `printf 'Finished 1 bundle at:\n    /tmp/app.dmg\n' | ~/.efficlaude/bin/etok cargo build | grep -c "app.dmg"` → `== 1` (baseline 0 — the path is currently dropped)
-- Dependencies: Task 34
-
-**Task 36 — Remove the helper dependency from the shell wrappers** `M`
-- File: `shell/effi-shell.sh`
-- Anchor: `_etok_available() {` → line 6
-- Reuse: the `ETOK` variable at line 4; the six wrapper bodies keep their structure
-- Code sample:
-```bash
-# Inlined on purpose: a helper function does not survive every shell-snapshot
-# mechanism, and a wrapper calling a missing helper breaks the real command.
-git() {
-  local sub="${1:-}"
-  if [ -x "${ETOK:-}" ]; then
-    case "$sub" in
-      ...
-    esac
-  fi
-  command git "$@"
-}
-```
-Replace all six `_etok_available` call sites (lines 13, 27, 41, 55, 69, 83) with `[ -x "${ETOK:-}" ]` and delete the helper definition.
-- Do not touch: the `command <name> "$@"` fallthrough at the end of each wrapper — it is what keeps the real command working when etok is absent
-- Edge cases: `ETOK` itself may be unset if only the wrapper function survived the snapshot, which is why the test uses `${ETOK:-}`; `-x` is false for a missing or non-executable file, giving exactly the desired fallthrough; the wrappers must stay correct under both bash and zsh, since `install.sh:206` appends the source line to both `.zshrc` and `.bashrc`; confirm with a repo-wide grep that nothing outside this file calls `_etok_available` before deleting it
-- Acceptance: every wrapper works in a shell where only the wrapper function is defined, and no invocation can emit `command not found`
-- Verify (local): `grep -c "_etok_available" shell/effi-shell.sh` → `== 0` (baseline 7) and sourcing the file in a shell with the helper undefined then running `git status` emits no `command not found` (baseline: every git call in this session emits `git:2: command not found: _etok_available`)
-- ⚠️ Breaking change: `_etok_available` is removed. It is private to this file; confirm with a repo-wide grep before deleting
-- **Separate pre-existing defect found here and deliberately NOT fixed (would widen the edit).** All six wrappers end their optimized path with `return "${PIPESTATUS[0]}"`. `PIPESTATUS` is **bash-only** — zsh populates lowercase `$pipestatus` instead — and `install.sh:206` appends the source line to `.zshrc` as well as `.bashrc`. So under zsh, on the optimized path, the exit status of the real command does not propagate: a failing `cargo build` piped through etok can report success. That is arguably more dangerous than the helper bug this task fixes, because it corrupts an exit code a caller may branch on. Confirmed present: 6 occurrences. It needs its own task
-- **Note on observing the fix.** A shell that already snapshotted the old wrapper keeps emitting `git:2: command not found: _etok_available` for its remaining lifetime — including this session's own shell. That is the stale snapshot, not the file on disk; shells started after this change are clean, which is what the bash/zsh proofs demonstrate
-- Dependencies: Task 35
-
-**Task 37 — Add Rust tests for the git and cargo filters** `L`
-- File: `token-optimizer/src/filters/git.rs` and `token-optimizer/src/filters/cargo.rs` (inline `#[cfg(test)] mod tests`)
-- Reuse: nothing — the crate has no tests yet (`grep -c "mod tests"` → 0, and `token-optimizer/tests/` does not exist). Inline test modules are required because the crate is a binary with no lib target, so integration tests under `tests/` would not link
-- Code sample:
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn git_status_separates_staged_from_unstaged() {
-        let input = "On branch main\nChanges to be committed:\n\tnew file:   a.txt\nChanges not staged for commit:\n\tmodified:   b.txt\n";
-        let out = status(input);
-        assert!(out.contains("Staged (1)"), "{out}");
-        assert!(out.contains("Unstaged (1)"), "{out}");
-    }
-
-    #[test]
-    fn git_log_oneline_preserves_commits() {
-        let input = (0..40).map(|i| format!("abc123{i:x} subject {i}")).collect::<Vec<_>>().join("\n");
-        let out = log(&input);
-        assert!(out.len() > 8, "{out}");
-        assert!(out.contains("subject 0"), "{out}");
-    }
-
-    #[test]
-    fn git_log_returns_input_when_unparseable() {
-        let input = "not git output at all\nsecond line";
-        assert_eq!(log(input), input);
-    }
-
-    #[test]
-    fn cargo_build_keeps_artifact_path() {
-        let out = build("Finished 1 bundle at:\n    /tmp/app.dmg\n");
-        assert!(out.contains("/tmp/app.dmg"), "{out}");
-    }
-}
-```
-- Do not touch: the filters' public behaviour — tests encode the new contract and must not be relaxed to match a buggy implementation
-- Edge cases: the 20-commit truncation means a 40-commit oneline input is expected to end with `... (20 more commits)`, so assert the surviving-information property rather than an exact byte count; `status()`, `log()` and `build()` are private, so the test modules must live in the same files to reach them
-- Acceptance: tests cover both D10-A and D10-B, the oneline format, the lossy-safety rule and the cargo path retention, and all pass
-- Verify (local): `cd token-optimizer && cargo test --quiet 2>&1 | tail -3` → reports 4 or more tests passing, 0 failed (baseline: no tests exist)
-- Dependencies: Task 36
-
-**Task 38 — Run the etok module gate** `S`
-- File: none — verification only
-- Reuse: the crate's own build and test commands
-- Do not touch: any source file
-- Edge cases: `cargo` may be missing from a non-interactive shell's PATH — `install.sh:166` already sources the cargo env for this reason; if cargo is genuinely unavailable, report that the gate could not run rather than reporting success
-- Acceptance: the crate builds clean and its tests pass, and the rebuilt binary is the one the shell wrappers will use
-- Verify (global): `cd token-optimizer && cargo build --release --quiet && cargo test --quiet 2>&1 | tail -3` → build exits 0 and tests report 0 failed
-- Dependencies: Task 37
-
-**Task 39 — Remove legacy non-prefixed commands in install.sh** `M`
+**Task 21 — Add a fail helper to install.sh and route the three failure sites through it** `S`
 - File: `install.sh`
-- Anchor: `for cmd in "${COMMANDS[@]}"; do` → line 69
-- Reuse: the `COMMANDS` array at line 14 and the surrounding echo style
+- Anchor: `echo "✗ Python 3 not found. Please install Python 3.8+ and re-run."` at `install.sh:40`
+- Reuse: the existing `✗` glyph vocabulary — the helper formalises it rather than replacing it, so output stays recognisable
 - Code sample:
-```bash
-LEGACY_COMMANDS=("setup" "feature" "brainstorm" "execute" "review" "git" "design")
-for cmd in "${LEGACY_COMMANDS[@]}"; do
-  LEGACY_FILE="${COMMANDS_DIR:?}/${cmd:?}.md"
-  if [ -f "$LEGACY_FILE" ]; then
-    rm -f "$LEGACY_FILE"
-    echo "  ✓ removed legacy /$cmd (superseded by /ec-$cmd)"
-  fi
-done
-```
-placed after the install loop. The `:?` guards are deliberate: they make the shell abort rather than expand to a top-level path if either variable is empty.
-- Do not touch: any `ec-` prefixed command file, and any file in `$COMMANDS_DIR` not named in `LEGACY_COMMANDS` — a user's own commands must never be deleted
-- Edge cases: `ec-design.md` exists in `~/.claude/commands/` but is absent from the `COMMANDS` array, so it is itself drift — decide explicitly whether it is installed or removed and record which, rather than leaving it unmanaged; the removal must be idempotent; a user who deliberately wrote their own `review.md` would lose it, so the list must stay exactly these seven names and the echo must say what happened
-- Acceptance: a fresh install leaves only `ec-` prefixed EffiClaude commands, and re-running the installer is a no-op
-- Verify (local): `grep -c "LEGACY_COMMANDS" install.sh` → `== 2` (baseline 0: one definition, one loop reference)
-- ⚠️ Breaking change: deletes files from `~/.claude/commands/`. Scope is limited to the seven exact legacy names EffiClaude itself shipped
-- Dependencies: Task 38
+  ```bash
+  # A failure prints what went wrong AND what to do about it, on two lines.
+  # A symptom alone leaves the user re-reading the script to find the remedy.
+  fail() {
+    echo "  ✗ $1"
+    echo "    → $2"
+    exit 1
+  }
+  ```
+  The three sites keep their existing symptom text as the first argument:
+  ```bash
+  fail "Python 3 not found" "Install Python 3.8 or newer, then re-run this installer"
+  fail "Python 3.8+ required (found $PYTHON_VERSION)" "Upgrade Python to 3.8 or newer, then re-run this installer"
+  fail "Failed to install Python dependencies" "Check pip3 and $SERVER_DIR/requirements.txt, then re-run this installer"
+  ```
+- Do not touch: `set -e` at line 3, the variable block at lines 5-18, `fetch_file` at lines 24-31, and every step's success behaviour — this task changes failure OUTPUT and the exit path only, never what the installer does when it works. The `ℹ` advisory lines for Node.js and etok stay advisory and are not routed through `fail`.
+- Edge cases: the pip site at `install.sh:123` sits inside a `|| { …; exit 1; }` compound, so the helper replaces the echo there and the `exit 1` is dropped, since `fail` exits itself; `set -e` is unaffected because `fail` always terminates
+- Acceptance: each of the three fatal conditions prints the symptom and a concrete remedy and exits non-zero, with no fatal path left printing a bare symptom
+- Verify (local): `grep -c '^fail()' install.sh` → `== 1` AND `grep -c 'fail "' install.sh` → `== 3` (both baseline 0; the 3 matches the three `✗` sites recorded in Grounding at lines 40, 49 and 123) AND `bash -n install.sh` → exit 0
+- Dependencies: none
 
-**Task 40 — Add Python tests for the hook changes** `L`
-- File: `tests/test_hooks.py`
-- Anchor: `sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'hooks'))` → line 9 (confirms the harness; append the new tests at end of file)
-- Reuse: the module-level `sys.path` insert at line 9 and the established per-test style — `from <module> import <name>` inside the test body plus a one-line docstring. 467 lines of precedent; do not invent a new harness
+**Task 22 — Add a step helper to install.sh and route the nine section headers through it** `S`
+- File: `install.sh`
+- Anchor: `echo "Installing commands..."` at `install.sh:68`
+- Reuse: the `# ──` comment rules already dividing the script into sections — the helper makes the printed output match the structure the comments already describe
 - Code sample:
-```python
-def test_has_signal_rejects_fast_readonly_bash():
-    """A successful read-only probe carries no evidence worth storing."""
-    from post_tool_use import _has_signal
-    assert _has_signal("Bash", {"command": "curl -s localhost:37777/health"}, {"exit_code": 0}) is False
-
-
-def test_has_signal_accepts_edit_outside_claude_dir():
-    """An edit to a real source file is always signal."""
-    from post_tool_use import _has_signal
-    assert _has_signal("Write", {"file_path": "server/memory.py"}, {}) is True
-
-
-def test_has_signal_accepts_failing_command():
-    """A failing probe is informative even when it is read-only."""
-    from post_tool_use import _has_signal
-    assert _has_signal("Bash", {"command": "ls /nope"}, {"exit_code": 2}) is True
-
-
-def test_record_reject_counts_by_reason(tmp_path, monkeypatch):
-    """Rejections are counted so the reject rate stays observable."""
-    import post_tool_use
-    monkeypatch.setattr(post_tool_use, "REJECT_FILE", tmp_path / "rejects.json")
-    post_tool_use._record_reject("no_signal", "Bash")
-    post_tool_use._record_reject("no_signal", "Bash")
-    assert json.loads((tmp_path / "rejects.json").read_text())["no_signal:Bash"] == 2
-
-
-def test_relevance_floor_rejects_uniform_distances():
-    """Identical distances carry no ranking information — inject nothing."""
-    from prompt_submit import _relevance_floor
-    assert _relevance_floor([{"distance": 0.5}] * 5) == []
-
-
-def test_docs_gate_drops_boilerplate_headings():
-    """Flask's Donate section must never reach a prompt again."""
-    from prompt_submit import _docs_gate
-    items = [{"heading": "Donate", "content": "x" * 200},
-             {"heading": "Blueprints", "content": "z" * 200}]
-    assert len(_docs_gate(items)) == 1
-```
-- Do not touch: existing tests — the hook changes must not require relaxing any current assertion; a failure there is a real regression to fix in the task that caused it
-- Edge cases: no test may depend on a running worker or on the real `~/.efficlaude/` directory — `REJECT_FILE` is resolved at import time from `Path.home()`, so the counter test MUST monkeypatch the module attribute (patching `Path.home` after import would be too late) or it will write into the user's real state; `post_tool_use` and `prompt_submit` are separate modules imported separately; `json` is already imported at line 3 of this file
-- Acceptance: the new tests cover the signal gate (accept and reject), the reject counter, the relevance floor and the docs gate, and the whole suite stays green
-- Verify (local): `python3 -m pytest tests/test_hooks.py -q 2>&1 | tail -2` → more tests than the current count, 0 failed
-- **Dependencies CORRECTED mid-execution: Tasks 4, 5, 6 (write side) AND 16, 17 (read side).** The plan originally wrote `Dependencies: Task 39`, which was a fabricated edge — but in removing it I declared only 4/5/6 and **omitted two genuine edges**. The four read-side tests import `_relevance_floor` and `_docs_gate` from `hooks/prompt_submit.py`, which Tasks 16 and 17 create; attempting them before those land fails at `ImportError`. The write-side half (12 tests, 57 → 69 passed, mutation-verified) completed independently. This is the mirror image of the Task 39/40/42 defect: the first error was asserting edges that did not exist, the second was missing edges that did. Both come from writing the dependency field from narrative order instead of from what each task actually consumes — exactly what Task 23's rule now forbids
-- Dependencies: Tasks 4, 5, 6, 16, 17
-
-**Task 41 — Add Python tests for the memory changes** `L`
-- File: `tests/test_memory.py` — **existing file, 111 lines, 10 tests. APPEND ONLY. Do not create or overwrite it.**
-- Anchor: `def test_fts_search_survives_punctuation(db_path, chroma_path):` → line 108 (the current last test; append after it)
-- Reuse: the `db_path` and `chroma_path` fixtures from `tests/conftest.py:8,13` — already `tmp_path`-based, so no new fixture is needed; `from memory import MemoryEngine` at line 4 already works via conftest's path insert; `import sqlite3` at line 1 is already present
-- Code sample:
-```python
-def test_dedup_increments_seen_count(db_path, chroma_path):
-    """Identical content collapses to one row with a frequency count."""
-    engine = MemoryEngine(db_path, chroma_path)
-    engine.save_observation("proj", "tool_use", "same content")
-    engine.save_observation("proj", "tool_use", "same  content")   # whitespace-normalised duplicate
-    with sqlite3.connect(db_path) as conn:
-        row = conn.execute("SELECT COUNT(*), MAX(seen_count) FROM observations").fetchone()
-    assert row == (1, 2)
-
-
-def test_bm25_to_distance_is_monotonic():
-    """A better BM25 rank must map to a lower distance."""
-    import memory as memory_mod
-    assert memory_mod._bm25_to_distance(-5.0) < memory_mod._bm25_to_distance(-1.0)
-    assert memory_mod._bm25_to_distance(None) == 1.0
-
-
-def test_rrf_prefers_item_ranked_by_both_paths():
-    """Fusion rewards agreement between the lexical and vector paths."""
-    import memory as memory_mod
-    a = [{"content": "x", "distance": 0.2}, {"content": "y", "distance": 0.3}]
-    b = [{"content": "y", "distance": 0.1}]
-    assert [i["content"] for i in memory_mod._rrf(a, b, 2)] == ["y", "x"]
-
-
-def test_search_results_carry_source(db_path, chroma_path):
-    """Every retrieval result declares which path produced it."""
-    engine = MemoryEngine(db_path, chroma_path)
-    engine.save_observation("proj", "obs", "ChromaDB stores embeddings")
-    assert all(r.get("source") in {"fts", "vector"} for r in engine.search("proj", "embeddings"))
-
-
-def test_migration_adds_dedup_columns(db_path, chroma_path):
-    """A v1 database gains content_hash and seen_count on open."""
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "CREATE TABLE observations "
-            "(id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT, type TEXT, "
-            "content TEXT, metadata TEXT, created_at TEXT)"
-        )
-        conn.commit()
-    MemoryEngine(db_path, chroma_path)
-    with sqlite3.connect(db_path) as conn:
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(observations)")}
-    assert {"content_hash", "seen_count"} <= cols
-```
-- Do not touch: the 10 existing tests, and the real `~/.efficlaude/efficlaude.db` — every test uses the `db_path`/`chroma_path` fixtures
-- Edge cases: constructing a `MemoryEngine` instantiates ChromaDB, which is slow and writes to disk — reuse the fixtures rather than adding more engine-constructing tests than listed; `_rrf` and `_bm25_to_distance` are pure and must be tested without an engine, which is why they import the module rather than take a fixture; the migration test deliberately hand-builds the v1 column set, mirroring `test_reconcile_chromadb_fills_missing` at line 41, and proves the ALTER path rather than the CREATE path
-- Acceptance: the file has 15 tests (10 existing, 5 added), covering dedup, the BM25 distance mapping, source tagging, RRF ordering and the v1→v2 migration, and all pass
-- Verify (local): `python3 -m pytest tests/test_memory.py -q 2>&1 | tail -2` → `15 passed`, 0 failed (baseline: 10 tests in this file)
-- Dependencies: Task 40
-
-**Task 42 — Add command-doc tests for the template changes** `M`
-- File: `tests/test_command_docs.py`
-- Anchor: the end of the existing module — append in its established style (353 lines of precedent)
-- Reuse: the file's existing pattern of reading `commands/*.md` and asserting on content, including however it locates the repo root
-- Code sample:
-```python
-def test_feature_template_has_no_default_rollback():
-    text = read_command("ec-feature")
-    assert 'Breaking change: {description or "none"}' not in text
-    assert 'or "new file"' not in text
-
-
-def test_feature_template_declares_verify_split():
-    text = read_command("ec-feature")
-    assert "Verify (local)" in text and "Verify (global)" in text
-
-
-def test_execute_does_not_forward_memory_snippets():
-    assert "Pass relevant snippets into each subagent" not in read_command("ec-execute")
-
-
-def test_execute_uses_ranged_plan_reads():
-    assert "Do not read `### Per Task Detail` in full" in read_command("ec-execute")
-
-
-def test_review_has_evidence_audit_and_scope_boundary():
-    text = read_command("ec-review")
-    assert "Evidence audit" in text and "Scope boundary" in text
-```
-- Do not touch: existing tests in this file, including the GIT RULES drift tests
-- Edge cases: these tests assert on exact strings and will need updating whenever the wording changes — assert on the distinctive phrase rather than a whole sentence; use the module's existing repo-root resolution rather than assuming the working directory
-- Acceptance: the five new tests pass, and each fails if its corresponding template rule is reverted
-- Verify (local): `python3 -m pytest tests/test_command_docs.py -q 2>&1 | tail -2` → more tests than the current count, 0 failed
-- Dependencies: Task 41
-
-**Task 43 — Sync installed copies and run the final gate** `M`
-- File: `~/.claude/commands/ec-feature.md`, `~/.claude/commands/ec-execute.md`, `~/.claude/commands/ec-review.md`, `~/.efficlaude/hooks/post_tool_use.py`, `~/.efficlaude/hooks/prompt_submit.py`, `~/.efficlaude/server/memory.py`, `~/.efficlaude/server/worker.py`, `~/.efficlaude/server/embedder.py`, `~/.efficlaude/server/purge_noise.py`, `~/.efficlaude/shell/effi-shell.sh`, `~/.efficlaude/bin/etok`
-- Reuse: `install.sh`'s own copy path — running the local installer is preferable to hand-copying, since it is the mechanism that must keep working
-- Code sample:
-```bash
-bash install.sh            # local install mode is auto-detected via commands/ec-setup.md
-bash ~/.efficlaude/server/stop.sh && bash ~/.efficlaude/server/start.sh
-```
-- Do not touch: the user's `~/.claude/settings.json` hook registrations — they already point at the hook paths and need no change
-- Edge cases: the worker must be restarted or it keeps serving the old `memory.py` resident in memory; `install.sh` appends the shell source line only when its marker is absent, so re-running must not duplicate it — confirm; the legacy-command removal from Task 39 runs here for the first time against the real `~/.claude/commands/`, so verify the `ec-` files survive; `install.sh` installs only the files named in its arrays, so confirm `embedder.py` and `purge_noise.py` are added to whichever server-file list it uses or they will not be copied
-- Acceptance: installed copies match the repo, the worker serves the new retrieval behaviour, the legacy commands are gone, and every global invariant passes
-- **Defect found BY this gate — worker unavailable ~4 minutes on first start after upgrade.** `CHROMA_SCHEMA_VERSION` 2 → 3 re-ran the legacy probe, which found genuine pre-v2 collections the v2 migration had never actually wiped (its marker existed without the wipe having run), so `_migrate_chroma_layout` cleared the store and `_reconcile_chromadb()` re-embedded all 17,458 observations from SQLite. Measured: ~12 minutes of CPU at 387%, ~240 s wall clock, during which Flask never binds and `/health` returns nothing — `_reconcile_chromadb()` runs synchronously in `MemoryEngine.__init__`, which `server/worker.py` executes at module import, before `app.run()`. The plan's edge case said a rebuild "must never run inside a request path"; it does not, but it does block startup with no readiness signal, so any client polling `/health` concludes the worker is dead. **Correct the framing, not just the number:** the wipe itself was legitimate and beneficial — 293 MB → 65 MB and still settling, against a theoretical floor of 17,458 × 384 × 4 B = 26.8 MB, so the old store was carrying ~226 MB of dead weight. This is the −90% disk reduction the source analysis predicted, delivered as a side effect. The defect is purely the silent multi-minute unavailability. Fix belongs in its own task: either bind Flask first and reconcile in a background thread with a `status: "rebuilding"` health response, or emit progress to `efficlaude.log` so the stall is legible. Not fixed here — it is outside this task's declared boundary and the rebuild is one-time per install
-- **Live verification after sync (the four benchmark queries, before → after):**
-  - `scroll bug transfer list`: `[0.5, 0.5, 0.5, 0.5, 0.5]` → `[0.165, 0.1932, 0.2005, 0.2088, 0.2217]`, all `source: fts`. The D3 fabricated-score case is now genuinely honest, and this became the best-scoring of the four
-  - `bagaimana cara kerja memory engine`: `[1.1882, 1.2107, 1.222, 1.246, 1.2788]` → mixed `fts`+`vector` with FTS contributing `0.0985` and `0.1447`. Fusion working: under the old cliff FTS was ignored wholesale because one vector item sat under 1.2, and this Indonesian-language query is exactly where the English-only embedder fails and lexical matching wins
-  - `token optimizer etok`: best `1.0608` → `0.6258`
-  - `auto-flow sentinel stop hook driver`: output is no longer ordered by distance because RRF orders by `fused_score`, which is expected
-  - `/memory/stats` live: `rejects: {"no_signal:Bash": 20}` — the write-side gate is active and has already rejected 20 noise observations
-- Verify (global): all four must hold —
-  `python3 -m pytest tests/ -q` → 0 failed, count greater than the 157 baseline;
-  `cd token-optimizer && cargo test --quiet 2>&1 | tail -2` → 0 failed;
-  `ls ~/.claude/commands/ | grep -c -v '^ec-'` → `== 0` (baseline 6);
-  `diff -q commands/ec-execute.md ~/.claude/commands/ec-execute.md` and `diff -q server/memory.py ~/.efficlaude/server/memory.py` → both silent
-- Dependencies: Task 42
+  ```bash
+  # Sections are printed, not just commented: the installer's output is read in
+  # Studio's install pane, where a flat wall of ✓ lines gives nothing to scan.
+  step() {
+    echo ""
+    echo "$1"
+  }
+  ```
+  The nine section headers at lines 68, 87, 95, 104, 121, 128, 173, 227 and 261 each collapse from a bare `echo ""` plus an `echo "Title..."` into one call, dropping the ellipsis:
+  ```bash
+  step "Installing commands"
+  ```
+- Do not touch: the product banner at `install.sh:34` (`echo "Installing EffiClaude..."`) and the local-install note at line 36 — the banner is not a section and keeps its own shape. The closing `Done!` block at lines 266-274 keeps its literal text, since it is the summary rather than a section.
+- Edge cases: each of the nine sites is currently preceded by a bare `echo ""`; that blank line moves into the helper, so the blank must be removed at the call site or the output gains a double gap
+- Acceptance: the installer prints nine clearly separated section headers as it works, so its output is scannable in the Studio install pane rather than one continuous list
+- Verify (local): `grep -c '^step()' install.sh` → `== 1` AND `grep -c 'step "' install.sh` → `== 9` (both baseline 0; the 9 matches the nine section header lines recorded in Grounding) AND `bash -n install.sh` → exit 0
+- Dependencies: Task 21
