@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/* The five colors and two faces from the plan's Design Direction, copied, not
+   re-chosen. Dark-only by design: there is no light theme and no
+   prefers-color-scheme branch. The accent is reserved for the active project
+   and the stage badge — spending it on buttons or links dilutes the one signal
+   it carries. */
+@theme {
+  --color-ground: #0E1116;
+  --color-surface: #161A21;
+  --color-border: #232935;
+  --color-text: #E6E9EF;
+  --color-muted: #8A93A5;
+  --color-accent: #4C9AFF;
+
+  --font-ui: ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-ground);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+}

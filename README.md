@@ -47,6 +47,19 @@ Installs commands to `~/.claude/commands/`, starts worker daemon, registers hook
 
 ---
 
+## Studio (macOS app)
+
+A desktop window over the same workflow: add your project folders, get a terminal
+wired to your own `claude` in each one, and watch tasks tick off as `/ec-execute` runs.
+
+Download the `.dmg` from [Releases](https://github.com/kaeltech-id/EffiClaude/releases),
+drag it to Applications, then **right-click → Open** the first time — the app is
+ad-hoc signed, not notarized, so a plain double-click is refused by Gatekeeper.
+
+macOS 11+ only. Studio reads your projects' `.claude/` folders and never writes to them.
+
+---
+
 ## The workflow
 
 ### /ec-setup — once per project
