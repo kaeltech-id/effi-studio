@@ -25,7 +25,7 @@ Built for developers who want Claude to remember everything, plan precisely, and
 
 ```
 ┌──────────┐     ┌───────────────┐     ┌────────────┐     ┌────────────┐     ┌───────────┐     ┌──────────┐
-│/ec-setup │────▶│/ec-brainstorm │────▶│/ec-feature │────▶│/ec-execute │────▶│/ec-review │────▶│ /ec-git  │
+│/ec-setup │────▶│/ec-brainstorm │────▶│/ec-plan │────▶│/ec-refine │────▶│/ec-execute │────▶│/ec-review │────▶│ /ec-git  │
 │  once    │     │  (optional)   │     │    plan    │     │   build    │     │   check   │     │   push   │
 └──────────┘     └───────────────┘     └────────────┘     └────────────┘     └───────────┘     └──────────┘
 ```
@@ -76,7 +76,7 @@ Scans your codebase, learns your stack, registers docs libraries, initializes pr
 
 ### /ec-brainstorm — before complex features
 
-Explore approaches before committing. Claude presents 2–3 options with pros/cons — you pick one, decision is auto-loaded by `/ec-feature`.
+Explore approaches before committing. Claude presents 2–3 options with pros/cons — you pick one, decision is auto-loaded by `/ec-plan`.
 
 ```
 You:    Users can't reset password without contacting support
@@ -88,11 +88,15 @@ Claude: ## Option 1: Email Reset Flow       Effort: M · Risk: Low
 You:    Option 1
 ```
 
-> **What you get:** Decision saved to `.claude/decision.md`, pre-loaded next time you run `/ec-feature`.
+> **What you get:** Decision saved to `.claude/decision.md`, pre-loaded next time you run `/ec-plan`.
 
 ---
 
-### /ec-feature — ticket to atomic plan
+### /ec-refine — audit the plan before any code
+
+Dry-runs every `Verify (local)` in the plan while the correct answer is still the recorded baseline, re-measures every Grounding figure against disk, confirms each anchor still exists, and confirms each file claimed new is genuinely absent. A threshold already satisfied at this point cannot prove anything, so it is reported as a defect. Writes nothing but its own sentinel.
+
+### /ec-plan — ticket to atomic plan
 
 Works with a Jira ticket, Figma link, API contract, or a plain sentence.
 

@@ -31,7 +31,7 @@ if [ -f "$AUTOFLOW" ]; then
   if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
 fi
 ```
-When `AUTO=yes`: treat this run like `vibe` mode for all confirmation gates (auto-skip). Do NOT delete the sentinel here — it is consumed/removed by `/ec-review`.
+When `AUTO=yes`: auto-skip every confirmation gate. Do NOT delete the sentinel here — it is consumed/removed by `/ec-review`.
 
 **Incomplete plan guard:** Before proceeding, check if `{PLAN_FILE}` exists.
 If it exists, count lines matching `- [ ]`.
@@ -79,10 +79,6 @@ This write targets `.claude/plans/` — permitted by the No-Code Rule.
   ```
 - If user picks a number: load that file as the decision source, pre-fill Chosen Approach, note "(brainstorm loaded: {filename})", delete the picked file after plan is complete
 - If user types 'skip' or no files exist: proceed to Step 1 normally
-
-**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
-- If `vibe`: skip "Plan sudah benar? Confirm (y/n):" gate in Step 6 (auto-proceed), skip Step 5 memory save (`curl .../memory/observe`), skip "Next: run /ec-execute" suggestion
-- If `structured` (or file absent): proceed normally
 
 **No-Code Rule:** This command MUST NOT create, edit, or write any project files.
 Allowed writes: `.claude/plans/` only.
@@ -345,7 +341,7 @@ LOCK_STATUS=$(echo "$LOCK_CHECK" | python3 -c "import sys,json; print(json.load(
   - Extract holder: `echo "$LOCK_CHECK" | python3 -c "import sys,json; h=json.load(sys.stdin).get('holder',{}); print(f\"session {h.get('session_id','?')} (PID {h.get('pid','?')}) running {h.get('command','ec-execute')}\")"`
   - Show: "⚠️ {PLAN_FILE} is locked: {holder_info} — ec-execute may be running in another terminal"
   - Ask: "Overwrite anyway? This will interrupt the other session. (y/n):"
-    - If `n`: stop — "Wait for the other session to finish, then run /ec-feature again."
+    - If `n`: stop — "Wait for the other session to finish, then run /ec-plan again."
     - If `y`: proceed with writing plan.
 
 Run `mkdir -p .claude/plans` then save plan to `{PLAN_FILE}`.
@@ -389,7 +385,7 @@ curl -s -X POST http://localhost:37777/memory/observe \
 ```
 
 ## Step 6 — Confirm
-- If `AUTO=yes` (auto-flow) **or** MODE is `vibe`: skip this confirm gate and auto-proceed.
+- If `AUTO=yes` (auto-flow): skip this confirm gate and auto-proceed.
 Ask: "Plan sudah benar? Confirm (y/n):"
 - If y: proceed
 - If n: ask "Apa yang perlu diubah?" → revise plan → re-confirm
@@ -405,10 +401,10 @@ for line in open(p):
     if "=" in line:
         k, _, v = line.strip().partition("=")
         f[k] = v
-f["stage"] = "execute"
+f["stage"] = "refine"
 done = [s for s in f.get("stages_done", "").split(",") if s]
-if "feature" not in done:
-    done.append("feature")
+if "plan" not in done:
+    done.append("plan")
 f["stages_done"] = ",".join(done)
 order = ["branch", "created", "stage", "stages_done", "iterations",
          "driver_stage", "driver_progress"]
@@ -418,4 +414,4 @@ PY
 fi
 ```
 
-Next: run `/ec-execute` to implement this plan.
+Next: run `/ec-refine` to audit this plan before any code is written.

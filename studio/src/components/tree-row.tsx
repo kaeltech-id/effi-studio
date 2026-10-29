@@ -15,6 +15,10 @@ interface TreeRowProps {
   onToggle?: () => void;
   onActivate: () => void;
   onRemove?: () => void;
+  /** Progress arrived while this row was not the active project. One glyph, no
+   *  hue and no motion: MOTION 1 forbids a pulsing or fading marker, so
+   *  presence against absence is the whole signal. */
+  activity?: boolean;
 }
 
 /** Rendered flat rather than as nested lists, so depth travels on aria-level:
@@ -30,6 +34,7 @@ export function TreeRow({
   onToggle,
   onActivate,
   onRemove,
+  activity,
 }: TreeRowProps) {
   return (
     <li role="treeitem" aria-level={depth + 1} className="group flex items-center">
@@ -60,6 +65,13 @@ export function TreeRow({
           }`}
         >
           <GitMarkGlyph mark={gitMark} />
+          <span
+            title={activity ? 'Progress since you last looked' : undefined}
+            aria-label={activity ? 'has unseen progress' : undefined}
+            className="w-2 shrink-0 text-center font-mono text-xs text-text"
+          >
+            {activity ? '•' : ''}
+          </span>
           {/* Truncate, never wrap: every row stays one line tall. */}
           <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
           {state && <StageRail stage={state.stage} />}

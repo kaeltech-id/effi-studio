@@ -51,11 +51,12 @@ Context: .claude/context/
 - NEVER add Co-Authored-By to commit messages
 
 ## WORKFLOW RULES
-- After /ec-brainstorm completes → always suggest running /ec-feature
-- After /ec-feature plan approved → always suggest running /ec-execute
+- After /ec-brainstorm completes → always suggest running /ec-plan
+- After /ec-plan completes → always suggest running /ec-refine
+- After /ec-refine is clean → always suggest running /ec-execute
 - After /ec-execute completes → always suggest running /ec-review
 - After /ec-review is clean → always suggest running /ec-git
-- Always guide user through the full flow: /ec-brainstorm → /ec-feature → /ec-execute → /ec-review → /ec-git
+- Always guide user through the full flow: /ec-brainstorm → /ec-plan → /ec-refine → /ec-execute → /ec-review → /ec-git
 ```
 
 ### .claude/project-config.json
@@ -114,10 +115,12 @@ Create the `docs/` directory if it doesn't exist, then write `docs/PROJECT.md`:
 |---------|-------------|
 | /ec-setup | Initialize or update project configuration |
 | /ec-brainstorm | Explore solution approaches before planning |
-| /ec-feature | Plan a feature with tasks and file targets |
+| /ec-plan | Plan a feature with tasks and file targets |
+| /ec-refine | Audit the plan before any code is written |
 | /ec-execute | Implement the current plan sequentially |
 | /ec-review | Review spec compliance and code quality |
 | /ec-git | Commit and push changes |
+| /ec-selfhealing | Detect and auto-fix bugs in any project |
 
 ## Conventions
 {conventions content from .claude/context/conventions.md}
@@ -165,7 +168,7 @@ with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
 ```
 
-Show: "Figma MCP registered — paste any Figma frame link in /ec-feature to use it."
+Show: "Figma MCP registered — paste any Figma frame link in /ec-plan to use it."
 
 If Node.js not available: show "Node.js not found — install it and re-run /ec-setup to enable Figma MCP. Figma REST API fallback will be used."
 
@@ -202,4 +205,4 @@ Show full summary of saved config.
 Ask: "Setup complete. Confirm (y/n):"
 - If y: done
 - If n: ask "Apa yang perlu diubah?" and loop back to update the relevant config
-Next: run `/ec-brainstorm` to explore your first feature, or `/ec-feature` to plan directly.
+Next: run `/ec-brainstorm` to explore your first feature, or `/ec-plan` to plan directly.

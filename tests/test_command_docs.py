@@ -30,9 +30,9 @@ class TestEcSetupProjectDoc:
                         '## Commands', '## Conventions', '## Changelog']:
             assert section in self.content, f'Missing section: {section}'
 
-    def test_commands_table_has_all_six_commands(self):
-        for cmd in ['/ec-setup', '/ec-brainstorm', '/ec-feature',
-                    '/ec-execute', '/ec-review', '/ec-git']:
+    def test_commands_table_has_every_installed_command(self):
+        for cmd in ['/ec-setup', '/ec-brainstorm', '/ec-plan', '/ec-refine',
+                    '/ec-execute', '/ec-review', '/ec-git', '/ec-selfhealing']:
             assert cmd in self.content, f'Missing command in table: {cmd}'
 
     def test_changelog_initial_row_present(self):
@@ -120,7 +120,7 @@ class TestDesignContractChain:
         assert '## Design Direction' in content
 
     def test_feature_builds_and_tags_contract(self):
-        content = read_command('ec-feature.md')
+        content = read_command('ec-plan.md')
         assert '### Design Contract' in content
         assert '[design: {source}#{frame}]' in content
         assert 'not determinable from reference' in content
@@ -131,7 +131,7 @@ class TestDesignContractChain:
         assert 'Deviation:' in content
 
     def test_design_tag_follows_agent_tag(self):
-        content = read_command('ec-feature.md')
+        content = read_command('ec-plan.md')
         for line in content.splitlines():
             if '[agent:' in line and '[design:' in line:
                 assert line.index('[agent:') < line.index('[design:'), line
@@ -170,7 +170,7 @@ class TestDesignDirectionChain:
         assert 'never both' in content
 
     def test_feature_documents_mutual_exclusivity(self):
-        content = read_command('ec-feature.md')
+        content = read_command('ec-plan.md')
         assert '### Design Direction' in content
         assert content.count('never both') >= 2
 
@@ -213,7 +213,7 @@ class TestDesignDirectionChain:
             assert lines <= 90, f'{agent} grew to {lines} lines'
 
     def test_direction_path_defines_design_tag_source(self):
-        content = read_command('ec-feature.md')
+        content = read_command('ec-plan.md')
         assert content.count('literal `direction`') == 2
         assert '[design: direction#SettingsPanel]' in content
 
@@ -222,7 +222,7 @@ class TestDesignDirectionChain:
         assert 'so there is no image to open' in content
 
     def test_antislop_referenced_by_installed_path(self):
-        for name in ['ec-brainstorm.md', 'ec-feature.md', 'ec-execute.md']:
+        for name in ['ec-brainstorm.md', 'ec-plan.md', 'ec-execute.md']:
             content = read_command(name)
             assert '~/.claude/agents/ec-antislop.md' in content, name
         for agent in ALL_FRONTEND_AGENTS:
@@ -248,22 +248,22 @@ class TestGroundedArtifacts:
         assert '**Key assumption:**' in content
 
     def test_feature_has_grounding_pass(self):
-        content = read_command('ec-feature.md')
+        content = read_command('ec-plan.md')
         assert '## Step 2.5 — Grounding Pass' in content
         assert '### Grounding' in content
 
     def test_feature_grounding_is_read_only(self):
-        content = read_command('ec-feature.md')
+        content = read_command('ec-plan.md')
         assert 'read-only' in content
         assert 'MUST NOT run any command that writes' in content
 
     def test_feature_task_template_has_new_fields(self):
-        content = read_command('ec-feature.md')
+        content = read_command('ec-plan.md')
         for field in ['- Anchor:', '- Do not touch:', '- Acceptance:', '- Rollback:']:
             assert field in content, field
 
     def test_feature_states_traceability_rule(self):
-        content = read_command('ec-feature.md')
+        content = read_command('ec-plan.md')
         assert 'Traceability rule' in content
         assert 'traces to a baseline' in content
 
@@ -289,10 +289,10 @@ SENTINEL_COMMAND_FIELDS = ['stage=', 'stages_done=', 'iterations=']
 
 SENTINEL_DRIVER_FIELDS = ['driver_stage', 'driver_progress']
 
-AUTOFLOW_COMMANDS = ['ec-brainstorm.md', 'ec-feature.md',
+AUTOFLOW_COMMANDS = ['ec-brainstorm.md', 'ec-plan.md', 'ec-refine.md',
                      'ec-execute.md', 'ec-review.md']
 
-BODY_COMMAND_WRITTEN = 'branch=main\ncreated=123\nstage=feature\nstages_done=\niterations=0\n'
+BODY_COMMAND_WRITTEN = 'branch=main\ncreated=123\nstage=plan\nstages_done=\niterations=0\n'
 
 BODY_WITH_DRIVER_FIELDS = BODY_COMMAND_WRITTEN + 'driver_stage=execute\ndriver_progress=3\n'
 
@@ -310,7 +310,7 @@ class TestAutoflowSentinelSchema:
         assert '2 hours' in read_command('ec-brainstorm.md')
 
     def test_feature_advances_stage_to_execute(self):
-        assert 'f["stage"] = "execute"' in read_command('ec-feature.md')
+        assert 'f["stage"] = "refine"' in read_command('ec-plan.md')
 
     def test_execute_advances_stage_to_review(self):
         assert 'f["stage"] = "review"' in read_command('ec-execute.md')
@@ -322,11 +322,11 @@ class TestAutoflowSentinelSchema:
     def test_command_still_references_sentinel_path(self, name):
         assert '.claude/.autoflow' in read_command(name)
 
-    @pytest.mark.parametrize('name', ['ec-feature.md', 'ec-execute.md', 'ec-review.md'])
+    @pytest.mark.parametrize('name', ['ec-plan.md', 'ec-execute.md', 'ec-review.md'])
     def test_command_keeps_detection_idiom(self, name):
         assert 'AUTOFLOW=".claude/.autoflow"' in read_command(name)
 
-    @pytest.mark.parametrize('name', ['ec-feature.md', 'ec-execute.md', 'ec-review.md'])
+    @pytest.mark.parametrize('name', ['ec-plan.md', 'ec-execute.md', 'ec-review.md'])
     def test_command_keeps_branch_extraction_idiom(self, name):
         assert "grep '^branch=' \"$AUTOFLOW\"" in read_command(name)
 
@@ -346,18 +346,18 @@ class TestAutoflowSentinelSchema:
 
     def test_brainstorm_writer_matches_command_written_body(self):
         content = read_command('ec-brainstorm.md')
-        assert 'stage=feature\\nstages_done=\\niterations=0\\n' in content
+        assert 'stage=plan\\nstages_done=\\niterations=0\\n' in content
 
     def test_brainstorm_forbids_commands_writing_driver_fields(self):
         content = read_command('ec-brainstorm.md')
         assert 'those belong to the driver alone' in content
 
 
-# --- Exception-only fields + verify split in ec-feature.md ---
+# --- Exception-only fields + verify split in ec-plan.md ---
 
 class TestFeatureTemplateRules:
     def setup_method(self):
-        self.content = read_command('ec-feature.md')
+        self.content = read_command('ec-plan.md')
 
     def test_feature_template_has_no_default_rollback(self):
         """Exception-only fields must not ship with their defaults."""
@@ -431,3 +431,82 @@ class TestReviewTemplateRules:
         assert 'this is the authoritative gate' in self.content
         assert '### Scope boundary' in self.content
         assert 'git status --short' in self.content
+
+
+RETIRED_COMMANDS = ['/ec-mode', '/ec-next', '/ec-export', '/ec-import',
+                    '/ec-feature', '/ec-design']
+
+# tests/ is deliberately excluded: the retired names live there as fixture
+# data, including inside this very test, so a repo-wide sweep would fail on
+# its own input.
+SWEEP_DIRS = ['commands', 'hooks']
+SWEEP_FILES = ['README.md', 'CLAUDE.md', 'install.sh']
+
+
+def _repo(*parts):
+    return os.path.join(os.path.dirname(__file__), '..', *parts)
+
+
+class TestStudioFlowBarCommands:
+    """The flow bar types these strings into a live session. A command renamed
+    in commands/ and not here would type one that does not exist."""
+
+    CHAIN = ['/ec-brainstorm', '/ec-plan', '/ec-refine',
+             '/ec-execute', '/ec-review', '/ec-git']
+
+    def _named(self):
+        with open(_repo('studio', 'src', 'lib', 'flow.ts')) as f:
+            return re.findall(r"command: '(/ec-[a-z-]+)'", f.read())
+
+    def test_every_named_command_exists(self):
+        named = self._named()
+        assert named, 'no FLOW_STEPS command literals found in flow.ts'
+        for cmd in named:
+            path = _repo('commands', cmd.lstrip('/') + '.md')
+            assert os.path.isfile(path), (
+                f'{cmd} is named by the flow bar but {path} is absent')
+
+    def test_chain_is_complete_and_in_order(self):
+        assert self._named() == self.CHAIN
+
+
+class TestRetiredCommandsFullyRemoved:
+    """ec-design proved a rename without a reference sweep leaves debris: the
+    file stayed installed on every upgraded machine because LEGACY_COMMANDS
+    removed "design" but not "ec-design"."""
+
+    def test_no_shipped_file_references_a_retired_command(self):
+        offenders = []
+        targets = [_repo(f) for f in SWEEP_FILES]
+        for d in SWEEP_DIRS:
+            for root, _, names in os.walk(_repo(d)):
+                targets += [os.path.join(root, n) for n in names
+                            if n.endswith(('.md', '.py'))]
+        for path in targets:
+            with open(path) as f:
+                body = f.read()
+            for cmd in RETIRED_COMMANDS:
+                if cmd in body:
+                    offenders.append(f'{os.path.relpath(path, _repo())}: {cmd}')
+        assert not offenders, 'Retired commands still referenced: ' + ', '.join(offenders)
+
+    def test_legacy_commands_covers_every_retired_command(self):
+        with open(_repo('install.sh')) as f:
+            body = f.read()
+        legacy = re.search(r'^LEGACY_COMMANDS=\((.*?)\)$', body, re.M | re.S)
+        assert legacy, 'LEGACY_COMMANDS array not found in install.sh'
+        listed = re.findall(r'"([^"]+)"', legacy.group(1))
+        for cmd in RETIRED_COMMANDS:
+            name = cmd.lstrip('/')
+            assert name in listed, (
+                f'{name} is retired but LEGACY_COMMANDS would leave it '
+                f'installed on every upgraded machine')
+
+    def test_installed_commands_are_exactly_the_eight(self):
+        with open(_repo('install.sh')) as f:
+            body = f.read()
+        arr = re.search(r'^COMMANDS=\((.*?)\)$', body, re.M | re.S)
+        assert arr, 'COMMANDS array not found in install.sh'
+        assert re.findall(r'"([^"]+)"', arr.group(1)) == [
+            'ec-setup', 'ec-brainstorm', 'ec-plan', 'ec-refine',
+            'ec-execute', 'ec-review', 'ec-git', 'ec-selfhealing']

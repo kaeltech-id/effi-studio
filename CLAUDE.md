@@ -10,8 +10,9 @@ Context: .claude/context/
 - NEVER add Co-Authored-By to commit messages
 
 ## WORKFLOW RULES
-- After /ec-brainstorm completes → always suggest running /ec-feature
-- After /ec-feature plan approved → always suggest running /ec-execute
+- After /ec-brainstorm completes → always suggest running /ec-plan
+- After /ec-plan completes → always suggest running /ec-refine
+- After /ec-refine is clean → always suggest running /ec-execute
 - After /ec-execute completes → always suggest running /ec-review
 - After /ec-review is clean → always suggest running /ec-git
-- Always guide user through the full flow: /ec-brainstorm → /ec-feature → /ec-execute → /ec-review → /ec-git
+- Always guide user through the full flow: /ec-brainstorm → /ec-plan → /ec-refine → /ec-execute → /ec-review → /ec-git

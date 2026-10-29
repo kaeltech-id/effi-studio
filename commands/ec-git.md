@@ -1,10 +1,6 @@
 Handle git operations. This is the ONLY way git operations are allowed.
 
 ## Step 1 — What operation?
-**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
-- If `vibe`: skip "After commit/push: ... run /ec-brainstorm" suggestion in Step 3
-- If `structured` (or file absent): proceed normally
-
 Ask: "Mau ngapain di git?"
 Options: commit / push / pull / branch / merge / status / log / lainnya
 

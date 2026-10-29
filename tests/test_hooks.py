@@ -143,10 +143,20 @@ class TestAutoflowDriver:
         _run_driver({"stop_hook_active": True})
         assert path.exists()
 
-    def test_routes_to_execute_when_tasks_remain(self, tmp_path, monkeypatch):
+    def test_routes_to_refine_when_tasks_remain_and_plan_unaudited(
+            self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         _sentinel(tmp_path)
         _plan(tmp_path, done=1, todo=2)
+        payload = _run_driver()
+        assert "/ec-refine" in payload["reason"]
+
+    def test_routes_to_execute_when_tasks_remain_and_plan_audited(
+            self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _sentinel(tmp_path)
+        _plan(tmp_path, done=1, todo=2)
+        (tmp_path / ".claude" / ".refined-main").write_text("")
         payload = _run_driver()
         assert "/ec-execute" in payload["reason"]
 
@@ -164,7 +174,7 @@ class TestAutoflowDriver:
         decision.parent.mkdir(parents=True)
         decision.write_text("# Decision\n")
         payload = _run_driver()
-        assert "/ec-feature" in payload["reason"]
+        assert "/ec-plan" in payload["reason"]
 
     def test_returns_none_when_review_done(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -182,7 +192,7 @@ class TestAutoflowDriver:
         assert not path.exists()
 
     @pytest.mark.parametrize("done,todo,expected", [
-        pytest.param(1, 2, "/ec-execute", id="tasks remaining"),
+        pytest.param(1, 2, "/ec-refine", id="tasks remaining, unaudited"),
         pytest.param(2, 0, "/ec-review", id="all tasks done"),
     ])
     def test_reason_never_instructs_git_stage(self, tmp_path, monkeypatch,
@@ -204,6 +214,40 @@ class TestAutoflowDriver:
         _plan(tmp_path, done=done, todo=todo)
         from session_stop import _next_autoflow_command
         assert _next_autoflow_command("main") != "/ec-git"
+
+    def test_unrefined_plan_routes_to_refine(self, tmp_path, monkeypatch):
+        """A plan with work left and no .refined- sentinel must not reach
+        execute. The driver routes from disk, so without this probe the audit
+        is skipped entirely on the auto path."""
+        monkeypatch.chdir(tmp_path)
+        _plan(tmp_path, done=0, todo=3)
+        from session_stop import _next_autoflow_command
+        assert _next_autoflow_command("main") == "/ec-refine"
+
+    def test_refined_plan_routes_to_execute(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        _plan(tmp_path, done=0, todo=3)
+        (tmp_path / ".claude" / ".refined-main").write_text("")
+        from session_stop import _next_autoflow_command
+        assert _next_autoflow_command("main") == "/ec-execute"
+
+    def test_completed_plan_routes_to_review_without_refine_sentinel(
+            self, tmp_path, monkeypatch):
+        """Auditing a finished plan proves nothing, so the sentinel is
+        irrelevant once every task is done."""
+        monkeypatch.chdir(tmp_path)
+        _plan(tmp_path, done=4, todo=0)
+        from session_stop import _next_autoflow_command
+        assert _next_autoflow_command("main") == "/ec-review"
+
+    def test_decision_without_plan_routes_to_plan_command(
+            self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        d = tmp_path / ".claude" / "decisions"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "main.md").write_text("# Decision\n")
+        from session_stop import _next_autoflow_command
+        assert _next_autoflow_command("main") == "/ec-plan"
 
     def test_continues_when_progress_advanced(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)

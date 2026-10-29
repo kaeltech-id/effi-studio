@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { Doctor, Project, ProjectState, TreeLevel } from './types';
+import type {
+  Doctor,
+  GitInfo,
+  PanelState,
+  Project,
+  ProjectState,
+  TreeLevel,
+} from './types';
 
 /**
  * The single typed boundary to the Rust side. Components import from here and
@@ -29,6 +36,15 @@ export const api = {
   addProject: () => invoke<Project | null>('add_project'),
   removeProject: (id: string) => invoke<void>('remove_project', { id }),
   readState: (path: string) => invoke<ProjectState>('read_project_state', { path }),
+
+  gitInfo: (path: string) => invoke<GitInfo>('git_info', { path }),
+  gitCheckout: (path: string, branch: string) =>
+    invoke<GitInfo>('git_checkout', { path, branch }),
+  gitCreateBranch: (path: string, name: string) =>
+    invoke<GitInfo>('git_create_branch', { path, name }),
+
+  panels: () => invoke<PanelState>('panels'),
+  setPanels: (panels: PanelState) => invoke<void>('set_panels', { panels }),
 
   ptyOpen: (id: string, cwd: string, program: string) =>
     invoke<void>('pty_open', { id, cwd, program }),

@@ -1,4 +1,5 @@
 mod doctor;
+mod git;
 mod plan;
 mod projects;
 mod pty;
@@ -94,7 +95,13 @@ fn install_efficlaude(
     }
     let mut session = pty::spawn(&home, "/bin/bash", shell_env::login_shell_path())?;
     pty::start_reader(app, INSTALL_SESSION.to_string(), session.reader()?);
-    session.write(&format!("bash {}\r", script.to_string_lossy()))?;
+    // The resolved path contains a space in every bundled build
+    // (/Applications/EffiClaude Studio.app/Contents/Resources/install.sh), so it
+    // is single-quoted here: written bare, bash splits it at the space and the
+    // installer never runs. Dev paths have no space, which is why this only ever
+    // failed in the shipped .app.
+    let quoted = format!("'{}'", script.to_string_lossy().replace('\'', r"'\''"));
+    session.write(&format!("bash {quoted}\r"))?;
     map.insert(INSTALL_SESSION.to_string(), session);
     Ok(())
 }
@@ -201,7 +208,12 @@ pub fn run() {
             projects::set_claude_override,
             tree::list_children,
             install_session_id,
-            promote_project
+            promote_project,
+            git::git_info,
+            git::git_checkout,
+            git::git_create_branch,
+            projects::panels,
+            projects::set_panels
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -7,6 +7,7 @@ BRANCH=$(git branch --show-current 2>/dev/null | sed 's/[^a-zA-Z0-9._-]/-/g')
 PLAN_FILE=".claude/plans/${BRANCH}.md"
 DECISION_FILE=".claude/decisions/${BRANCH}.md"
 REVIEW_DONE=".claude/.review-done-${BRANCH}"
+REFINED=".claude/.refined-${BRANCH}"
 REVIEW_SUMMARY=".claude/review-summaries/${BRANCH}.md"
 ```
 Note: "(branch: {BRANCH})"
@@ -20,10 +21,6 @@ Check worker status: `curl -s http://localhost:37777/health`
   `curl -s "http://localhost:37777/docs/search?q={feature_keywords}&project={project_name}&limit=3"`
   Use memory to flag contradictions with past decisions. Use docs to verify API usage.
 - If offline: show "(worker OFFLINE ⚠️ — memory/docs unavailable)" and continue.
-
-**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
-- If `vibe`: skip "Next: run /ec-git" suggestion at end of review
-- If `structured` (or file absent): proceed normally
 
 **Auto-Flow check:** Detect auto-flow chaining:
 ```bash
@@ -104,7 +101,7 @@ Read the plan that was executed (check `.claude/plans/{branch}.md`, and `.claude
 - any `Anchor:` line reading `new file`
 - any `Dependencies:` values forming a straight `Task N-1` chain across more than 3 consecutive tasks
 
-Do NOT check a task's `File:` "new file" claim against the disk here. By review time a new file exists precisely because its task created it, so the check fires on every correctly-executed new-file task. That claim is verifiable only at plan time, and `/ec-feature`'s Grounding Pass plus its self-review checklist item ("Every file a task claims is new was confirmed absent by the Grounding Pass") is where it belongs.
+Do NOT check a task's `File:` "new file" claim against the disk here. By review time a new file exists precisely because its task created it, so the check fires on every correctly-executed new-file task. That claim is verifiable only at plan time, and `/ec-plan`'s Grounding Pass plus its self-review checklist item ("Every file a task claims is new was confirmed absent by the Grounding Pass") is where it belongs.
 
 Report each as template drift with the task number. These fields are **exception-only**: their presence with a default value IS the defect, never their absence. Do NOT flag the plan-level `⚠️ Breaking change risk:` line in `### Impact Analysis` — that one legitimately reads "none".
 
@@ -191,7 +188,7 @@ For each `- [x]` task in the plan, confirm its `Verify (local)` evidence was act
 
 This closes the failure mode where a subagent invents output to clear a threshold. A local verify that was correct when the task ran but was invalidated by a LATER task's change is a plan-ordering defect, not a fabrication — report it as such.
 
-**How to tell the two apart.** A fabrication shows a count BELOW the expectation, or a string that was never written. A plan-ordering defect shows a count ABOVE it, and every extra occurrence is attributable by line number to a later task in the same plan. Always attribute before judging: run the bare `grep -n` and name which task added each extra hit. Only an unattributable discrepancy is a fabrication. Report plan-ordering defects against `/ec-feature`'s count-stability rule, not against the task that ran.
+**How to tell the two apart.** A fabrication shows a count BELOW the expectation, or a string that was never written. A plan-ordering defect shows a count ABOVE it, and every extra occurrence is attributable by line number to a later task in the same plan. Always attribute before judging: run the bare `grep -n` and name which task added each extra hit. Only an unattributable discrepancy is a fabrication. Report plan-ordering defects against `/ec-plan`'s count-stability rule, not against the task that ran.
 
 ### Scope boundary
 Collect every `File:` value in the plan. Then run `git status --short` (read-only — never stage, commit or revert) and confirm every changed path appears in that list. Report any path that does not as an out-of-scope change, naming the task that should have declared it. Exclude workflow artefacts written by the commands themselves (`.claude/plans/`, `.claude/decisions/`, `.claude/docs/`, review summaries) and build output that belongs in gitignore (for example `token-optimizer/target/`).
@@ -253,7 +250,7 @@ curl -s -X POST http://localhost:37777/memory/observe \
 {concise list of all files modified during review}
 ```
 
-**If review is clean**, delete `{DECISION_FILE}` if it exists (run `rm -f {DECISION_FILE}`), then write the review-done sentinel: `touch {REVIEW_DONE}` — this lets `/ec-next` detect that review is complete and route to `/ec-git`.
+**If review is clean**, delete `{DECISION_FILE}` if it exists (run `rm -f {DECISION_FILE}`), then write the review-done sentinel: `touch {REVIEW_DONE}` — this records that review is complete so the next run routes to `/ec-git`.
 
 Then archive the completed plan and tear down any auto-flow sentinel:
 ```bash
@@ -265,10 +262,11 @@ if [ -f "$PLAN_FILE" ]; then
   echo "(plan archived → .claude/plans/archive/)"
 fi
 rm -f .claude/.autoflow
+rm -f "$REFINED"
 ```
 Removing the sentinel in that last line is what stops the `Stop`-hook driver from blocking further turns.
 
-**If review is NOT clean** (unresolved issues remain): also run `rm -f .claude/.autoflow` and stop — the auto-flow chain does not proceed to git.
+**If review is NOT clean** (unresolved issues remain): also run `rm -f .claude/.autoflow` and `rm -f "$REFINED"` and stop — the auto-flow chain does not proceed to git.
 
 ## Step 5 — Write Review Docs
 

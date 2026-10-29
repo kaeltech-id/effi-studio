@@ -1,4 +1,4 @@
-export type Stage = 'Idle' | 'Brainstorm' | 'Feature' | 'Execute' | 'Review';
+export type Stage = 'Idle' | 'Brainstorm' | 'Plan' | 'Refine' | 'Execute' | 'Review';
 
 /** Mirrors the Rust GitMark in tree.rs. Three states, not a boolean: a folder
  *  inside a repository is neither a repository nor unrelated to one. */
@@ -49,15 +49,45 @@ export interface ProjectState {
   rawPlan: string | null;
   history: HistoryEntry[];
   hasDecision: boolean;
+  /** True once `.claude/.review-done-{branch}` exists. `stage` reads `Review`
+   *  either side of that line, so this is what tells the flow bar to name git
+   *  instead of offering review again. */
+  reviewDone: boolean;
 }
 
-/** The four dots of the stage rail, in workflow order. `Idle` is not one of them. */
-export const STAGES: Stage[] = ['Brainstorm', 'Feature', 'Execute', 'Review'];
+/** The five dots of the stage rail, in workflow order. `Idle` is not one of them. */
+export const STAGES: Stage[] = ['Brainstorm', 'Plan', 'Refine', 'Execute', 'Review'];
+
+export interface BranchInfo {
+  name: string;
+  current: boolean;
+}
+
+/** `detached` is explicit rather than inferred from a null branch: the Rust
+ *  side distinguishes a detached HEAD from a folder it could not read. */
+export interface GitInfo {
+  available: boolean;
+  branch: string | null;
+  detached: boolean;
+  branches: BranchInfo[];
+  hidden: number;
+  error: string | null;
+}
+
+export interface PanelState {
+  propertiesCollapsed: boolean;
+  tasksCollapsed: boolean;
+  historyCollapsed: boolean;
+  sidebarCollapsed: boolean;
+  flowCollapsed: boolean;
+}
 
 export interface Doctor {
   claude: string | null;
   commandsFound: number;
   commandsExpected: number;
+  agentsFound: number;
+  agentsExpected: number;
   workerOk: boolean;
 }
 

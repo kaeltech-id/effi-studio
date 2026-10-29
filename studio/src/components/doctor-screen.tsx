@@ -112,6 +112,13 @@ export function DoctorScreen({
       />
 
       <Check
+        ok={doctor.agentsFound >= doctor.agentsExpected}
+        label="EffiClaude agents"
+        optional
+        detail={`${doctor.agentsFound}/${doctor.agentsExpected} in ~/.claude/agents`}
+      />
+
+      <Check
         ok={doctor.workerOk}
         label="worker"
         optional

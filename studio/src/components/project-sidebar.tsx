@@ -20,6 +20,9 @@ interface ProjectSidebarProps {
   onPromote: (path: string) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
+  /** Project ids whose state moved while they were not active. A Set rather
+      than a per-row flag so the sidebar stays a pure render of App's state. */
+  activity: Set<string>;
 }
 
 /** A non-interactive row: loading, empty, or the capped tail. Kept at row
@@ -51,6 +54,7 @@ export function ProjectSidebar({
   onPromote,
   onAdd,
   onRemove,
+  activity,
 }: ProjectSidebarProps) {
   // A child that is already a configured project keeps its identity: it shows
   // that project's rail and selects rather than promoting a second time.
@@ -127,6 +131,7 @@ export function ProjectSidebar({
               onToggle={() => onToggle(p.path)}
               onActivate={() => onSelect(p.id)}
               onRemove={() => onRemove(p.id)}
+              activity={activity.has(p.id)}
             />,
             ...renderChildren(p.path, 1),
           ])}

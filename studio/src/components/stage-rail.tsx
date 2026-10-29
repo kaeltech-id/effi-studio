@@ -3,7 +3,7 @@ import { STAGES, type Stage } from '../lib/types';
 const SIZE = { sm: 'h-1.5 w-1.5', md: 'h-2 w-2' } as const;
 
 /** Completed dots filled muted, the current one ringed in accent, future dots
- *  at border weight. Idle gives idx -1, so nothing is ringed and all four read
+ *  at border weight. Idle gives idx -1, so nothing is ringed and all five read
  *  unfilled — the right look for a project that has never run the workflow. */
 function dotClass(i: number, current: number, size: keyof typeof SIZE): string {
   const base = `${SIZE[size]} rounded-full shrink-0`;

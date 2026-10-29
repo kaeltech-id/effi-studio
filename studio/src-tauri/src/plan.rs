@@ -35,7 +35,8 @@ const AUTOFLOW_MAX_AGE: u64 = 7200;
 pub enum Stage {
     Idle,
     Brainstorm,
-    Feature,
+    Plan,
+    Refine,
     Execute,
     Review,
 }
@@ -43,7 +44,8 @@ pub enum Stage {
 fn stage_from_name(name: &str) -> Option<Stage> {
     match name {
         "brainstorm" => Some(Stage::Brainstorm),
-        "feature" => Some(Stage::Feature),
+        "plan" => Some(Stage::Plan),
+        "refine" => Some(Stage::Refine),
         "execute" => Some(Stage::Execute),
         "review" => Some(Stage::Review),
         _ => None,
@@ -79,14 +81,21 @@ fn derive_stage(root: &Path, branch: &str, plan: Option<&str>, has_decision: boo
     if let Some(md) = plan {
         let tasks = parse_tasks(md);
         if tasks.iter().any(|t| !t.done) {
-            return Stage::Execute;
+            // Mirrors the driver in hooks/session_stop.py: an unaudited plan is
+            // waiting on /ec-refine, not on execution. The panel and the chain
+            // must never disagree about which stage a project is in.
+            return if root.join(format!(".claude/.refined-{branch}")).exists() {
+                Stage::Execute
+            } else {
+                Stage::Refine
+            };
         }
         if !tasks.is_empty() {
             return Stage::Review;
         }
     }
     if has_decision {
-        return Stage::Feature;
+        return Stage::Plan;
     }
     Stage::Idle
 }
@@ -184,6 +193,11 @@ pub struct ProjectState {
     pub raw_plan: Option<String>,
     pub history: Vec<HistoryEntry>,
     pub has_decision: bool,
+    /// `derive_stage` returns `Stage::Review` both for a plan awaiting review
+    /// and for one whose review is finished (plan.rs:78 vs :94). Only this
+    /// field separates them, and the UI needs the difference to name git as the
+    /// next step rather than offering review a second time.
+    pub review_done: bool,
 }
 
 /// Returns a value in every case and never `Err` — a failure here would blank
@@ -200,6 +214,8 @@ pub fn read_project_state(path: String) -> ProjectState {
     let done = tasks.iter().filter(|t| t.done).count();
     let total = tasks.len();
 
+    let review_done = root.join(format!(".claude/.review-done-{branch}")).exists();
+
     let stage = stage_from_sentinel(&root, &branch)
         .unwrap_or_else(|| derive_stage(&root, &branch, plan.as_deref(), has_decision));
 
@@ -213,5 +229,6 @@ pub fn read_project_state(path: String) -> ProjectState {
         raw_plan: plan,
         history: read_history(&root),
         has_decision,
+        review_done,
     }
 }

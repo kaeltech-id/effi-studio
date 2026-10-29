@@ -207,23 +207,31 @@ def _plan_counts(branch):
 
 
 def _next_autoflow_command(branch):
-    """Route from on-disk state, mirroring commands/ec-next.md:47-53 truncated
-    before the /ec-git row. Returns None when the chain is finished."""
+    """Route from on-disk state. Returns None when the chain is finished.
+
+    The refine sentinel sits between a written plan and execution: without
+    probing it the router would read "plan with incomplete tasks" and skip the
+    audit entirely on the auto path.
+    """
     if os.path.exists(os.path.join(".claude", f".review-done-{branch}")):
         return None
     counts = _plan_counts(branch)
     if counts is not None:
         done, todo = counts
         if todo > 0:
-            return "/ec-execute"
+            refined = os.path.exists(
+                os.path.join(".claude", f".refined-{branch}"))
+            return "/ec-execute" if refined else "/ec-refine"
+        # Auditing a finished plan proves nothing, so the sentinel is
+        # irrelevant once every task is done.
         if done > 0:
             return "/ec-review"
     if os.path.exists(os.path.join(".claude", "decisions", f"{branch}.md")):
-        return "/ec-feature"
+        return "/ec-plan"
     try:
         if any(n.endswith(".md")
                for n in os.listdir(os.path.join(".claude", "brainstorms"))):
-            return "/ec-feature"
+            return "/ec-plan"
     except Exception:
         pass
     return None

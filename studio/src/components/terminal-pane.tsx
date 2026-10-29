@@ -12,10 +12,16 @@ interface TerminalPaneProps {
    *  open one. The installer's PTY is opened by install_efficlaude, so a pane
    *  that called ptyOpen would spawn a second, empty shell beside it. */
   program: string | null;
+  /** Bumped by the app after a flow-bar dispatch, which moved DOM focus to a
+   *  button. Zero is the initial value and never steals focus. */
+  focusNonce?: number;
 }
 
-export function TerminalPane({ projectId, cwd, program }: TerminalPaneProps) {
+export function TerminalPane({ projectId, cwd, program, focusNonce }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  /** The live Terminal, so a dispatch can hand focus back without the pane
+   *  re-opening the PTY. Cleared on dispose so a stale handle is never used. */
+  const termRef = useRef<Terminal | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -36,6 +42,7 @@ export function TerminalPane({ projectId, cwd, program }: TerminalPaneProps) {
     term.loadAddon(fit);
     term.open(host);
     fit.fit();
+    termRef.current = term;
 
     // Bytes, not a string: xterm decodes UTF-8 across chunk boundaries itself.
     const unlistenOutput = onPtyOutput(projectId, (bytes) => term.write(bytes));
@@ -68,9 +75,16 @@ export function TerminalPane({ projectId, cwd, program }: TerminalPaneProps) {
       observer.disconnect();
       void unlistenOutput.then((off) => off());
       void unlistenExit.then((off) => off());
+      termRef.current = null;
       term.dispose();
     };
   }, [projectId, cwd, program]);
+
+  // Kept out of the effect above: adding the nonce to its dependencies would
+  // tear down and re-open the PTY on every dispatch.
+  useEffect(() => {
+    if (focusNonce) termRef.current?.focus();
+  }, [focusNonce]);
 
   return <div ref={hostRef} className="h-full w-full" />;
 }

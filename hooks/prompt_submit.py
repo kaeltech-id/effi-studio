@@ -186,16 +186,6 @@ def check_context_staleness():
     return None
 
 
-def get_mode_indicator():
-    try:
-        mode_file = Path(os.getcwd()) / ".claude" / ".mode"
-        if mode_file.exists() and mode_file.read_text().strip() == "vibe":
-            return "⚡ **VIBE MODE active** — run `/ec-mode structured` to switch back"
-    except Exception:
-        pass
-    return None
-
-
 def main():
     if "--refresh-update" in sys.argv[1:]:
         refresh_update_cache()
@@ -218,7 +208,6 @@ def main():
     maybe_refresh_update()
     update_msg = check_update()
     staleness_msg = check_context_staleness()
-    mode_indicator = get_mode_indicator()
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         mem_future = ex.submit(get_memory_context, project, prompt)
@@ -246,9 +235,6 @@ def main():
 
     if staleness_msg:
         parts.insert(0, f"**{staleness_msg}**")
-
-    if mode_indicator:
-        parts.insert(0, mode_indicator)
 
     if not parts:
         sys.exit(0)

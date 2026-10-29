@@ -10,7 +10,12 @@ Detect bugs and improvement opportunities in any project, then auto-fix them. In
 ```bash
 BRANCH=$(git branch --show-current 2>/dev/null | sed 's/[^a-zA-Z0-9._-]/-/g')
 [ -z "$BRANCH" ] && BRANCH="default"
-PLAN_FILE=".claude/plans/${BRANCH}.md"
+# Its own file, never the shared plan. Writing to .claude/plans/{branch}.md
+# would destroy an in-progress feature plan, which the file lock does not
+# prevent: the lock stops concurrent access, not sequential overwriting.
+# A separate file also keeps these plans out of the driver's routing, which
+# probes .claude/plans/{branch}.md.
+PLAN_FILE=".claude/plans/selfheal-${BRANCH}.md"
 SESSION_ID=$(python3 -c "import uuid; print(str(uuid.uuid4())[:8])")
 ```
 

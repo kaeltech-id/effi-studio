@@ -64,14 +64,17 @@ If `remaining == 0` and `done > 0`:
   Show: "All {done} tasks already complete — run /ec-review."
   Stop.
 If `remaining == 0` and `done == 0`:
-  Show: "No tasks found in {PLAN_FILE}. Run /ec-feature first."
+  Show: "No tasks found in {PLAN_FILE}. Run /ec-plan first."
   Stop.
 If `done > 0` and `remaining > 0`:
   Show: "Resuming: {done} tasks already done, {remaining} remaining."
 
-**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
-- If `vibe`: skip Step 6 memory save (`curl .../memory/observe`), skip "Next: run /ec-review" in Step 7 report
-- If `structured` (or file absent): proceed normally
+**Refine gate:** Check `.claude/.refined-{BRANCH}`.
+- Absent: stop — "Plan has not been audited. Run /ec-refine first."
+  On the auto path this is a chain error: run `rm -f .claude/.autoflow` and stop.
+- Present: proceed. Delete it once EVERY task is done — not per task, or a
+  resumed run would fail its own gate — so the next plan on this branch must be
+  audited afresh.
 
 **Auto-Flow check:** Detect auto-flow chaining:
 ```bash
@@ -84,7 +87,7 @@ if [ -f "$AUTOFLOW" ]; then
   if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
 fi
 ```
-When `AUTO=yes`: auto-skip confirmation gates (like `vibe`). On any abnormal stop, delete the sentinel (see Error Recovery / Timeout). On successful completion, leave the sentinel for `/ec-review` to consume. Partial progress is safe: if this context ends mid-plan (context exhaustion or compaction), the Stop-hook driver re-invokes `/ec-execute` from the plan file's remaining `- [ ]` lines — so do NOT delete the sentinel merely because the context ended mid-plan; only a genuine abort (Error Recovery / Timeout) deletes it.
+When `AUTO=yes`: auto-skip confirmation gates. On any abnormal stop, delete the sentinel (see Error Recovery / Timeout). On successful completion, leave the sentinel for `/ec-review` to consume. Partial progress is safe: if this context ends mid-plan (context exhaustion or compaction), the Stop-hook driver re-invokes `/ec-execute` from the plan file's remaining `- [ ]` lines — so do NOT delete the sentinel merely because the context ended mid-plan; only a genuine abort (Error Recovery / Timeout) deletes it.
 
 ## Step 2 — Pre-flight Check
 Before executing, verify:

@@ -14,10 +14,6 @@ Check worker status: `curl -s http://localhost:37777/health`
 
 Use memory to surface: past decisions, similar problems solved before, patterns already in use. Do not dump raw memory — silently inform your suggestions.
 
-**Mode check:** Run `cat .claude/.mode 2>/dev/null || echo "structured"` → note as MODE.
-- If `vibe`: skip all (y/n) confirmation gates, skip Step 5 memory save (`curl .../memory/observe`), skip Step 6 "Next: run /ec-feature" suggestion
-- If `structured` (or file absent): proceed normally
-
 **Branch detection:** Run:
 ```bash
 BRANCH=$(git branch --show-current 2>/dev/null | sed 's/[^a-zA-Z0-9._-]/-/g')
@@ -112,14 +108,14 @@ Format:
 
 ### Recommendation Constraints (non-negotiable)
 - NEVER recommend batching, phasing, or splitting implementation into multiple /ec-execute cycles
-- The recommendation describes ONE complete approach, implemented in ONE /ec-feature + /ec-execute cycle
-- If scope seems large: that is fine — /ec-feature handles any number of tasks in a flat list
+- The recommendation describes ONE complete approach, implemented in ONE /ec-plan + /ec-execute cycle
+- If scope seems large: that is fine — /ec-plan handles any number of tasks in a flat list
 - "Start with X, then do Y later" is not a recommendation — it is two recommendations. Pick one complete solution.
 
 After presenting:
 "Setuju lanjut dengan ini? (y / auto / n — atau describe apa yang kurang):"
 - If y: proceed to Step 4 (normal sharpening flow)
-- If auto: skip Step 4 sharpening — go straight to Step 5 "now" save, then trigger the auto-flow chain (see Step 7). Auto-flow runs /ec-feature → /ec-execute → /ec-review with no further confirmation, stopping before git. Auto-flow survives context exhaustion: the `Stop`-hook driver resumes the chain from on-disk state, so it runs to completion regardless of how many context windows it takes.
+- If auto: skip Step 4 sharpening — go straight to Step 5 "now" save, then trigger the auto-flow chain (see Step 7). Auto-flow runs /ec-plan → /ec-refine → /ec-execute → /ec-review with no further confirmation, stopping before git. Auto-flow survives context exhaustion: the `Stop`-hook driver resumes the chain from on-disk state, so it runs to completion regardless of how many context windows it takes.
 - If n or feedback: adjust the recommendation based on feedback, re-present, ask again. Do not revert to showing multiple options.
 
 **Auto-Flow sentinel format** (first written by the auto path in Step 7): file `.claude/.autoflow`, one `key=value` per line, eight fields in this order:
@@ -128,7 +124,7 @@ After presenting:
 |---|---|---|
 | `branch` | command | Branch the chain belongs to |
 | `created` | command | Unix epoch the chain started |
-| `stage` | command | `feature` \| `execute` \| `review` — stage last handed off |
+| `stage` | command | `plan` \| `refine` \| `execute` \| `review` — stage last handed off |
 | `stages_done` | command | Comma-separated completed stages; empty at start |
 | `iterations` | driver only | Driver bookkeeping; starts `0`, hard cap 40 |
 | `driver_stage` | driver only | Last stage observed by the driver |
@@ -136,7 +132,7 @@ After presenting:
 | `no_progress` | driver only | Consecutive turns with no new completed work; chain abandoned at 3 |
 
 - Commands write `branch`, `created`, `stage`, `stages_done` only. Never write `iterations`, `driver_stage`, `driver_progress`, or `no_progress` — those belong to the driver alone.
-- Progress signal: a turn counts as productive if `stage` advanced OR the plan's `- [x]` count rose. `/ec-execute` emits that signal per completed task; `/ec-feature` and `/ec-review` may legitimately produce none for a turn, which is why the driver tolerates 3 consecutive no-progress turns rather than giving up after one.
+- Progress signal: a turn counts as productive if `stage` advanced OR the plan's `- [x]` count rose. `/ec-execute` emits that signal per completed task; `/ec-plan` and `/ec-review` may legitimately produce none for a turn, which is why the driver tolerates 3 consecutive no-progress turns rather than giving up after one.
 - Routing authority is the on-disk state files (plan file, `- [ ]` counts, decision file, review-done sentinel), never the `stage=` field. `stage=` is a trail for humans and logs, not a decision input.
 - The `Stop` hook `hooks/session_stop.py` drives the chain: it reads the sentinel at the end of every turn and blocks with the next command until the chain finishes. Auto-flow therefore survives context exhaustion and compaction.
 - Consumed and removed by /ec-review. Treated as stale (ignored + deleted) by any command if older than 2 hours or if its branch ≠ current branch.
@@ -152,13 +148,13 @@ Present the deepening in **sections of 200-300 words each**. After each section,
 
 3. **Dependencies & Impact** — What other parts of the system need to change. Any required migrations, config changes, or breaking changes.
 
-4. **Implementation Order** — High-level sequence: what gets built first, what unlocks what. No task breakdown yet (that's /ec-feature's job).
+4. **Implementation Order** — High-level sequence: what gets built first, what unlocks what. No task breakdown yet (that's /ec-plan's job).
 
 Only present sections that add value — skip any section where the answer is obvious or already covered in Step 3.
 
 ## Step 5 — Save
 
-Ask: "Lanjut ke /ec-feature sekarang atau simpan untuk nanti? (now/save):"
+Ask: "Lanjut ke /ec-plan sekarang atau simpan untuk nanti? (now/save):"
 
 **If "now":**
 **Lock check:** Before writing the decision file, check for a concurrent brainstorm session:
@@ -232,7 +228,7 @@ _Hard limits the implementation must respect — stack, compatibility, deadline,
 - {constraint}
 
 ## Non-Goals
-_Things deliberately not attempted in this cycle, so /ec-feature does not plan them._
+_Things deliberately not attempted in this cycle, so /ec-plan does not plan them._
 - {non-goal}
 
 ## Risks & Mitigations
@@ -256,7 +252,7 @@ _Created: {YYYY-MM-DD}_
 - No repo evidence gathered → write the Evidence section as the single line `- none — reasoning is from the problem statement alone`.
 - Fewer than three options considered → render only the rows that exist, in both the table and the bullets below it.
 - No unresolved items → write Open Questions as the single line `- none`.
-- Decision files written before these sections existed remain valid input to `/ec-feature` — never rewrite them.
+- Decision files written before these sections existed remain valid input to `/ec-plan` — never rewrite them.
 
 **If "save":**
 Generate a slug from the problem title: lowercase, spaces→hyphens, max 5 words (e.g. "race-condition-memory-fix").
@@ -280,21 +276,21 @@ curl -s -X POST http://localhost:37777/memory/observe \
 Show summary of the decision.
 
 **If "now":**
-Next: run `/ec-feature` — it will load this decision automatically.
-If the decision file contains a `## Design Contract` section, state: "(design contract captured — /ec-feature will plan UI tasks against it)".
+Next: run `/ec-plan` — it will load this decision automatically.
+If the decision file contains a `## Design Contract` section, state: "(design contract captured — /ec-plan will plan UI tasks against it)".
 
 **If "save":**
-Run `/ec-feature` when ready — it will show a numbered list of saved brainstorms to pick from.
+Run `/ec-plan` when ready — it will show a numbered list of saved brainstorms to pick from.
 
 ## Step 7 — Auto-Flow Chain (only if user chose `auto` in Step 3)
 After the decision file is saved (Step 5 "now" path), run the full chain automatically:
 1. Write the sentinel:
    ```bash
    mkdir -p .claude
-   printf 'branch=%s\ncreated=%s\nstage=feature\nstages_done=\niterations=0\n' \
+   printf 'branch=%s\ncreated=%s\nstage=plan\nstages_done=\niterations=0\n' \
      "$BRANCH" "$(date +%s)" > .claude/.autoflow
    ```
-2. Invoke `/ec-feature` via the Skill tool and let it run to completion (it auto-loads {DECISION_FILE}, auto-confirms because AUTO=yes).
+2. Invoke `/ec-plan` via the Skill tool and let it run to completion (it auto-loads {DECISION_FILE}, auto-confirms because AUTO=yes).
 3. Then invoke `/ec-execute` via the Skill tool and let it run all tasks (auto-confirms because AUTO=yes).
 4. Then invoke `/ec-review` via the Skill tool (auto-runs, archives the plan, deletes the sentinel, stops before git).
 5. Surface a final summary and suggest `/ec-git`. Never run git.

@@ -42,6 +42,32 @@ pub struct StudioConfig {
     pub projects: Vec<Project>,
     #[serde(default)]
     pub claude_override: Option<String>,
+    #[serde(default)]
+    pub panels: PanelState,
+}
+
+/// Which rail sections are collapsed. Persisted, unlike the sidebar's
+/// expansion state: that is a transient view of the filesystem, while a
+/// collapsed panel is a preference the user expects to survive a relaunch.
+/// Default is all sections open, so an older studio.json needs no migration.
+///
+/// camelCase while the parent StudioConfig is snake_case, which looks
+/// inconsistent inside one file and is deliberate: this struct also crosses to
+/// the frontend via the `panels` command, and the wire convention there is
+/// camelCase (the reason is recorded at plan.rs:177-179). Renaming the parent
+/// instead would stop it reading a studio.json written by any earlier build.
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PanelState {
+    pub properties_collapsed: bool,
+    pub tasks_collapsed: bool,
+    pub history_collapsed: bool,
+    /// The left sidebar, not a rail section. It lives here so there is one
+    /// persistence mechanism for every collapsible surface rather than two.
+    pub sidebar_collapsed: bool,
+    /// The flow bar above the terminal. Default open, like every other region:
+    /// the row exists to be read before it is dismissed.
+    pub flow_collapsed: bool,
 }
 
 /// studio.json sits beside the worker's state but is the only file this app owns.
@@ -147,6 +173,18 @@ pub fn remove_project(id: String) -> Result<(), String> {
     // retain() makes an unknown id a no-op success — the UI may fire twice on a
     // fast double-click, and that is not an error.
     cfg.projects.retain(|p| p.id != id);
+    save(&cfg)
+}
+
+#[tauri::command]
+pub fn panels() -> PanelState {
+    load().panels
+}
+
+#[tauri::command]
+pub fn set_panels(panels: PanelState) -> Result<(), String> {
+    let mut cfg = load();
+    cfg.panels = panels;
     save(&cfg)
 }
 

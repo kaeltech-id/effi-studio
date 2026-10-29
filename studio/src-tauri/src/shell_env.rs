@@ -33,6 +33,10 @@ use std::path::PathBuf;
 
 const FALLBACKS: [&str; 3] = [".local/bin/claude", ".claude/local/claude", "bin/claude"];
 
+/// Absolute fallbacks, not $HOME-relative like FALLBACKS: git is a system or
+/// package-manager binary, never a per-user install.
+const GIT_FALLBACKS: [&str; 3] = ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"];
+
 pub fn resolve_claude(override_path: Option<&str>) -> Result<PathBuf, String> {
     if let Some(p) = override_path.filter(|p| !p.is_empty()) {
         let candidate = PathBuf::from(p);
@@ -59,4 +63,25 @@ pub fn resolve_claude(override_path: Option<&str>) -> Result<PathBuf, String> {
     }
 
     Err("claude binary not found — set it manually in Settings".into())
+}
+
+/// The BINARY, resolved to an absolute path on purpose. `git` is commonly a
+/// shell function here — the etok wrapper install.sh appends to .zshrc — which
+/// pipes `branch` and other subcommands through $ETOK. Running git through a
+/// login shell would therefore return an optimised summary instead of a real
+/// branch list, so every caller must exec this path directly.
+pub fn resolve_git() -> Result<PathBuf, String> {
+    for dir in login_shell_path().split(':').filter(|d| !d.is_empty()) {
+        let candidate = PathBuf::from(dir).join("git");
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    for fallback in GIT_FALLBACKS {
+        let candidate = PathBuf::from(fallback);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err("git binary not found on PATH".into())
 }
