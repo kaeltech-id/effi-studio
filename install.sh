@@ -20,12 +20,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_INSTALL=false
 [ -f "$SCRIPT_DIR/commands/ec-setup.md" ] && LOCAL_INSTALL=true
 
+# Remote mode makes ~58 sequential requests, so a bare curl is a liability: one
+# stalled connection hangs the whole install indefinitely with no output and
+# nothing to recover from, and the symptom is an installer that looks frozen
+# part-way down a list. The timeouts bound that wait; --retry covers curl's
+# transient set, which includes the timeout abort, so a stall is retried while a
+# genuine 404 still fails on the first try instead of sleeping through three.
+CURL_OPTS=(--fail --silent --show-error --location
+           --connect-timeout 10 --max-time 30
+           --retry 3 --retry-delay 2)
+
 fetch_file() {
   local rel="$1" dest="$2"
   if [ "$LOCAL_INSTALL" = true ]; then
     cp "$SCRIPT_DIR/$rel" "$dest"
   else
-    curl -fsSL "$BASE_URL/$rel" -o "$dest"
+    curl "${CURL_OPTS[@]}" "$BASE_URL/$rel" -o "$dest"
   fi
 }
 
@@ -194,13 +204,13 @@ if command -v cargo &>/dev/null; then
     (cd "$SCRIPT_DIR/token-optimizer" && cargo build --release -q && cp target/release/etok "$BIN_DIR/etok")
   else
     TMPDIR_ETOK=$(mktemp -d)
-    curl -fsSL "$BASE_URL/token-optimizer/Cargo.toml" -o "$TMPDIR_ETOK/Cargo.toml"
+    curl "${CURL_OPTS[@]}" "$BASE_URL/token-optimizer/Cargo.toml" -o "$TMPDIR_ETOK/Cargo.toml"
     mkdir -p "$TMPDIR_ETOK/src/filters"
     for f in main.rs; do
-      curl -fsSL "$BASE_URL/token-optimizer/src/$f" -o "$TMPDIR_ETOK/src/$f"
+      curl "${CURL_OPTS[@]}" "$BASE_URL/token-optimizer/src/$f" -o "$TMPDIR_ETOK/src/$f"
     done
     for f in mod.rs generic.rs git.rs npm.rs docker.rs cargo.rs; do
-      curl -fsSL "$BASE_URL/token-optimizer/src/filters/$f" -o "$TMPDIR_ETOK/src/filters/$f"
+      curl "${CURL_OPTS[@]}" "$BASE_URL/token-optimizer/src/filters/$f" -o "$TMPDIR_ETOK/src/filters/$f"
     done
     (cd "$TMPDIR_ETOK" && cargo build --release -q && cp target/release/etok "$BIN_DIR/etok")
     rm -rf "$TMPDIR_ETOK"
@@ -209,7 +219,8 @@ if command -v cargo &>/dev/null; then
   echo "  ✓ etok built from source"
 else
   RELEASE_URL="https://github.com/$REPO/releases/latest/download/etok-$PLATFORM"
-  if curl -fsSL "$RELEASE_URL" -o "$BIN_DIR/etok" 2>/dev/null; then
+  if curl --fail --silent --location --connect-timeout 10 --max-time 120 \
+     --retry 3 --retry-delay 2 "$RELEASE_URL" -o "$BIN_DIR/etok" 2>/dev/null; then
     chmod +x "$BIN_DIR/etok"
     ETOK_INSTALLED=true
     echo "  ✓ etok downloaded (pre-built binary)"
