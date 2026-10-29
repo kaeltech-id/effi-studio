@@ -42,7 +42,7 @@ WORKER_RESTART_WAIT_SECS = 5
 VERSION_FILE = os.path.expanduser("~/.efficlaude/VERSION")
 UPDATE_CHECK_FILE = os.path.expanduser("~/.efficlaude/.last_update_check")
 REMOTE_VERSION_CACHE = os.path.expanduser("~/.efficlaude/.remote_version")
-VERSION_URL = "https://raw.githubusercontent.com/kaeltech-id/EffiClaude/main/VERSION"
+VERSION_URL = "https://raw.githubusercontent.com/kaeltech-id/effi-studio/main/VERSION"
 
 
 def get_project_name():

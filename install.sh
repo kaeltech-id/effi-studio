@@ -2,7 +2,7 @@
 
 set -e
 
-REPO="kaeltech-id/EffiClaude"
+REPO="kaeltech-id/effi-studio"
 BRANCH="main"
 EFFICLAUDE_HOME="$HOME/.efficlaude"
 COMMANDS_DIR="$HOME/.claude/commands"

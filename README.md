@@ -35,7 +35,7 @@ Built for developers who want Claude to remember everything, plan precisely, and
 ## Install
 
 ```bash
-git clone git@github.com:kaeltech-id/EffiClaude.git
+git clone git@github.com:kaeltech-id/effi-studio.git
 cd EffiClaude
 bash install.sh
 ```
@@ -52,7 +52,7 @@ Installs commands to `~/.claude/commands/`, starts worker daemon, registers hook
 A desktop window over the same workflow: add your project folders, get a terminal
 wired to your own `claude` in each one, and watch tasks tick off as `/ec-execute` runs.
 
-Download the `.dmg` from [Releases](https://github.com/kaeltech-id/EffiClaude/releases),
+Download the `.dmg` from [Releases](https://github.com/kaeltech-id/effi-studio/releases),
 drag it to Applications, then **right-click → Open** the first time — the app is
 ad-hoc signed, not notarized, so a plain double-click is refused by Gatekeeper.
 
@@ -217,7 +217,7 @@ your-project/
 
 ## Contributing
 
-Issues and PRs welcome at [github.com/kaeltech-id/EffiClaude](https://github.com/kaeltech-id/EffiClaude)
+Issues and PRs welcome at [github.com/kaeltech-id/effi-studio](https://github.com/kaeltech-id/effi-studio)
 
 ---
 
