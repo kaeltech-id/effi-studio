@@ -1,31 +1,43 @@
 import struct, zlib
 
 N, SS = 1024, 3                      # output size, supersampling factor
-GROUND, MUTED, ACCENT = (0x0E,0x11,0x16), (0x8A,0x93,0xA5), (0x4C,0x9A,0xFF)
-RADIUS = 224                         # rounded-square ground
-DOT_D, GAP = 196, 244                # large dots: four of them must not merge at 16pt
-RING_W = 36
+GROUND, SURFACE, COPPER = (0x10,0x11,0x12), (0x17,0x19,0x1B), (0xE5,0xA1,0x7C)
 
-def in_round_rect(x, y, n, r):
-    cx = min(max(x, r), n - r)
-    cy = min(max(y, r), n - r)
-    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+TILE_HALF, TILE_EXP = 412, 5         # squircle |x/412|^5 + |y/412|^5 = 1 on (512,512)
+MARK = 532                           # mark box, 51.95% of N -> spans 246..778
+UNIT = MARK / 18                     # effi-mark.svg grid unit -> canvas px (29.5556)
+ORIGIN = (N - MARK) / 2 - 3 * UNIT   # grid (3,3) is the mark box corner (157.3333)
+MITER = 2 ** 0.5                     # 45deg miter offset for a 2-wide stroke
+
+def in_squircle(x, y, n, half, p):
+    return abs((x - n / 2) / half) ** p + abs((y - n / 2) / half) ** p <= 1
+
+def in_mark(u, v):
+    """True inside effi-mark.svg, in its 24-unit grid. Stroke 2, butt caps,
+    miter joins -> every edge is a half-plane, so each piece is an intersection
+    of inequalities."""
+    # Open angular frame "M21 4H8L4 8v8l4 4h13": the stroke is the +-1 offset
+    # hexagon minus the -1 offset hexagon. Both 45deg chamfers sit on x+y and
+    # y-x, displaced by the miter offset. The right side stays open: neither
+    # hexagon is bounded on the right, so nothing closes the frame.
+    outer = (3 <= u <= 21 and 3 <= v <= 21
+             and u + v >= 12 - MITER and v - u <= 12 + MITER)
+    inner = (u >= 5 and 5 <= v <= 19
+             and u + v >= 12 + MITER and v - u <= 12 - MITER)
+    if outer and not inner:
+        return True
+    # Interior bars "M8 9h8M8 15h8"
+    if 8 <= u <= 16 and (8 <= v <= 10 or 14 <= v <= 16):
+        return True
+    # Right-hand square "M18 10.5h3v3h-3z"
+    return 18 <= u <= 21 and 10.5 <= v <= 13.5
 
 def sample(x, y):
     """Returns (r,g,b,a) for one supersample point."""
-    if not in_round_rect(x, y, N, RADIUS):
-        return (0, 0, 0, 0)
-    for i in range(4):
-        dx = x - (N / 2 + (i - 1.5) * GAP)
-        dy = y - N / 2
-        d2 = dx * dx + dy * dy
-        if i < 3:                                     # completed: filled muted
-            if d2 <= (DOT_D / 2) ** 2:
-                return MUTED + (255,)
-        else:                                         # current: ringed accent
-            outer, inner = DOT_D / 2, DOT_D / 2 - RING_W
-            if inner * inner <= d2 <= outer * outer:
-                return ACCENT + (255,)
+    if in_mark((x - ORIGIN) / UNIT, (y - ORIGIN) / UNIT):
+        return COPPER + (255,)
+    if in_squircle(x, y, N, TILE_HALF, TILE_EXP):
+        return SURFACE + (255,)
     return GROUND + (255,)
 
 rows = []

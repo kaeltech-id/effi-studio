@@ -104,8 +104,12 @@ export function ProjectSidebar({
     return rows;
   }
 
+  /* TASK 110. The COLUMN owns the width now — 220/208/192 by band, and a 260px
+   * drawer below 900px (App.tsx) — so this nav fills whatever it is given
+   * instead of asserting 256px of its own. A `w-64 shrink-0` here would
+   * overflow every one of the four bands. */
   return (
-    <nav className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
+    <nav className="flex min-w-0 flex-1 flex-col border-r border-border bg-surface">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
         <span className="text-sm">Projects</span>
         <span className="font-mono text-xs text-muted">{projects.length}</span>

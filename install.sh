@@ -56,6 +56,95 @@ step() {
   echo "$1"
 }
 
+# ── Component selection ───────────────────────────────────────────────────────
+# This installer used to be all-or-nothing, but the product is modular now: a
+# user who selects only a browser, or only Codex, must not get Claude hooks
+# written into ~/.claude/settings.json or a Python worker installed. --only=a,b
+# narrows the run to the named components. With no --only flag at all the
+# selection is EVERY component, so a bare invocation — how every existing user
+# and Studio's install_efficlaude command call this — behaves exactly as before.
+#
+# The guarded sections below keep their original indentation on purpose, so the
+# change that added the guards stays one readable line per section.
+INSTALL_COMPONENTS=("commands" "agents" "worker" "hooks" "pydeps" "optimizer" "daemon")
+
+# Parts of the wider product that this script installs nothing for. Naming one
+# is valid and simply selects no work here; it is neither a typo to reject nor a
+# reason to fall through to installing everything.
+EXTERNAL_COMPONENTS=("browser" "codex")
+
+ONLY_GIVEN=false
+SELECTED_COMPONENTS=""
+
+# Returns 0 if the named component was selected.
+want_component() {
+  if [ "$ONLY_GIVEN" = false ]; then
+    return 0
+  fi
+  case " $SELECTED_COMPONENTS " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+usage() {
+  echo "Usage: install.sh [--only=COMPONENT[,COMPONENT...]]"
+  echo ""
+  echo "  --only=...  install only the named components (default: all of them)"
+  echo "              installable here: ${INSTALL_COMPONENTS[*]}"
+  echo "              accepted, nothing to install here: ${EXTERNAL_COMPONENTS[*]}"
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --only=*)
+      ONLY_GIVEN=true
+      IFS=',' read -r -a REQUESTED_COMPONENTS <<<"${arg#--only=}"
+      for want in "${REQUESTED_COMPONENTS[@]}"; do
+        want="${want// /}"
+        if [ -z "$want" ]; then
+          continue
+        fi
+        known=false
+        for name in "${INSTALL_COMPONENTS[@]}" "${EXTERNAL_COMPONENTS[@]}"; do
+          if [ "$want" = "$name" ]; then
+            known=true
+            break
+          fi
+        done
+        if [ "$known" = false ]; then
+          fail "Unknown component '$want' in '$arg'" \
+               "Valid components: ${INSTALL_COMPONENTS[*]} ${EXTERNAL_COMPONENTS[*]}"
+        fi
+        SELECTED_COMPONENTS="$SELECTED_COMPONENTS $want"
+      done
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "Unknown option '$arg'" "Run 'install.sh --help' for the accepted flags"
+      ;;
+  esac
+done
+
+# A selection that names nothing this script installs (e.g. --only=browser) is a
+# successful no-op. It must not reach the Python check or create any directory,
+# and it must never be read as "nothing selected, so install everything".
+if [ "$ONLY_GIVEN" = true ]; then
+  HAS_WORK=false
+  for name in "${INSTALL_COMPONENTS[@]}"; do
+    if want_component "$name"; then
+      HAS_WORK=true
+    fi
+  done
+  if [ "$HAS_WORK" = false ]; then
+    echo "Nothing to install: --only selected no components this installer provides."
+    exit 0
+  fi
+fi
+
 echo "Installing EffiClaude..."
 echo ""
 [ "$LOCAL_INSTALL" = true ] && echo "  (local install — copying from repo)"
@@ -87,6 +176,7 @@ fi
 mkdir -p "$COMMANDS_DIR" "$AGENTS_DIR" "$HOOKS_DIR" "$SERVER_DIR" "$BIN_DIR" "$SHELL_DIR" "$EFFICLAUDE_HOME/chroma"
 
 # ── 3. Install Claude commands ────────────────────────────────────────────────
+if want_component commands; then
 step "Installing commands"
 for cmd in "${COMMANDS[@]}"; do
   fetch_file "commands/$cmd.md" "$COMMANDS_DIR/$cmd.md"
@@ -94,6 +184,7 @@ for cmd in "${COMMANDS[@]}"; do
 done
 fetch_file "VERSION" "$EFFICLAUDE_HOME/VERSION"
 echo "  ✓ VERSION"
+fi
 
 # Both the unprefixed originals and the ec- prefixed commands this release
 # retires. The list previously removed "design" but not "ec-design", which is
@@ -109,21 +200,26 @@ for cmd in "${LEGACY_COMMANDS[@]}"; do
 done
 
 # ── 3b. Install Claude agents ─────────────────────────────────────────────────
+if want_component agents; then
 step "Installing agents"
 for agent in "${AGENTS[@]}"; do
   fetch_file "agents/$agent.md" "$AGENTS_DIR/$agent.md"
   echo "  ✓ @$agent"
 done
+fi
 
 # ── 4. Install server files ───────────────────────────────────────────────────
+if want_component worker; then
 step "Installing worker service"
 for file in "${SERVER_FILES[@]}"; do
   fetch_file "server/$file" "$SERVER_DIR/$file"
   echo "  ✓ server/$file"
 done
 chmod +x "$SERVER_DIR/start.sh" "$SERVER_DIR/stop.sh" "$SERVER_DIR/watchdog.sh"
+fi
 
 # ── 5. Install hooks ──────────────────────────────────────────────────────────
+if want_component hooks; then
 step "Installing hooks"
 for file in "${HOOK_FILES[@]}"; do
   fetch_file "hooks/$file" "$HOOKS_DIR/$file"
@@ -138,14 +234,18 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
   chmod +x "$GIT_HOOKS_DIR/commit-msg"
   echo "  ✓ commit-msg hook installed in .git/hooks/"
 fi
+fi
 
 # ── 6. Install Python dependencies ───────────────────────────────────────────
+if want_component pydeps; then
 step "Installing Python dependencies"
 pip3 install -q -r "$SERVER_DIR/requirements.txt" \
   || fail "Failed to install Python dependencies" "Check pip3 and $SERVER_DIR/requirements.txt, then re-run this installer"
 echo "  ✓ Python dependencies installed"
+fi
 
 # ── 7. Register hooks in ~/.claude/settings.json ─────────────────────────────
+if want_component hooks; then
 step "Registering hooks"
 
 SETTINGS_FILE="$HOME/.claude/settings.json"
@@ -188,8 +288,10 @@ with open(settings_path, "w") as f:
 
 print("  ✓ Hooks registered in ~/.claude/settings.json")
 PYEOF
+fi
 
 # ── 8. Install token optimizer (etok) ────────────────────────────────────────
+if want_component optimizer; then
 step "Installing token optimizer (etok)"
 
 # Source cargo env so rustup-installed cargo is visible in non-interactive shells
@@ -242,8 +344,10 @@ if [ "$ETOK_INSTALLED" = true ]; then
   done
   echo "  ✓ Shell wrappers installed (git, npm, yarn, pnpm, docker, cargo)"
 fi
+fi
 
 # ── 9. Register daemon ────────────────────────────────────────────────────────
+if want_component daemon; then
 step "Registering auto-start daemon"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -275,12 +379,15 @@ else
   echo "  ℹ Daemon auto-start not configured for this OS."
   echo "    Start manually with: python3 ~/.efficlaude/server/worker.py &"
 fi
+fi
 
 # ── 10. Restart worker (stop + start to load new code) ───────────────────────
+if want_component worker; then
 step "Restarting worker"
 bash "$SERVER_DIR/stop.sh" 2>/dev/null || true
 sleep 1
 bash "$SERVER_DIR/start.sh"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""

@@ -44,7 +44,29 @@ pub struct StudioConfig {
     pub claude_override: Option<String>,
     #[serde(default)]
     pub panels: PanelState,
+    #[serde(default)]
+    pub experiences: crate::experiences::ExperienceState,
+    /// The workbench arrangement: which tabs are open, in which order. Metadata
+    /// only — tabs.rs clears every session id before a write, so a restored tab
+    /// never claims a process (tabs.rs:52-60).
+    #[serde(default)]
+    pub tabs: crate::tabs::WorkbenchTabs,
+    /// Path overrides and user-defined CLIs. Without this field a custom CLI
+    /// could be described but not launched: pty_open resolves through the
+    /// registry, and the registry only knows what was persisted here.
+    #[serde(default)]
+    pub providers: crate::agents::ProviderState,
+    /// Connections and their per-consumer bindings. Credential REFERENCES
+    /// only — projects.rs never sees a secret (connections.rs:40-52).
+    #[serde(default)]
+    pub connections: crate::connections::ConnectionState,
 }
+
+// Every field above carries #[serde(default)] for one reason: an existing
+// studio.json written by an earlier build has none of the newer keys, and
+// load() below turns a single deserialisation failure into
+// StudioConfig::default() — i.e. into an empty project list. A missing default
+// anywhere here costs the user every project they had added.
 
 /// Which rail sections are collapsed. Persisted, unlike the sidebar's
 /// expansion state: that is a transient view of the filesystem, while a
@@ -201,4 +223,165 @@ pub fn set_claude_override(path: Option<String>) -> Result<(), String> {
     let mut cfg = load();
     cfg.claude_override = path.filter(|p| !p.is_empty());
     save(&cfg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The reason every StudioConfig field carries #[serde(default)], proved
+    /// rather than asserted: a studio.json written before tabs, providers or
+    /// experiences existed must still deserialise. One missing default makes
+    /// this input fail, load() swallows the failure into StudioConfig::default()
+    /// and the user's whole project list disappears on first launch.
+    ///
+    /// Deliberately a serde-level test with a literal input — load() reads
+    /// $HOME/.efficlaude/studio.json, and no test may touch the real file.
+    #[test]
+    fn config_from_before_the_newer_keys_keeps_its_projects() {
+        let old = r#"{
+            "projects": [
+                { "id": "a1b2c3", "name": "EffiClaude", "path": "/Users/me/dev/EffiClaude" },
+                { "id": "d4e5f6", "name": "studio", "path": "/Users/me/dev/studio" }
+            ],
+            "claude_override": "/Users/me/.local/bin/claude",
+            "panels": { "sidebarCollapsed": true }
+        }"#;
+
+        let cfg: StudioConfig = serde_json::from_str(old).expect("old studio.json must load");
+
+        assert_eq!(cfg.projects.len(), 2);
+        assert_eq!(cfg.projects[0].name, "EffiClaude");
+        assert_eq!(cfg.projects[1].path, "/Users/me/dev/studio");
+        assert_eq!(
+            cfg.claude_override.as_deref(),
+            Some("/Users/me/.local/bin/claude")
+        );
+        assert!(cfg.panels.sidebar_collapsed);
+        // The keys the old file never had, defaulted rather than fatal.
+        assert!(cfg.tabs.open.is_empty());
+        assert!(cfg.providers.overrides.is_empty());
+        assert!(cfg.providers.custom.is_empty());
+        assert!(!cfg.experiences.build_enabled);
+        assert!(cfg.connections.items.is_empty());
+    }
+
+    /// The same shape as a file, through the exact expression load() uses, so
+    /// the degrade-to-default branch is shown not to fire. A scratch file in the
+    /// OS temp dir, never $HOME/.efficlaude/studio.json: a test that read the
+    /// user's own config would prove nothing and could rewrite it.
+    #[test]
+    fn an_old_file_does_not_degrade_to_default() {
+        let path = std::env::temp_dir().join("efficlaude-compat-studio.json");
+        std::fs::write(
+            &path,
+            r#"{"projects":[{"id":"a1","name":"p","path":"/tmp/p"}],"claude_override":null,"panels":{}}"#,
+        )
+        .unwrap();
+
+        // load()'s body with config_path() swapped for the scratch file.
+        let cfg: StudioConfig = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(cfg.projects.len(), 1, "projects must survive the load path");
+        assert_eq!(cfg.projects[0].id, "a1");
+        assert!(cfg.tabs.open.is_empty());
+        assert!(cfg.providers.custom.is_empty());
+        assert!(cfg.connections.items.is_empty());
+    }
+
+    /// The same proof for `connections`, the newest field, against the hardest
+    /// input it will meet: a studio.json carrying EVERY key that existed before
+    /// it and populated values in all of them. The two tests above start from a
+    /// sparse file, which a missing default on an early field would also
+    /// survive; this one would not.
+    ///
+    /// Read through load()'s exact expression from a real file, because the
+    /// failure being excluded is load() swallowing a deserialisation error into
+    /// `StudioConfig::default()` — an assert on `from_str` alone never reaches
+    /// that branch. The OS temp dir, never $HOME/.efficlaude/studio.json: a
+    /// test that read the user's own config would prove nothing and could
+    /// rewrite it.
+    #[test]
+    fn a_full_config_written_before_connections_existed_keeps_everything() {
+        let before_connections = r#"{
+            "projects": [
+                { "id": "a1b2c3", "name": "EffiClaude", "path": "/Users/me/dev/EffiClaude" }
+            ],
+            "claude_override": "/Users/me/.local/bin/claude",
+            "panels": { "propertiesCollapsed": true, "flowCollapsed": true },
+            "experiences": { "buildEnabled": true },
+            "tabs": {
+                "open": [
+                    {
+                        "id": "t1",
+                        "projectId": "a1b2c3",
+                        "type": "agent",
+                        "title": "Agent",
+                        "providerId": "claude-code"
+                    },
+                    {
+                        "id": "t2",
+                        "projectId": "a1b2c3",
+                        "type": "shell",
+                        "title": "Shell",
+                        "providerId": null
+                    }
+                ]
+            },
+            "providers": {
+                "overrides": { "codex": "/opt/homebrew/bin/codex" },
+                "custom": [
+                    {
+                        "id": "aider",
+                        "name": "Aider",
+                        "program": "/Users/me/My Tools/aider",
+                        "args": ["--no-auto-commits"]
+                    }
+                ]
+            }
+        }"#;
+
+        let path = std::env::temp_dir().join("efficlaude-pre-connections-studio.json");
+        std::fs::write(&path, before_connections).unwrap();
+
+        // load()'s body with config_path() swapped for the scratch file.
+        let cfg: StudioConfig = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
+        let _ = std::fs::remove_file(&path);
+
+        // The degrade-to-default branch did not fire: the projects are here.
+        assert_eq!(cfg.projects.len(), 1, "projects must survive the load path");
+        assert_eq!(cfg.projects[0].name, "EffiClaude");
+        assert_eq!(cfg.projects[0].path, "/Users/me/dev/EffiClaude");
+        // And so is everything the older keys carried, unshifted by the new one.
+        assert_eq!(
+            cfg.claude_override.as_deref(),
+            Some("/Users/me/.local/bin/claude")
+        );
+        assert!(cfg.panels.properties_collapsed);
+        assert!(cfg.panels.flow_collapsed);
+        assert!(!cfg.panels.sidebar_collapsed);
+        assert!(cfg.experiences.build_enabled);
+        assert_eq!(cfg.tabs.open.len(), 2);
+        assert_eq!(cfg.tabs.open[0].provider_id.as_deref(), Some("claude-code"));
+        assert_eq!(
+            cfg.providers.overrides.get("codex").map(String::as_str),
+            Some("/opt/homebrew/bin/codex")
+        );
+        assert_eq!(cfg.providers.custom.len(), 1);
+        assert_eq!(cfg.providers.custom[0].args, vec!["--no-auto-commits"]);
+
+        // The key this file could not have had, defaulted rather than fatal.
+        assert!(
+            cfg.connections.items.is_empty(),
+            "a file written before connections existed has none"
+        );
+    }
 }

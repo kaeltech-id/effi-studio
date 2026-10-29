@@ -1,20 +1,38 @@
 @import "tailwindcss";
 
-/* The five colors and two faces from the plan's Design Direction, copied, not
-   re-chosen. Dark-only by design: there is no light theme and no
-   prefers-color-scheme branch. The accent is reserved for the active project
-   and the stage badge — spending it on buttons or links dilutes the one signal
-   it carries. */
+/* The Precision Atelier palette from DESIGN-SPEC.md §3, copied, not re-chosen:
+   warm graphite surfaces, off-white text, copper as the only accent. Dark-only
+   by design: there is no light theme and no prefers-color-scheme branch.
+   Copper means selection and primary action; sage means healthy — separate
+   names on purpose, so a selected checkbox can never be styled as "healthy".
+   --color-accent is a temporary alias of copper so the call sites still naming
+   it keep resolving; migrating them to copper is a later task. */
 @theme {
-  --color-ground: #0E1116;
-  --color-surface: #161A21;
-  --color-border: #232935;
-  --color-text: #E6E9EF;
-  --color-muted: #8A93A5;
-  --color-accent: #4C9AFF;
+  --color-ground: #101112;
+  --color-surface: #17191B;
+  --color-raised: #1D2023;
+  --color-hover: #25292D;
+  --color-border: #30353B;
+  --color-text: #F3EFE9;
+  --color-muted: #A4ABB2;
+  --color-copper: #E5A17C;
+  --color-accent: var(--color-copper);
+
+  --color-on-copper: #211710;
+  --color-copper-tint: #30241E;
+  --color-success: #9CC5AF;
+  --color-warning: #E6C182;
+  --color-error: #EDA6A6;
+  --color-terminal: #E2E5E8;
 
   --font-ui: ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* MOTION 1: 120-160ms. 150ms is not a new number -- it is the value all 50
+     transition sites already use, named here so the band has one home rather
+     than being re-decided per component. Drawers, popovers and the tab strip
+     all resolve to it. */
+  --duration-ui: 150ms;
 }
 
 html,
@@ -25,4 +43,29 @@ body,
   background: var(--color-ground);
   color: var(--color-text);
   font-family: var(--font-ui);
+}
+
+/* Reduced motion is honoured per-utility at every call site -- all 15
+   components carrying a transition or animation also carry
+   `motion-reduce:transition-none` or `motion-reduce:animate-none`, audited at
+   0 unguarded. This block is the safety net, not the mechanism: a component
+   added later that forgets the variant is still stilled, so the guarantee does
+   not depend on every future author remembering.
+
+   `!important` is deliberate. Tailwind's utilities and this rule have the same
+   specificity, so without it the later-emitted utility would win and the net
+   would quietly do nothing.
+
+   The indeterminate states this stills stay VISIBLE when stopped -- they read
+   as "in progress" by their shape and their words, never by their movement,
+   so stilling them removes no information. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

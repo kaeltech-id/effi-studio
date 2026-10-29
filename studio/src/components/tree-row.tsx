@@ -1,6 +1,5 @@
 import type { GitMark, ProjectState } from '../lib/types';
 import { GitMarkGlyph } from './git-mark';
-import { StageRail } from './stage-rail';
 
 interface TreeRowProps {
   name: string;
@@ -72,11 +71,24 @@ export function TreeRow({
           >
             {activity ? '•' : ''}
           </span>
-          {/* Truncate, never wrap: every row stays one line tall. */}
-          <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
-          {state && <StageRail stage={state.stage} />}
+          {/* Truncate, never wrap: every row stays one line tall.
+              `min-w-[4.5rem]` is a floor, not a preference. This span is the
+              only flex item carrying `min-w-0`, so it absorbs the WHOLE deficit
+              when the row runs out of room while its siblings keep their
+              intrinsic width. Without a floor that collapsed the project name —
+              the one thing the row exists to identify — to `orb…` at 220px and
+              to a single letter `o` at 192px, measured in a real browser at the
+              four target sizes. */}
+          <span className="min-w-[4.5rem] flex-1 truncate text-sm">{name}</span>
+          {/* No StageRail here, matching mockups/03-build-workbench: its sidebar
+              rows carry the project name and a branch line, and nothing else.
+              The rail costs ~44px plus a gap in a 192px column, and the active
+              project's stage is already drawn full-size in the workbench
+              header, so a second copy per row bought a duplicate and spent the
+              name to get it. The numeric counter stays: it says more per pixel
+              than five dots and it shrinks without becoming unreadable. */}
           {state && (
-            <span className="font-mono text-xs text-muted">
+            <span className="shrink-0 font-mono text-xs text-muted">
               {state.done}/{state.total}
             </span>
           )}

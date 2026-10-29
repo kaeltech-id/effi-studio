@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="Effi Studio">
+  <!--
+    Effi Studio — macOS app icon SOURCE.
+
+    THIS IS THE ONLY ICON. There is exactly one app icon for both experiences;
+    Build and Verify are expressed as TEXT in the UI, never as separate icons.
+    Do NOT add a Verify icon.
+
+    LITERAL HEX IS CORRECT HERE, and only here. Everywhere else in this
+    codebase colour comes from a CSS custom property, but an icon is exported
+    to .icns/.png outside the stylesheet and cannot read one. These three
+    values are therefore hard-coded on purpose:
+      #101112  field       (the 100px macOS margin showing around the tile)
+      #17191B  squircle    (the icon tile itself)
+      #E5A17C  mark        (copper)
+
+    LAYOUT (1024 canvas)
+      Field      0..1024 full bleed.
+      Squircle   824 x 824 centred -> the macOS content box, 100px margin on
+                 every side (824/1024 = 80.5%, Big Sur app-icon proportion).
+      Mark       532 x 532 centred on (512, 512) -> 51.95% of the canvas
+                 ("roughly 52%"), spanning 246..778. The mark is the master
+                 effi-mark.svg path data scaled by 532/18 = 29.5556 and
+                 translated by 157.333; its proportions are untouched.
+
+    THE SQUIRCLE IS A GENUINE SUPERELLIPSE, NOT A ROUNDED RECT.
+      Curve:    |x/412|^5 + |y/412|^5 = 1, centred on (512, 512).
+      Emitted as 64 cubic Bezier segments fitted per octant against the
+      analytic curve: max deviation 0.018px on a 1024 canvas, zero gap
+      between segments.
+      Why it is not a rounded rect: curvature varies CONTINUOUSLY all the way
+      along the boundary (radius of curvature 13255px at 1deg -> 801px at
+      10deg -> 179px at 30deg -> 126.8px at the 45deg corner, then back out
+      symmetrically). A rounded rect has infinite radius along the flats and
+      then a single step discontinuity to one constant radius. Fitting the
+      best rounded rect (r = 126.8px) to this outline leaves a 229px maximum
+      error on the top edge alone.
+
+    No raster element, no embedded bitmap, no filters, no gradients, no masks.
+    Paths only, so this file exports cleanly at any size.
+  -->
+
+  <!-- field -->
+  <path d="M0 0H1024V1024H0Z" fill="#101112" />
+
+  <!-- squircle: superellipse |x/412|^5 + |y/412|^5 = 1, 64 fitted cubics -->
+  <path
+    fill="#17191B"
+    d="M512 100C527.44 100 542.88 100 558.31 100C573.75 100 589.19 100.01 604.63 100.05
+       C620.07 100.09 635.5 100.16 650.94 100.36C666.38 100.56 681.82 100.89 697.24 101.53
+       C712.66 102.16 728.08 103.11 743.44 104.72C758.78 106.32 774.1 108.56 789.14 112.03
+       C804.17 115.5 818.98 120.2 832.9 126.91C846.81 133.62 859.73 142.39 870.67 153.33
+       C881.61 164.27 890.38 177.19 897.09 191.1C903.8 205.02 908.5 219.83 911.97 234.86
+       C915.44 249.9 917.68 265.22 919.28 280.56C920.89 295.92 921.84 311.34 922.47 326.76
+       C923.11 342.18 923.44 357.62 923.64 373.06C923.84 388.5 923.91 403.93 923.95 419.37
+       C923.99 434.81 924 450.25 924 465.69C924 481.12 924 496.56 924 512
+       C924 527.44 924 542.88 924 558.31C924 573.75 923.99 589.19 923.95 604.63
+       C923.91 620.07 923.84 635.5 923.64 650.94C923.44 666.38 923.11 681.82 922.47 697.24
+       C921.84 712.66 920.89 728.08 919.28 743.44C917.68 758.78 915.44 774.1 911.97 789.14
+       C908.5 804.17 903.8 818.98 897.09 832.9C890.38 846.81 881.61 859.73 870.67 870.67
+       C859.73 881.61 846.81 890.38 832.9 897.09C818.98 903.8 804.17 908.5 789.14 911.97
+       C774.1 915.44 758.78 917.68 743.44 919.28C728.08 920.89 712.66 921.84 697.24 922.47
+       C681.82 923.11 666.38 923.44 650.94 923.64C635.5 923.84 620.07 923.91 604.63 923.95
+       C589.19 923.99 573.75 924 558.31 924C542.88 924 527.44 924 512 924
+       C496.56 924 481.12 924 465.69 924C450.25 924 434.81 923.99 419.37 923.95
+       C403.93 923.91 388.5 923.84 373.06 923.64C357.62 923.44 342.18 923.11 326.76 922.47
+       C311.34 921.84 295.92 920.89 280.56 919.28C265.22 917.68 249.9 915.44 234.86 911.97
+       C219.83 908.5 205.02 903.8 191.1 897.09C177.19 890.38 164.27 881.61 153.33 870.67
+       C142.39 859.73 133.62 846.81 126.91 832.9C120.2 818.98 115.5 804.17 112.03 789.14
+       C108.56 774.1 106.32 758.78 104.72 743.44C103.11 728.08 102.16 712.66 101.53 697.24
+       C100.89 681.82 100.56 666.38 100.36 650.94C100.16 635.5 100.09 620.07 100.05 604.63
+       C100.01 589.19 100 573.75 100 558.31C100 542.88 100 527.44 100 512
+       C100 496.56 100 481.12 100 465.69C100 450.25 100.01 434.81 100.05 419.37
+       C100.09 403.93 100.16 388.5 100.36 373.06C100.56 357.62 100.89 342.18 101.53 326.76
+       C102.16 311.34 103.11 295.92 104.72 280.56C106.32 265.22 108.56 249.9 112.03 234.86
+       C115.5 219.83 120.2 205.02 126.91 191.1C133.62 177.19 142.39 164.27 153.33 153.33
+       C164.27 142.39 177.19 133.62 191.1 126.91C205.02 120.2 219.83 115.5 234.86 112.03
+       C249.9 108.56 265.22 106.32 280.56 104.72C295.92 103.11 311.34 102.16 326.76 101.53
+       C342.18 100.89 357.62 100.56 373.06 100.36C388.5 100.16 403.93 100.09 419.37 100.05
+       C434.81 100.01 450.25 100 465.69 100C481.12 100 496.56 100 512 100Z"
+  />
+
+  <!-- ===== MARK: effi-mark.svg path data, scaled 29.5556x. DO NOT EDIT. ===== -->
+  <!-- currentColor is replaced by the literal copper because an exported icon
+       has no CSS parent to inherit `color` from. Geometry is unchanged. -->
+  <g transform="translate(157.333333 157.333333) scale(29.555556)">
+    <path
+      d="M21 4H8L4 8v8l4 4h13"
+      stroke="#E5A17C"
+      stroke-width="2"
+      stroke-linecap="butt"
+      stroke-linejoin="miter"
+      stroke-miterlimit="4"
+    />
+    <path
+      d="M8 9h8M8 15h8"
+      stroke="#E5A17C"
+      stroke-width="2"
+      stroke-linecap="butt"
+      stroke-linejoin="miter"
+      stroke-miterlimit="4"
+    />
+    <path d="M18 10.5h3v3h-3z" fill="#E5A17C" />
+  </g>
+</svg>

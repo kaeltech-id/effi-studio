@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 40" fill="none" role="img" aria-label="Effi Studio">
+  <!--
+    Effi + STUDIO horizontal lockup.
+
+    DERIVED FROM effi-mark.svg — NOT REDRAWN.
+    The mark below is the master path data verbatim (open frame, two interior
+    bars, accent square, stroke-width 2, butt caps, miter joins, currentColor),
+    wrapped in one uniform transform. Nothing about its proportions changes:
+      translate(6.666667 6.666667) scale(1.111111)
+      -> master symbol bounds x3..21 / y3..21 land on x10..30 / y10..30.
+
+    GEOMETRY
+      Symbol height            20 units
+      Clear space              10 units = half the symbol height, on ALL four
+                               sides. Content is confined to x10..150, y10..30;
+                               the mark occupies x10..30, y10..30.
+      Effi wordmark            cap height 16, baseline y28, stem 2.5
+                               (stem/cap = 0.156 -> semibold), x40..73.5
+      STUDIO                   cap height 10, baseline y28, stem 1.5,
+                               tracking 3.4 (0.34em), x82..137.3
+      Vertical centre          the mark, the Effi cap block (12..28) and the
+                               STUDIO cap block (18..28) all centre on y20.
+
+    TEXT IS OUTLINED. This file contains no SVG text element, no embedded
+    typeface rule and no font reference of any kind. Every letter is a
+    filled path, so
+    the lockup renders identically with no fonts installed on the viewer's
+    machine. No raster, no filters, no gradients, no masks — paths only.
+    The letterforms are drawn on the mark's
+    own grid: flat (butt) terminals, square i-dot echoing the accent square,
+    monoline 1.5/2.5 stems.
+
+    ============================  MINIMUM SIZE  ============================
+    MINIMUM WIDTH FOR THIS LOCKUP: 96px. Use 96-120px and above.
+
+    Below ~96px the STUDIO line stops being legible. At 96px wide the render
+    scale is 96/160 = 0.6, so STUDIO's 1.5-unit stems land on 0.90px — already
+    sub-pixel, and its cap height is only 6.0px. At 80px wide those become
+    0.75px stems and a 5.0px cap: the stems grey out to a smear and the O/D
+    counters (2.7 x 3.5 units) close up.
+
+    CONSUMERS MUST NOT SCALE THIS LOCKUP BELOW 96px WIDE.
+    Below that floor, drop to the bare mark (effi-mark.svg) instead. Shrinking
+    the lockup is never the answer; swapping to the symbol is.
+    =======================================================================
+
+    There is exactly ONE lockup. Build and Verify are expressed as TEXT
+    elsewhere in the UI — never as a second logo. Do not add Build/Verify
+    lockup variants.
+
+    Colour: currentColor throughout, same contract as the master. Set `color`
+    on the parent — copper #E5A17C on dark, parchment #F3EFE9 on graphite.
+  -->
+
+  <!-- ===== MARK: effi-mark.svg, uniformly scaled. DO NOT EDIT THE PATH DATA. ===== -->
+  <g transform="translate(6.666667 6.666667) scale(1.111111)">
+    <path
+      d="M21 4H8L4 8v8l4 4h13"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="butt"
+      stroke-linejoin="miter"
+      stroke-miterlimit="4"
+    />
+    <path
+      d="M8 9h8M8 15h8"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="butt"
+      stroke-linejoin="miter"
+      stroke-miterlimit="4"
+    />
+    <path d="M18 10.5h3v3h-3z" fill="currentColor" />
+  </g>
+
+  <!-- ===== WORDMARK "Effi" — outlined, cap height 16, baseline y28 ===== -->
+  <path
+    fill="currentColor"
+    d="M40 12H50V14.5H42.5V18.75H49V21.25H42.5V25.5H50V28H40Z
+       M53.9 28V19.5H52V17H53.9V16A4 4 0 0 1 57.9 12H60.2V14.5H57.9A1.5 1.5 0 0 0 56.4 16V17H58.7V19.5H56.4V28Z
+       M62.4 28V19.5H60.5V17H62.4V16A4 4 0 0 1 66.4 12H68.7V14.5H66.4A1.5 1.5 0 0 0 64.9 16V17H67.2V19.5H64.9V28Z
+       M71 17H73.5V28H71Z
+       M71 12.5H73.5V15H71Z"
+  />
+
+  <!-- ===== "STUDIO" — outlined small caps, cap height 10, baseline y28 ===== -->
+  <path
+    fill="currentColor"
+    fill-rule="evenodd"
+    d="M88.789 19.892A3.5 2.875 0 1 0 85.5 23.75A2 1.375 0 1 1 83.621 25.595L82.211 26.108A3.5 2.875 0 1 0 85.5 22.25A2 1.375 0 1 1 87.379 20.405Z
+       M92.4 18H99.4V19.5H96.65V28H95.15V19.5H92.4Z
+       M102.8 18V24.4A3.6 3.6 0 0 0 110 24.4V18H108.5V24.4A2.1 2.1 0 0 1 104.3 24.4V18Z
+       M113.4 18H115.6A5 5 0 0 1 115.6 28H113.4Z
+       M114.9 19.5H115.6A3.5 3.5 0 0 1 115.6 26.5H114.9Z
+       M124 18H125.5V28H124Z
+       M128.9 23A4.2 5 0 1 0 137.3 23A4.2 5 0 1 0 128.9 23Z
+       M130.4 23A2.7 3.5 0 1 0 135.8 23A2.7 3.5 0 1 0 130.4 23Z"
+  />
+</svg>

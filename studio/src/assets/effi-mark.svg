@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" role="img" aria-label="Effi">
+  <!--
+    Effi brand mark — master vector.
+
+    Construction (24-unit grid, stroke weight 2):
+      - Open angular frame: top arm, 45° chamfered shoulder, left spine,
+        45° chamfered shoulder, bottom arm. The right side is DELIBERATELY
+        open (14-unit gap) — it must never close into a rectangle.
+      - Two interior horizontal bars complete the capital E.
+      - A small solid square sits on the right, on the optical midline.
+      Meaning: efficiency (the E) inside a workspace frame.
+
+    Colour: every stroke and fill is currentColor. Set `color` on the
+    parent — copper #E5A17C on dark, parchment #F3EFE9 on graphite.
+
+    CLEAR SPACE: keep a margin of half the symbol height — the symbol is
+    18 grid units tall, so clear space is 9 units (0.5x) on all four
+    sides. Nothing may intrude into that zone.
+
+    Minimum size: 16px. All counters (gaps) are 3-4 grid units = 2-2.7px
+    at 16px against a 1.33px stroke, so the interior bars stay separate
+    and the frame stays visibly open.
+  -->
+  <path
+    d="M21 4H8L4 8v8l4 4h13"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="butt"
+    stroke-linejoin="miter"
+    stroke-miterlimit="4"
+  />
+  <path
+    d="M8 9h8M8 15h8"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="butt"
+    stroke-linejoin="miter"
+    stroke-miterlimit="4"
+  />
+  <path d="M18 10.5h3v3h-3z" fill="currentColor" />
+</svg>

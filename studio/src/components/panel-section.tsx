@@ -21,10 +21,18 @@ export function PanelSection({ title, collapsed, onToggle, detail, children }: P
         type="button"
         onClick={onToggle}
         aria-expanded={!collapsed}
-        className="flex h-8 shrink-0 items-center gap-2 px-2 text-left"
+        // Inset ring, like every other full-width control in the rail: an
+        // outward offset on a header that spans its section would be drawn
+        // half outside the section's own border.
+        className="flex h-8 shrink-0 items-center gap-2 px-2 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper"
       >
-        {/* The one rotation in the app. MOTION 1 allows a chevron, nothing else. */}
-        <span className="w-4 shrink-0 font-mono text-xs text-muted">{collapsed ? '▸' : '▾'}</span>
+        {/* The one rotation in the app. MOTION 1 allows a chevron, nothing else.
+            Hidden from assistive tech: `aria-expanded` above already says open
+            or closed, and the glyph would otherwise be announced by its
+            Unicode name before the title the user is looking for. */}
+        <span aria-hidden="true" className="w-4 shrink-0 font-mono text-xs text-muted">
+          {collapsed ? '▸' : '▾'}
+        </span>
         <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
         {detail && <span className="font-mono text-xs text-muted">{detail}</span>}
       </button>
