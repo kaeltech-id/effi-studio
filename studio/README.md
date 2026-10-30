@@ -142,8 +142,10 @@ below is listed as implemented because a menu, a form or a mockup exists.
   the native window cannot be captured without granting the shell macOS Screen
   Recording permission. Every screenshot is the real production bundle rendered
   in a browser with stubbed IPC and sample data.
-- **`npm run tauri build` has never completed on this tree**, so there is no
-  signed bundle and no DMG from this work.
+- **`npm run build:dmg` produced an ad-hoc signed universal DMG on this tree**,
+  verified by mounting it and reading its architectures — `lipo -archs` reports
+  `x86_64 arm64`. It is **not notarized**, so a downloaded copy still needs the
+  quarantine attribute removed.
 - **The Content-Security-Policy has never been enforced by WKWebView.** It was
   exercised against the real bundle in headless Chrome with the exact production
   policy — zero violations, React mounted — but Chrome is Blink. The one

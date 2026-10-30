@@ -1,0 +1,48 @@
+name: release-macos
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Tag must match VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        run: test "v$(tr -d '[:space:]' < VERSION)" = "${GITHUB_REF_NAME}"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - name: Release guards
+        run: python3 -m pytest tests/test_release_assets.py -q
+      - name: Install frontend dependencies
+        working-directory: studio
+        run: npm ci
+      - name: Build DMG
+        run: bash studio/scripts/build-macos-dmg.sh
+      - name: Attach DMG to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: |
+            studio/src-tauri/target/release/bundle/dist/EffiStudio-macOS.dmg
+            studio/src-tauri/target/release/bundle/dist/EffiStudio-*-macOS.dmg
+            studio/src-tauri/target/release/bundle/dist/SHA256SUMS
+          fail_on_unmatched_files: true
