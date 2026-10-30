@@ -46,8 +46,8 @@ interface ExperienceCardProps {
   controlId: string;
   title: string;
   badge: string;
-  /** Copper is selection and primary action; sage is healthy. A checked box is
-   *  never sage, and an availability badge is never copper. */
+  /** Accent is selection and primary action; mint is healthy. A checked box is
+   *  never mint, and an availability badge is never accent. */
   badgeTone: 'available' | 'comingSoon';
   summary: string;
   /** Second line under the summary: the capability list, or the reason a
@@ -79,19 +79,19 @@ function ExperienceCard({
   const frame = disabled
     ? 'border-border bg-surface'
     : checked
-      ? 'border-copper bg-copper-tint'
+      ? 'border-accent bg-accent-tint'
       : 'border-border bg-surface hover:border-hover hover:bg-raised';
 
   return (
     <label
       htmlFor={controlId}
-      className={`flex items-start gap-4 rounded-xl border p-6 transition-colors duration-150 motion-reduce:transition-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-copper has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-ground ${frame} ${
+      className={`flex items-start gap-4 rounded-xl border p-6 transition-colors duration-150 motion-reduce:transition-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-ground ${frame} ${
         disabled ? 'cursor-default' : 'cursor-pointer'
       }`}
     >
       <span
         className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-raised ${
-          disabled ? 'text-muted' : 'text-copper'
+          disabled ? 'text-muted' : 'text-accent'
         }`}
       >
         <Icon path={icon} size={22} />
@@ -137,9 +137,9 @@ function ExperienceCard({
           aria-labelledby={labelId}
           aria-describedby={descriptionId}
           onChange={(e) => onChange?.(e.target.checked)}
-          className="peer h-6 w-6 appearance-none rounded-lg border border-border bg-raised transition-colors duration-150 checked:border-copper checked:bg-copper focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none disabled:cursor-default motion-reduce:transition-none"
+          className="peer h-6 w-6 appearance-none rounded-lg border border-border bg-raised transition-colors duration-150 checked:border-accent checked:bg-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none disabled:cursor-default motion-reduce:transition-none"
         />
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-on-copper opacity-0 transition-opacity duration-150 peer-checked:opacity-100 motion-reduce:transition-none">
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-on-accent opacity-0 transition-opacity duration-150 peer-checked:opacity-100 motion-reduce:transition-none">
           <Icon path="M5 12.5l4.5 4.5L19 7" size={16} />
         </span>
       </span>
@@ -173,7 +173,13 @@ export function ChooseExperiences({
   const primaryLabel = buildChecked ? 'Continue with Build' : 'Open Studio';
 
   return (
-    <section aria-labelledby="choose-experiences-heading" className="h-full overflow-y-auto">
+    <section
+      aria-labelledby="choose-experiences-heading"
+      // A focus stop so the closing line below the last button can be
+      // scrolled to from the keyboard, now that the document cannot scroll.
+      tabIndex={0}
+      className="h-full overflow-y-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+    >
       {/* Native titlebar carries the window controls; no HTML traffic lights. */}
       {/* `min-h-full`: the section is `h-full`, but this grid sized to its
           content, so the editorial column's `border-r` stopped partway down
@@ -185,7 +191,7 @@ export function ChooseExperiences({
           className={`${EDITORIAL_COLUMN_VISIBILITY} flex-col gap-10 border-r border-border px-10 py-10`}
         >
           <div className="flex items-center gap-3">
-            <span className="text-copper">
+            <span className="text-accent">
               <BrandMark size={24} />
             </span>
             <span className="text-[20px] leading-[28px] font-semibold text-text">Effi</span>
@@ -210,11 +216,11 @@ export function ChooseExperiences({
                 <li key={step} className="flex items-center gap-4">
                   <span
                     className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                      current ? 'border-copper text-copper' : 'border-border text-muted'
+                      current ? 'border-accent text-accent' : 'border-border text-muted'
                     }`}
                     aria-hidden="true"
                   >
-                    {current && <span className="h-2 w-2 rounded-full bg-copper" />}
+                    {current && <span className="h-2 w-2 rounded-full bg-accent" />}
                   </span>
                   <span className="font-mono text-xs leading-[18px] text-muted">
                     {String(i + 1).padStart(2, '0')}
@@ -288,7 +294,7 @@ export function ChooseExperiences({
             <button
               type="button"
               onClick={() => onContinue({ build: buildChecked })}
-              className="flex items-center gap-2 rounded-lg bg-copper px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
+              className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
             >
               {primaryLabel}
               <span aria-hidden="true">→</span>
@@ -297,7 +303,7 @@ export function ChooseExperiences({
             <button
               type="button"
               onClick={onSetUpLater}
-              className="rounded-lg px-3 py-2.5 text-sm leading-[20px] text-muted underline underline-offset-4 transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
+              className="rounded-lg px-3 py-2.5 text-sm leading-[20px] text-muted underline underline-offset-4 transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
             >
               Set up later
             </button>
@@ -325,7 +331,11 @@ interface NeutralShellProps {
  *  reads no config and runs no detection. */
 export function NeutralShell({ onSetUpBuild, onOpenVerify }: NeutralShellProps) {
   return (
-    <section aria-labelledby="neutral-shell-heading" className="h-full overflow-y-auto">
+    <section
+      aria-labelledby="neutral-shell-heading"
+      tabIndex={0}
+      className="h-full overflow-y-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+    >
       <div className="mx-auto w-full max-w-3xl px-10 py-10">
         <p className="text-xs leading-[18px] tracking-[0.12em] text-muted uppercase">Effi Studio</p>
 
@@ -341,7 +351,7 @@ export function NeutralShell({ onSetUpBuild, onOpenVerify }: NeutralShellProps) 
 
         <div className="mt-8 flex flex-col gap-4">
           <div className="flex items-start gap-4 rounded-xl border border-border bg-surface p-6">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-raised text-copper">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-raised text-accent">
               <Icon path={TERMINAL} size={22} />
             </span>
             <div className="min-w-0 flex-1">
@@ -353,7 +363,7 @@ export function NeutralShell({ onSetUpBuild, onOpenVerify }: NeutralShellProps) 
             <button
               type="button"
               onClick={onSetUpBuild}
-              className="shrink-0 rounded-lg bg-copper px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
+              className="shrink-0 rounded-lg bg-accent px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
             >
               Set up Build
             </button>
@@ -380,7 +390,7 @@ export function NeutralShell({ onSetUpBuild, onOpenVerify }: NeutralShellProps) 
               <button
                 type="button"
                 onClick={onOpenVerify}
-                className="shrink-0 rounded-lg px-3 py-2.5 text-sm leading-[20px] text-muted underline underline-offset-4 transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
+                className="shrink-0 rounded-lg px-3 py-2.5 text-sm leading-[20px] text-muted underline underline-offset-4 transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
               >
                 Learn more
               </button>

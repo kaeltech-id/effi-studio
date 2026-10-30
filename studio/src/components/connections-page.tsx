@@ -188,8 +188,8 @@ const CONSUMER_SHORT: Record<Consumer, string> = {
 
 /** Every status carries a glyph AND a word, so colour is never the signal.
  *
- *  `tone` is a token class. Copper is the primary action and appears on no
- *  status; sage means healthy and appears on exactly one. `unsupportedByAgent`
+ *  `tone` is a token class. Accent is the primary action and appears on no
+ *  status; mint means healthy and appears on exactly one. `unsupportedByAgent`
  *  is muted, NOT the error token — nothing failed. */
 interface StatusFace {
   glyph: string;
@@ -303,15 +303,15 @@ const CONNECTOR_MARKS: Record<ConnectorId, string> = {
    deliberately absent, because in Tailwind v4 it sets `outline-style: none` and
    would cancel the very ring these three utilities draw. */
 const FOCUS =
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper';
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
 /* The same ring on the error token, for the one control that must not wear
-   copper. `outline-none` is absent here for the same reason it is absent
+   accent. `outline-none` is absent here for the same reason it is absent
    above. */
 const FOCUS_ERROR =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-error';
 const MOTION = 'transition-colors duration-150 motion-reduce:transition-none';
 
-const PRIMARY_BUTTON = `flex items-center gap-2 rounded-lg bg-copper px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-copper hover:bg-copper/90 ${MOTION} ${FOCUS}`;
+const PRIMARY_BUTTON = `flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-accent hover:bg-accent/90 ${MOTION} ${FOCUS}`;
 const SECONDARY_BUTTON = `rounded-lg border border-border px-4 py-2.5 text-sm leading-[20px] text-muted hover:bg-hover hover:text-text ${MOTION} ${FOCUS}`;
 const SMALL_BUTTON = `rounded-lg border border-border px-3 py-1.5 text-xs leading-[18px] text-muted hover:bg-hover hover:text-text ${MOTION} ${FOCUS}`;
 const FIELD = `w-full rounded-lg border border-border bg-ground px-3 py-2 text-sm leading-[21px] text-text placeholder:text-muted ${MOTION} ${FOCUS}`;
@@ -319,7 +319,7 @@ const FIELD_LABEL = 'block pb-2 text-sm leading-[20px] font-semibold text-text';
 const META = 'text-xs leading-[18px] text-muted';
 
 /* TASK 105. Revoke is the only destructive act on this page, and it is
-   deliberately NOT copper: copper is the primary affordance, the thing the eye
+   deliberately NOT accent: accent is the primary affordance, the thing the eye
    is meant to land on, and deleting a token out of the keychain is not it. The
    resting control is an ordinary secondary button; only the confirmation — the
    moment the consequence is stated — carries the error token. */
@@ -431,7 +431,7 @@ function ConnectorRow({ row, detail, projectName, selected, onSelect }: RowProps
         aria-current={selected ? 'true' : undefined}
         className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left ${MOTION} ${FOCUS} ${
           selected
-            ? 'border-copper bg-copper-tint'
+            ? 'border-accent bg-accent-tint'
             : 'border-border bg-raised hover:border-muted hover:bg-hover'
         }`}
       >
@@ -660,7 +660,7 @@ function ChangePreview({
   return (
     <section
       aria-labelledby={headingId}
-      className={`rounded-xl border border-copper bg-copper-tint ${MOTION}`}
+      className={`rounded-xl border border-accent bg-accent-tint ${MOTION}`}
     >
       <div className="border-b border-border p-4">
         <h3 id={headingId} className="text-sm leading-[20px] font-semibold text-text">
@@ -952,7 +952,12 @@ export function ConnectionsPage({
   const customMcp = configurable.find((row) => row.connector === 'customMcp') ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-ground text-text">
+    /* `min-h-0 flex-1`, never `h-full`: this page is the SECOND child of its
+       column (App.tsx:2146) -- ConnectionsExit above it is `h-10 shrink-0` --
+       so asking for 100% of a column that already spent 40px made the column's
+       content one exit bar taller than the window. With nothing clipping
+       between here and <html>, that was a 40px page scroll onto bare ground. */
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-ground text-text">
       <header className="shrink-0 px-8 pt-6">
         <nav aria-label="Breadcrumb" className={META}>
           <span>{projectName}</span>
@@ -1311,7 +1316,7 @@ function DetailPanel({
             that arrived with the credential would never be looked at. */}
         <fieldset
           className={`rounded-xl border p-4 ${MOTION} ${
-            phase === 'inspectScope' ? 'border-copper bg-copper-tint' : 'border-border bg-raised'
+            phase === 'inspectScope' ? 'border-accent bg-accent-tint' : 'border-border bg-raised'
           }`}
         >
           <legend className="px-2 text-sm leading-[20px] font-semibold text-text">Scope</legend>
@@ -1324,6 +1329,11 @@ function DetailPanel({
               htmlFor={fieldId('scope-project')}
               className="flex items-center gap-3 text-sm leading-[21px] text-text"
             >
+              {/* accent-accent is not a typo: the first token is Tailwind's accent-color
+                  utility, the second is our accent colour. It paints the native radio
+                  dot. Set per control rather than on an ancestor: accent-color does
+                  inherit, but which controls carry the brand accent is a per-control
+                  choice, not a property of this subtree. */}
               <input
                 id={fieldId('scope-project')}
                 type="radio"
@@ -1337,7 +1347,7 @@ function DetailPanel({
                   // thing, so it closes and has to be asked for again.
                   setReviewOpen(false);
                 }}
-                className={`h-4 w-4 shrink-0 accent-copper ${FOCUS}`}
+                className={`h-4 w-4 shrink-0 accent-accent ${FOCUS}`}
               />
               This project only — {projectName}
             </label>
@@ -1345,6 +1355,11 @@ function DetailPanel({
               htmlFor={fieldId('scope-global')}
               className="flex items-center gap-3 text-sm leading-[21px] text-text"
             >
+              {/* accent-accent is not a typo: the first token is Tailwind's accent-color
+                  utility, the second is our accent colour. It paints the native radio
+                  dot. Set per control rather than on an ancestor: accent-color does
+                  inherit, but which controls carry the brand accent is a per-control
+                  choice, not a property of this subtree. */}
               <input
                 id={fieldId('scope-global')}
                 type="radio"
@@ -1355,7 +1370,7 @@ function DetailPanel({
                   onScopeReviewed();
                   setReviewOpen(false);
                 }}
-                className={`h-4 w-4 shrink-0 accent-copper ${FOCUS}`}
+                className={`h-4 w-4 shrink-0 accent-accent ${FOCUS}`}
               />
               Every project
             </label>

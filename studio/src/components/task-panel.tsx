@@ -103,7 +103,7 @@ export function TaskPanel({
         <SourceLabel percent={percent} />
         {percent !== null && (
           <>
-            {/* Sage, because a finished task is healthy and not a selection.
+            {/* Mint, because a finished task is healthy and not a selection.
                 Decorative: the counts below say the same thing in words, so
                 the bar is hidden from the accessibility tree rather than
                 repeated into it. The width transition is a layout change at

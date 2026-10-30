@@ -56,7 +56,7 @@ export function InstallPane({ installSessionId, onInstall, onRecheck }: InstallP
           type="button"
           onClick={() => setInstalling(true)}
           disabled={!installSessionId || installing}
-          className="rounded-lg border px-3 py-1.5 text-sm leading-[21px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none disabled:cursor-not-allowed disabled:border-border disabled:bg-raised disabled:text-muted border-copper bg-copper text-on-copper hover:bg-copper/90"
+          className="rounded-lg border px-3 py-1.5 text-sm leading-[21px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none disabled:cursor-not-allowed disabled:border-border disabled:bg-raised disabled:text-muted border-accent bg-accent text-on-accent hover:bg-accent/90"
         >
           {installing ? 'Installing' : 'Install EffiClaude'}
         </button>

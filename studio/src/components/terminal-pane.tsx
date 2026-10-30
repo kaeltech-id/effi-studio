@@ -44,7 +44,7 @@ export function TerminalPane({ sessionId, cwd, agentId, focusNonce }: TerminalPa
       theme: {
         background: token('--color-ground'),
         foreground: token('--color-terminal'),
-        cursor: token('--color-copper'),
+        cursor: token('--color-accent'),
       },
     });
     const fit = new FitAddon();

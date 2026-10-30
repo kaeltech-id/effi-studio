@@ -24,7 +24,7 @@ export function PanelSection({ title, collapsed, onToggle, detail, children }: P
         // Inset ring, like every other full-width control in the rail: an
         // outward offset on a header that spans its section would be drawn
         // half outside the section's own border.
-        className="flex h-8 shrink-0 items-center gap-2 px-2 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper"
+        className="flex h-8 shrink-0 items-center gap-2 px-2 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
       >
         {/* The one rotation in the app. MOTION 1 allows a chevron, nothing else.
             Hidden from assistive tech: `aria-expanded` above already says open

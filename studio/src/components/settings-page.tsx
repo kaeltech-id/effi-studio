@@ -79,9 +79,9 @@ const headingId = (id: SectionId) => `settings-${id}-heading`;
  *  second table that said "Found" where the rail says "Detected" would be two
  *  names for one wire value.
  *
- *  `detected` is NOT sage. It means the executable is on disk and nothing more.
- *  Sage is spent on `ready`, the stronger claim that a check actually passed.
- *  Copper appears on no status at all: it means selection and primary action,
+ *  `detected` is NOT mint. It means the executable is on disk and nothing more.
+ *  Mint is spent on `ready`, the stronger claim that a check actually passed.
+ *  Accent appears on no status at all: it means selection and primary action,
  *  and a probe result is neither. */
 interface Face {
   glyph: string;
@@ -145,14 +145,14 @@ const DEVICE_FALLBACK: Record<DeviceReadiness, string> = {
 };
 
 const BTN =
-  'shrink-0 rounded-lg border border-border bg-raised px-2 py-1 text-xs leading-[18px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none';
+  'shrink-0 rounded-lg border border-border bg-raised px-2 py-1 text-xs leading-[18px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none';
 
-/** Copper, because opening the one Connections surface is this section's
+/** Accent, because opening the one Connections surface is this section's
  *  primary action. Dimming anywhere in this file is a token swap, never an
  *  opacity wash: muted on raised clears 4.5:1, an opacity pass measures near
  *  2:1. */
 const BTN_PRIMARY =
-  'shrink-0 rounded-lg border border-copper bg-copper px-3 py-1.5 text-xs leading-[18px] text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none';
+  'shrink-0 rounded-lg border border-accent bg-accent px-3 py-1.5 text-xs leading-[18px] text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none';
 
 function StatusFace({ face }: { face: Face }) {
   return (
@@ -256,7 +256,7 @@ function SettingsSection({ id, title, blurb, innerRef, children }: SectionProps)
   );
 }
 
-/** Availability as a word, never as a colour: the sage/muted split is a second
+/** Availability as a word, never as a colour: the mint/muted split is a second
  *  channel on top of the label, exactly as experience-selector.tsx draws it. */
 function AvailabilityBadge({ available }: { available: boolean }) {
   return (
@@ -313,13 +313,13 @@ function ExperienceRow({ experience, onToggle }: ExperienceRowProps) {
             disabled={!selectable}
             aria-describedby={experience.reason ? reasonId : undefined}
             onChange={(e) => onToggle(experience.id, e.target.checked)}
-            className="peer h-5 w-5 appearance-none rounded-lg border border-border bg-raised transition-colors duration-150 checked:border-copper checked:bg-copper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper disabled:cursor-not-allowed disabled:border-dashed disabled:border-muted motion-reduce:transition-none"
+            className="peer h-5 w-5 appearance-none rounded-lg border border-border bg-raised transition-colors duration-150 checked:border-accent checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:border-dashed disabled:border-muted motion-reduce:transition-none"
           />
           {/* Drawn at every state so the box never changes size when it is
               ticked; only the token moves. */}
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute font-mono text-xs leading-none text-transparent peer-checked:text-on-copper"
+            className="pointer-events-none absolute font-mono text-xs leading-none text-transparent peer-checked:text-on-accent"
           >
             ✓
           </span>
@@ -498,9 +498,9 @@ export function SettingsPage({
                 type="button"
                 onClick={() => jump(s.id)}
                 aria-current={active ? 'true' : undefined}
-                className={`rounded-lg border px-2 py-1 text-xs leading-[18px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none ${
+                className={`rounded-lg border px-2 py-1 text-xs leading-[18px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none ${
                   active
-                    ? 'border-copper bg-copper-tint text-text'
+                    ? 'border-accent bg-accent-tint text-text'
                     : 'border-border text-muted hover:bg-hover hover:text-text'
                 }`}
               >
@@ -683,9 +683,9 @@ export function SettingsPage({
             <div className="flex items-start gap-3 border-b border-border px-3 py-3">
               <span
                 aria-hidden="true"
-                className="mt-1 h-3 w-3 shrink-0 rounded-lg border border-border bg-copper"
+                className="mt-1 h-3 w-3 shrink-0 rounded-lg border border-border bg-accent"
               />
-              <dt className="shrink-0 text-xs leading-[18px] text-text">Copper</dt>
+              <dt className="shrink-0 text-xs leading-[18px] text-text">Cyan</dt>
               <dd className="min-w-0 flex-1 text-xs leading-[18px] text-muted">
                 Selection, and the primary action.
               </dd>
@@ -695,7 +695,7 @@ export function SettingsPage({
                 aria-hidden="true"
                 className="mt-1 h-3 w-3 shrink-0 rounded-lg border border-border bg-success"
               />
-              <dt className="shrink-0 text-xs leading-[18px] text-text">Sage</dt>
+              <dt className="shrink-0 text-xs leading-[18px] text-text">Mint</dt>
               <dd className="min-w-0 flex-1 text-xs leading-[18px] text-muted">
                 A check passed. Never used for a selection, and the two are never swapped.
               </dd>

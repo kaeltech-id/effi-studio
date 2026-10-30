@@ -1,29 +1,42 @@
 @import "tailwindcss";
 
-/* The Precision Atelier palette from DESIGN-SPEC.md §3, copied, not re-chosen:
-   warm graphite surfaces, off-white text, copper as the only accent. Dark-only
-   by design: there is no light theme and no prefers-color-scheme branch.
-   Copper means selection and primary action; sage means healthy — separate
-   names on purpose, so a selected checkbox can never be styled as "healthy".
-   --color-accent is a temporary alias of copper so the call sites still naming
-   it keep resolving; migrating them to copper is a later task. */
+/* The rebrand palette from design/rebrand/README.md, copied, not re-chosen:
+   navy surfaces, near-white text, cyan as the only interactive accent.
+   Dark-only by design: there is no light theme and no prefers-color-scheme
+   branch.
+   Violet and blue are brand colours, not UI colours. They measure 4.49:1 and
+   3.82:1 on navy, so neither may carry text, a border, an icon stroke or a
+   focus ring. They are declared here as the record of what the brand gradient
+   is -- effi-logo.svg hardcodes the same two hexes, because a standalone SVG
+   cannot read a custom property -- and they are referenced by no component on
+   purpose. Declaring them does generate text-/border-/ring- utilities, so the
+   prohibition is enforced by a test, not by this comment:
+   tests/test_studio_guards.py bans those nine prefixes outright.
+   Cyan measures 10.99:1 and carries every interactive role.
+   Accent means selection and primary action; success means healthy --
+   separate names on purpose, so a selected checkbox can never be styled as
+   "healthy". */
 @theme {
-  --color-ground: #101112;
-  --color-surface: #17191B;
-  --color-raised: #1D2023;
-  --color-hover: #25292D;
-  --color-border: #30353B;
-  --color-text: #F3EFE9;
-  --color-muted: #A4ABB2;
-  --color-copper: #E5A17C;
-  --color-accent: var(--color-copper);
+  --color-ground: #080F24;
+  --color-surface: #0C142E;
+  --color-raised: #121C3C;
+  --color-hover: #1A254C;
+  --color-border: #2A3663;
+  --color-text: #F5F8FF;
+  --color-muted: #9FB0D4;
+  --color-accent: #76CFFF;
 
-  --color-on-copper: #211710;
-  --color-copper-tint: #30241E;
-  --color-success: #9CC5AF;
-  --color-warning: #E6C182;
-  --color-error: #EDA6A6;
-  --color-terminal: #E2E5E8;
+  /* Deliberately ground's literal: navy ink on the cyan fill. Kept literal
+     rather than var(--color-ground) because tests/test_brand_tokens.py
+     parses this block for #RRGGBB and needs every token to resolve there. */
+  --color-on-accent: #080F24;
+  --color-accent-tint: #142A44;
+  --color-brand-violet: #8B5CF6;
+  --color-brand-blue: #4263EB;
+  --color-success: #7FD4A8;
+  --color-warning: #F0C86E;
+  --color-error: #FF8FA3;
+  --color-terminal: #DDE6F5;
 
   --font-ui: ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -40,6 +53,16 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* The app-shell lock. Studio is a window, not a page: with `height: 100%`
+     alone the document grows behind any descendant taller than the webview and
+     the user can drag the whole interface off the top of the window, leaving
+     bare --color-ground below it. `overflow: hidden` makes that structurally
+     impossible rather than a property every future pane must remember, and
+     `overscroll-behavior: none` removes the macOS rubber-band, which exposes
+     the same gap without any element overflowing at all. Every surface scrolls
+     in its OWN region -- 13 `overflow-y-auto` sites and counting. */
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--color-ground);
   color: var(--color-text);
   font-family: var(--font-ui);

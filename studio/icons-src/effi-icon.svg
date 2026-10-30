@@ -10,9 +10,9 @@
     codebase colour comes from a CSS custom property, but an icon is exported
     to .icns/.png outside the stylesheet and cannot read one. These three
     values are therefore hard-coded on purpose:
-      #101112  field       (the 100px macOS margin showing around the tile)
-      #17191B  squircle    (the icon tile itself)
-      #E5A17C  mark        (copper)
+      #080F24  field       (the 100px macOS margin showing around the tile)
+      #121C3C  squircle    (the icon tile itself, raised navy)
+      #76CFFF  mark        (cyan accent)
 
     LAYOUT (1024 canvas)
       Field      0..1024 full bleed.
@@ -20,8 +20,11 @@
                  every side (824/1024 = 80.5%, Big Sur app-icon proportion).
       Mark       532 x 532 centred on (512, 512) -> 51.95% of the canvas
                  ("roughly 52%"), spanning 246..778. The mark is the master
-                 effi-mark.svg path data scaled by 532/18 = 29.5556 and
-                 translated by 157.333; its proportions are untouched.
+                 effi-mark.svg path data: its 24-unit grid is scaled by
+                 532/24 = 22.1667 and translated by 246, so grid 0..24 lands
+                 exactly on 246..778 and the proportions are untouched. The
+                 glyph fills that grid in x and runs 1.5..22.5 in y, so its
+                 ink sits at x 253.8..777.6, y 279.3..745.2 on the canvas.
 
     THE SQUIRCLE IS A GENUINE SUPERELLIPSE, NOT A ROUNDED RECT.
       Curve:    |x/412|^5 + |y/412|^5 = 1, centred on (512, 512).
@@ -41,11 +44,11 @@
   -->
 
   <!-- field -->
-  <path d="M0 0H1024V1024H0Z" fill="#101112" />
+  <path d="M0 0H1024V1024H0Z" fill="#080F24" />
 
   <!-- squircle: superellipse |x/412|^5 + |y/412|^5 = 1, 64 fitted cubics -->
   <path
-    fill="#17191B"
+    fill="#121C3C"
     d="M512 100C527.44 100 542.88 100 558.31 100C573.75 100 589.19 100.01 604.63 100.05
        C620.07 100.09 635.5 100.16 650.94 100.36C666.38 100.56 681.82 100.89 697.24 101.53
        C712.66 102.16 728.08 103.11 743.44 104.72C758.78 106.32 774.1 108.56 789.14 112.03
@@ -80,26 +83,17 @@
        C434.81 100.01 450.25 100 465.69 100C481.12 100 496.56 100 512 100Z"
   />
 
-  <!-- ===== MARK: effi-mark.svg path data, scaled 29.5556x. DO NOT EDIT. ===== -->
-  <!-- currentColor is replaced by the literal copper because an exported icon
+  <!-- ===== MARK: effi-mark.svg path data, scaled 22.1667x. DO NOT EDIT. ===== -->
+  <!-- The ribbon E: three sheared bars joined down the left by two fold
+       connectors. Five filled quadrilaterals, each four absolute points plus
+       Z, copied verbatim from the master; only the transform is ours.
+       currentColor is replaced by the literal cyan because an exported icon
        has no CSS parent to inherit `color` from. Geometry is unchanged. -->
-  <g transform="translate(157.333333 157.333333) scale(29.555556)">
-    <path
-      d="M21 4H8L4 8v8l4 4h13"
-      stroke="#E5A17C"
-      stroke-width="2"
-      stroke-linecap="butt"
-      stroke-linejoin="miter"
-      stroke-miterlimit="4"
-    />
-    <path
-      d="M8 9h8M8 15h8"
-      stroke="#E5A17C"
-      stroke-width="2"
-      stroke-linecap="butt"
-      stroke-linejoin="miter"
-      stroke-miterlimit="4"
-    />
-    <path d="M18 10.5h3v3h-3z" fill="#E5A17C" />
+  <g transform="translate(246 246) scale(22.166667)" fill="#76CFFF">
+    <path d="M8.16 1.5L23.84 1.5L20.07 6.76L4.22 6.76Z" />
+    <path d="M2.49 6.76L8.62 6.76L6.66 9.38L0.53 9.38Z" />
+    <path d="M6.46 9.38L19.07 9.38L14.92 14.63L2.3 14.63Z" />
+    <path d="M2.33 14.63L8.37 14.63L6.39 17.27L0.35 17.27Z" />
+    <path d="M0.37 17.27L20.19 17.27L23.98 22.52L5.38 22.52Z" />
   </g>
 </svg>

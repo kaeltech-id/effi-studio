@@ -143,7 +143,7 @@ export function FlowBar({
                 type="button"
                 title={s.hint}
                 onClick={() => onDispatch(target.sessionId, textFor(s))}
-                className={`shrink-0 rounded-lg px-2 py-1 font-mono text-xs transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none ${
+                className={`shrink-0 rounded-lg px-2 py-1 font-mono text-xs transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none ${
                   s.command === next?.command ? 'text-accent' : 'text-muted'
                 }`}
               >
@@ -161,7 +161,7 @@ export function FlowBar({
               <button
                 type="button"
                 onClick={cta.onClick}
-                className="shrink-0 rounded-lg bg-copper px-2 py-1 text-xs leading-[18px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+                className="shrink-0 rounded-lg bg-accent px-2 py-1 text-xs leading-[18px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
               >
                 {cta.label}
               </button>
@@ -182,7 +182,7 @@ export function FlowBar({
               onChange={(e) => setArg(e.target.value)}
               placeholder="what to brainstorm (optional)"
               aria-label="brainstorm argument"
-              className="w-56 shrink-0 rounded-lg border border-border bg-ground px-2 py-1 font-mono text-xs text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper"
+              className="w-56 shrink-0 rounded-lg border border-border bg-ground px-2 py-1 font-mono text-xs text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             />
           )}
         </div>

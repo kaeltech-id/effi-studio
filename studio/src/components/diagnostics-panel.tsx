@@ -32,9 +32,9 @@ const SET_PATH = 'Set executable path';
 
 /** Every status carries a glyph AND a word: colour is the third channel, never
  *  the only one. `detected` and `ready` stay apart on purpose — `detected` is
- *  "found on disk" and nothing more, so sage, which this app spends on health,
+ *  "found on disk" and nothing more, so mint, which this app spends on health,
  *  is reserved for `ready`, the stronger claim that a relevant diagnostic
- *  actually passed. Copper is not used here at all: it means selection and
+ *  actually passed. Accent is not used here at all: it means selection and
  *  primary action, and a probe result is neither.
  *
  *  `notSelected`, `queued` and `installing` belong to the setup flow and no
@@ -70,12 +70,12 @@ function isActionable(status: ComponentStatus): boolean {
 }
 
 const BTN =
-  'rounded-lg border border-border bg-raised px-2 py-1 text-xs leading-[18px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none disabled:cursor-default disabled:bg-raised disabled:text-muted';
+  'rounded-lg border border-border bg-raised px-2 py-1 text-xs leading-[18px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none disabled:cursor-default disabled:bg-raised disabled:text-muted';
 
-/** Copper, because confirming a path the user typed is this row's primary
+/** Accent, because confirming a path the user typed is this row's primary
  *  action. Dimming is a token swap, never an opacity wash. */
 const BTN_PRIMARY =
-  'rounded-lg border border-copper bg-copper px-2 py-1 text-xs leading-[18px] text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none';
+  'rounded-lg border border-accent bg-accent px-2 py-1 text-xs leading-[18px] text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none';
 
 interface ComponentRowProps {
   report: ComponentReport;
@@ -303,7 +303,7 @@ function ComponentRow({
               autoCorrect="off"
               autoCapitalize="off"
               placeholder="/Users/you/Developer Tools/claude"
-              className="min-w-0 flex-1 rounded-lg border border-border bg-ground px-2 py-1 font-mono text-xs leading-[18px] text-text placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper"
+              className="min-w-0 flex-1 rounded-lg border border-border bg-ground px-2 py-1 font-mono text-xs leading-[18px] text-text placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             />
             <button type="submit" disabled={busy} className={BTN_PRIMARY}>
               Save
@@ -433,7 +433,7 @@ export function DiagnosticsPanel({ diagnostics, onRecheck }: DiagnosticsPanelPro
           <button
             type="button"
             onClick={onRecheck}
-            className="self-start rounded-lg border border-border bg-raised px-3 py-2 text-sm leading-[21px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+            className="self-start rounded-lg border border-border bg-raised px-3 py-2 text-sm leading-[21px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
           >
             Re-check everything
           </button>

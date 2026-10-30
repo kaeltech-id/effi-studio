@@ -1,54 +1,101 @@
-# Review Summary — Flow Bar
-_Date: 2026-10-29_
+# Review Summary — Proof Mode
+_Date: 2026-10-30_
 
 ## Feature
-Flow Bar — stage-aware action row above the terminal
+Proof Mode — pisahkan "mengubah" dari "membuktikan" di plan/refine/execute
 
 ## Tasks completed
-- [x] Task 1: Add review_done to ProjectState [S] — declare the field that separates a finished review from a pending one
-- [x] Task 2: Populate review_done in read_project_state [S] — probe the review sentinel once and return it
-- [x] Task 3: Add flow_collapsed to PanelState [S] — persist the flow bar's collapsed state like every other region
-- [x] Task 4: Add reviewDone to the TS ProjectState [S] [agent: ec-typescript] — mirror the new Rust field on the wire
-- [x] Task 5: Add flowCollapsed to the TS PanelState [S] [agent: ec-typescript] — mirror the new panel field
-- [x] Task 6: Create the FLOW_STEPS table [S] [agent: ec-typescript] [design: direction#FlowBar] — six steps, each a literal command and a one-line hint
-- [x] Task 7: Add nextStep to flow.ts [S] [agent: ec-typescript] — map a ProjectState to the step it is waiting on
-- [x] Task 8: Create FlowBar with the step row [M] [agent: ec-react] [design: direction#FlowBar] — six command buttons with the next one marked
-- [x] Task 9: Add the brainstorm argument field to FlowBar [S] [agent: ec-react] [design: direction#FlowBar] — one optional free-text input appended to /ec-brainstorm
-- [x] Task 10: Add the collapse toggle to FlowBar [S] [agent: ec-react] [design: direction#FlowBar] — chevron plus a collapsed one-line summary
-- [x] Task 11: Exempt xterm's helper textarea from the shortcut guard [S] [agent: ec-react] — revive every Cmd binding while the terminal holds focus
-- [x] Task 12: Add onToggleFlow and the Cmd+K binding [S] [agent: ec-react] — a keyboard path for the new region
-- [x] Task 13: Refocus the terminal on a focus nonce [S] [agent: ec-react] — return focus after a dispatch so typing continues
-- [x] Task 14: Add the dispatch handler to App [M] [agent: ec-react] — write the command text into the active PTY and bump the nonce
-- [x] Task 15: Render FlowBar above the terminal [S] [agent: ec-react] [design: direction#FlowBar] — place the row between header and panes
-- [x] Task 16: Wire onToggleFlow into useShortcuts [S] [agent: ec-react] — toggle and persist flowCollapsed from the keyboard
-- [x] Task 17: Add the flow bar command drift test [S] [agent: ec-unit-test] — fail if the bar names a command that does not exist
+All 13 tasks `- [x]` (see `.claude/plans/archive/`). Waves: 3.
 
 ## Files modified
-- studio/src-tauri/src/plan.rs — `review_done` on `ProjectState`
-- studio/src-tauri/src/projects.rs — `flow_collapsed` on `PanelState`
-- studio/src/lib/types.ts — `reviewDone`, `flowCollapsed`
-- studio/src/lib/flow.ts — new: `FLOW_STEPS`, `nextStep`
-- studio/src/components/flow-bar.tsx — new: the row itself
-- studio/src/lib/use-shortcuts.ts — xterm sink exemption, `onToggleFlow`, Cmd+K
-- studio/src/components/terminal-pane.tsx — focus nonce
-- studio/src/App.tsx — dispatch handler, FlowBar placement, shortcut wiring
-- tests/test_command_docs.py — flow bar command drift test
-- studio/src-tauri/src/lib.rs — blast radius only; registers the commands and reads no struct field
+- `commands/ec-brainstorm.md`, `commands/ec-plan.md`, `commands/ec-refine.md`,
+  `commands/ec-execute.md`, `commands/ec-review.md`, `tests/test_command_docs.py`
+- `hooks/session_stop.py` — **outside the plan's declared File: set**, added during review
+Blast radius: no dependents — isolated change.
 
 ## Issues fixed during review
-- `studio/src/components/flow-bar.tsx` — the step row would have overflowed. At the default 1180px window the main pane is about 602px, while the six command names alone need about 588px, so the 224px argument field pushed the last button out of reach. The row now wraps and the field moved to the hint row, where it shares space with a truncating hint.
-- `studio/src/components/flow-bar.tsx` — the hint repeated the `/ec-brainstorm` literal, so a rename could make the copy describe something other than what a click sends. It now calls `textFor(FLOW_STEPS[0])`, the same function that builds the dispatch.
-- `studio/src/lib/use-shortcuts.ts` — the `j` branch lost its terminal position when `k` was appended and regained the `return` every other branch has.
+Stage 1 clean; evidence audit 13/13 at execution time.
+
+Stage 2 found severe defects in what had just shipped. Two independent reviewers;
+every claim below was verified against the files before fixing.
+
+**Blocking — the mode was unusable as shipped**
+- `handoff` skipped every grounding baseline, but `/ec-refine` Step 1 can only
+  reach its PASS row via a recorded baseline. The first real `handoff` plan using
+  `grep -c` would be reported DEFECT, the chain would delete its own sentinel, and
+  `/ec-plan` would regenerate the identical plan. Deadlock. This plan's own tasks
+  used that exact pattern. → per-string baselines are now explicitly still recorded.
+- The allowed-check whitelist (`ec-plan`) and the forbidden-verb blacklist
+  (`ec-refine`) were not complements: `npm test`, `jest`, `vitest`, `go build`,
+  `make`, `eslint`, `ruff`, `mypy` were on neither, so they passed refine and burned
+  the wall-clock the mode exists to remove; while `wc -l`, `ls`, `jq`, `test -d`
+  were cheap but unlisted, so correct plans were rejected by the letter.
+  → one authoritative allowed-check rule in `ec-plan`, referenced by name elsewhere.
+- `/ec-review` on `handoff` would reach for `cargo check` as the "equivalent"
+  type-check — a 35.97s Rust compile, the very measurement used to draw the line.
+- "a task carries exactly six lines / `Anchor` never dropped" contradicted
+  `Anchor` being exception-only, so authors would write `Anchor: new file` on every
+  new-file task and the plan lint would flag every one. → "six core lines" plus the
+  exception-only lines, with `Anchor`'s own exception restored.
+- Four unconditional checklist items (traceability, Acceptance, measured
+  thresholds, API error handling) demanded the opposite of the `handoff` rules.
+- The mode was never parsed on the saved-brainstorms path, and `/ec-review` deletes
+  the decision file on a clean review — so a declared `in-cycle` silently became
+  `handoff` and the record was destroyed. → the mode is now stamped into the plan
+  file, which all four commands read and which survives both deletion paths.
+- The `### Handoff` block — the deliverable of the whole mode — was written at plan
+  time and never surfaced again; `/ec-execute`'s read order skips it and `/ec-review`
+  never printed it. → `/ec-review` now echoes it verbatim in the report and summary.
+- Nothing checked that a rejected proof step reappears in `### Handoff`, so deleting
+  a proof step was the cheapest way to pass the gate — the exact decay path the
+  guard class claims to prevent.
+- "build the DMG" under the default mode pitted the never-overridden deliverable
+  rule against the no-build checklist item, with no resolution. → escalate to
+  `in-cycle` when the requested deliverable IS the artifact.
+- Authoring a test is *changing*, not *proving*, so skipping the whole unit-test
+  gate on `handoff` smuggled a scope decision into a proof decision. → the offer
+  stands in both modes; only a slow suite moves to Handoff.
+
+**Security — the new guardrail did not hold**
+- The outward-facing confirmation bound the orchestrator, but subagents run the
+  commands and the Step 4 prompt list never mentioned it — and pre-flight cannot
+  even see `Code sample`, because Step 1 deliberately skips `### Per Task Detail`.
+- `hooks/session_stop.py` injected "Do not stop. Invoke /ec-execute now and continue
+  the chain to completion" with no carve-out for a pending confirmation. That is the
+  only part of the system running as code, so it outranked the prose rule. Observed
+  first-hand: this session received that message repeatedly.
+  → `.claude/.awaiting-confirm-{branch}` makes the driver stay silent; proven at runtime.
+- "auto-skip confirmation gates" was unqualified in `ec-execute` and `ec-plan`.
+- The trigger set was a closed enumeration; `$HOME`, `~/.claude/`, messaging APIs,
+  non-production datastores and global package installs all fell outside it, and a
+  self-assessed read-only carve-out failed open. → principle over enumeration,
+  ambiguity resolves to asking, no read-only escape.
+- A denial routed straight into "Retry / Skip / Fix manually?" with nothing
+  recording it. → `- [~]` marks a denied task durably.
+
+**Tests** 122 → 137. Four shipped guards were near-vacuous and were rewritten:
+`test_handoff_defaults_when_undeclared` asserted only that the word `handoff`
+appeared somewhere in a file containing it 15 times — it would have passed on
+"never default to handoff" and could not have caught the bug its own name describes.
+All 19 Proof Mode guards were then mutation-tested: 14 mutations, every one caught,
+after tightening one assertion that passed because a substring survived elsewhere.
+
+## Known gaps, deliberately not closed
+- `hooks/session_stop.py` edit takes effect only after `bash install.sh`; the
+  running copy is `~/.efficlaude/hooks/session_stop.py`.
+- No `PreToolUse` hook denies `ssh`/`kubectl`/`terraform` by default. The rule is
+  still prose plus a sentinel; a real deny-by-default gate would be the actual
+  control. Flagged, not built — it changes how the toolkit permissions behave.
+- `.claude/decisions/main.md` listed "changing /ec-brainstorm" as a Non-Goal while
+  Task 1 edits it. The edit is right; the non-goal was wrong.
+- `studio/VERIFICATION.md:173` still reads "no DMG was built", false since the
+  previous cycle. Out of scope both times.
 
 ## Review result
 | Check | Status |
 |-------|--------|
 | Spec compliance | ✓ |
-| Code quality | ✓ |
-| Tests | 2 added (152 passed, up from a 150 baseline) |
-
-## Verified, not assumed
-- xterm's `evaluateKeyboardEvent` leaves `cancel:false` and `key:undefined` for a Cmd-only letter or digit, and `cancel` is the only path that calls `stopPropagation`. The event therefore reaches the window listener. Established by reading the bundled library source; no key has been physically pressed in the running app.
-
-## Still unverified
-- No click has been made in the running app, so `pty_write` delivering a slash command to a live Claude Code REPL rests on the fact that `term.onData` uses the identical call (`terminal-pane.tsx:49-51`).
+| Code quality | ✓ after fixes |
+| Security | ✓ after fixes (2 gaps flagged above) |
+| Tests | 15 guards added · suite 265 passed, 0 failed |
+| Compilation | n/a — no `.ts`/`.tsx`/`.rs` touched; deferred by design on `handoff` |

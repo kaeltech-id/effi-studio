@@ -53,7 +53,13 @@ export function VerifyLanding({ buildEnabled, onBack, onManageExperiences }: Ver
   const backLabel = buildEnabled ? 'Back to Build' : 'Back to Studio';
 
   return (
-    <section aria-labelledby="verify-landing-heading" className="h-full overflow-y-auto">
+    <section
+      aria-labelledby="verify-landing-heading"
+      // A focus stop so the closing line below the last button can be
+      // scrolled to from the keyboard, now that the document cannot scroll.
+      tabIndex={0}
+      className="h-full overflow-y-auto focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+    >
       {/* Editorial measure, not a full-bleed dashboard. The page stays legible
           at the default 1180×760 and keeps its left edge at 1440×900. */}
       <div className="mx-auto w-full max-w-3xl px-10 py-10">
@@ -89,7 +95,7 @@ export function VerifyLanding({ buildEnabled, onBack, onManageExperiences }: Ver
         <ul className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:gap-0">
           {PLANNED.map((f, i) => (
             <li key={f.title} className={i > 0 ? 'sm:border-l sm:border-border sm:pl-6' : 'sm:pr-6'}>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-raised text-copper">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-raised text-accent">
                 <Icon path={f.icon} />
               </div>
               <p className="pt-4 text-xs leading-[18px] tracking-[0.12em] text-muted uppercase">
@@ -107,7 +113,7 @@ export function VerifyLanding({ buildEnabled, onBack, onManageExperiences }: Ver
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 rounded-lg bg-copper px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
+            className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
           >
             {backLabel}
             <span aria-hidden="true">→</span>
@@ -116,7 +122,7 @@ export function VerifyLanding({ buildEnabled, onBack, onManageExperiences }: Ver
           <button
             type="button"
             onClick={onManageExperiences}
-            className="rounded-lg px-3 py-2.5 text-sm leading-[20px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
+            className="rounded-lg px-3 py-2.5 text-sm leading-[20px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
           >
             Manage experiences
           </button>

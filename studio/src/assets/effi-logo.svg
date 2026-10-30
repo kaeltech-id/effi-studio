@@ -1,43 +1,76 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 40" fill="none" role="img" aria-label="Effi Studio">
   <!--
-    Effi + STUDIO horizontal lockup.
+    Effi Studio horizontal lockup.
 
     DERIVED FROM effi-mark.svg — NOT REDRAWN.
-    The mark below is the master path data verbatim (open frame, two interior
-    bars, accent square, stroke-width 2, butt caps, miter joins, currentColor),
-    wrapped in one uniform transform. Nothing about its proportions changes:
-      translate(6.666667 6.666667) scale(1.111111)
-      -> master symbol bounds x3..21 / y3..21 land on x10..30 / y10..30.
+    The mark below is the master path data verbatim: the ribbon capital E, five
+    sheared quadrilaterals (three bars joined down the left by two fold
+    connectors) that read as one ribbon turning back on itself. The five d
+    strings are character identical to effi-mark.svg and are wrapped in ONE
+    uniform transform. Nothing about their proportions changes:
+      translate(10 10) scale(0.833333)
+      -> the master 24x24 box lands on x10..30 / y10..30, so the glyph sits
+         exactly where the previous mark sat and renders at lockup size with
+         the same optical padding it has as a standalone 24 unit symbol.
+         Drawn content spans x10.29..29.98, y11.25..28.77, centred on y20.
+
+    The top and middle bars shear LEFT going down, the bottom bar shears
+    RIGHT. That asymmetry is measured from the raster, not invented; it is
+    what makes the ribbon read as folded rather than as three parallel slabs.
+    Do not "correct" it, and do not reflow the folds to square the glyph.
 
     GEOMETRY
-      Symbol height            20 units
+      Symbol box               20 units
       Clear space              10 units = half the symbol height, on ALL four
                                sides. Content is confined to x10..150, y10..30;
                                the mark occupies x10..30, y10..30.
       Effi wordmark            cap height 16, baseline y28, stem 2.5
                                (stem/cap = 0.156 -> semibold), x40..73.5
-      STUDIO                   cap height 10, baseline y28, stem 1.5,
+      Studio                   cap height 10, baseline y28, stem 1.5,
                                tracking 3.4 (0.34em), x82..137.3
-      Vertical centre          the mark, the Effi cap block (12..28) and the
-                               STUDIO cap block (18..28) all centre on y20.
+      Vertical alignment       the mark centres on y20; the Effi cap block
+                               (12..28) and the Studio cap block (18..28) share
+                               BASELINE y28, which is the real alignment. They
+                               do not share a centre -- 18..28 centres on y23.
 
     TEXT IS OUTLINED. This file contains no SVG text element, no embedded
     typeface rule and no font reference of any kind. Every letter is a
-    filled path, so
-    the lockup renders identically with no fonts installed on the viewer's
-    machine. No raster, no filters, no gradients, no masks — paths only.
-    The letterforms are drawn on the mark's
-    own grid: flat (butt) terminals, square i-dot echoing the accent square,
-    monoline 1.5/2.5 stems.
+    filled path, so the lockup renders identically with no fonts installed on
+    the viewer's machine. No raster, no filters, no masks. Paths only, plus
+    the one gradient described below.
+
+    ==============================  COLOUR  ===============================
+    THE BRAND GRADIENT LIVES HERE AND ONLY HERE.
+
+    The mark is filled with the violet to blue to cyan ramp defined in the
+    defs block below. The bare symbol, effi-mark.svg, stays
+    currentColor: across a 20px glyph a three stop gradient is invisible, and
+    buying it there would cost currentColor, which is the one thing BrandMark
+    depends on. At lockup size (96px wide and up) the ramp is legible, and the
+    lockup is never asked to inherit currentColor the way the bare mark is, so
+    this is the one place the gradient belongs.
+
+    The WORDMARK stays fill="currentColor". Only the mark carries the
+    gradient, so the lockup still adapts to whatever surface it sits on: set
+    `color` on the parent.
+
+    The brand violet and brand blue tokens appear here as gradient stops
+    ONLY. They measure 4.49:1 and 3.82:1 on navy, below the AA floor for text,
+    so they may carry gradients and large decoration and may NEVER carry text.
+
+    The gradient id is `effi-ribbon`, not `a` or `g1`, on purpose: if this
+    lockup is inlined twice in one document, a generic id collides and the
+    second instance silently adopts the first instance's gradient.
+    =======================================================================
 
     ============================  MINIMUM SIZE  ============================
     MINIMUM WIDTH FOR THIS LOCKUP: 96px. Use 96-120px and above.
 
-    Below ~96px the STUDIO line stops being legible. At 96px wide the render
-    scale is 96/160 = 0.6, so STUDIO's 1.5-unit stems land on 0.90px — already
+    Below ~96px the Studio line stops being legible. At 96px wide the render
+    scale is 96/160 = 0.6, so Studio's 1.5-unit stems land on 0.90px — already
     sub-pixel, and its cap height is only 6.0px. At 80px wide those become
-    0.75px stems and a 5.0px cap: the stems grey out to a smear and the O/D
-    counters (2.7 x 3.5 units) close up.
+    0.75px stems and a 5.0px cap: the stems grey out to a smear and the o/d
+    counters close up. The ribbon's two fold counters close up with them.
 
     CONSUMERS MUST NOT SCALE THIS LOCKUP BELOW 96px WIDE.
     Below that floor, drop to the bare mark (effi-mark.svg) instead. Shrinking
@@ -47,30 +80,23 @@
     There is exactly ONE lockup. Build and Verify are expressed as TEXT
     elsewhere in the UI — never as a second logo. Do not add Build/Verify
     lockup variants.
-
-    Colour: currentColor throughout, same contract as the master. Set `color`
-    on the parent — copper #E5A17C on dark, parchment #F3EFE9 on graphite.
   -->
 
+  <defs>
+    <linearGradient id="effi-ribbon" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="24" y2="24">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="0.55" stop-color="#4263EB"/>
+      <stop offset="1" stop-color="#76CFFF"/>
+    </linearGradient>
+  </defs>
+
   <!-- ===== MARK: effi-mark.svg, uniformly scaled. DO NOT EDIT THE PATH DATA. ===== -->
-  <g transform="translate(6.666667 6.666667) scale(1.111111)">
-    <path
-      d="M21 4H8L4 8v8l4 4h13"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="butt"
-      stroke-linejoin="miter"
-      stroke-miterlimit="4"
-    />
-    <path
-      d="M8 9h8M8 15h8"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="butt"
-      stroke-linejoin="miter"
-      stroke-miterlimit="4"
-    />
-    <path d="M18 10.5h3v3h-3z" fill="currentColor" />
+  <g transform="translate(10 10) scale(0.833333)" fill="url(#effi-ribbon)">
+    <path d="M8.16 1.5L23.84 1.5L20.07 6.76L4.22 6.76Z"/>
+    <path d="M2.49 6.76L8.62 6.76L6.66 9.38L0.53 9.38Z"/>
+    <path d="M6.46 9.38L19.07 9.38L14.92 14.63L2.3 14.63Z"/>
+    <path d="M2.33 14.63L8.37 14.63L6.39 17.27L0.35 17.27Z"/>
+    <path d="M0.37 17.27L20.19 17.27L23.98 22.52L5.38 22.52Z"/>
   </g>
 
   <!-- ===== WORDMARK "Effi" — outlined, cap height 16, baseline y28 ===== -->

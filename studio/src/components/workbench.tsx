@@ -215,9 +215,9 @@ export function Workbench({
             onClick={onToggleSettings}
             aria-expanded={settingsOpen}
             aria-controls="settings-drawer"
-            className={`shrink-0 rounded-lg border px-2 py-1 text-xs leading-[18px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none ${
+            className={`shrink-0 rounded-lg border px-2 py-1 text-xs leading-[18px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none ${
               settingsOpen
-                ? 'border-copper bg-copper-tint text-text'
+                ? 'border-accent bg-accent-tint text-text'
                 : 'border-border text-muted hover:bg-hover'
             }`}
           >
@@ -582,7 +582,7 @@ export function Inspector({
             type="button"
             onClick={onCloseDrawer}
             aria-label="Close the inspector drawer"
-            className="shrink-0 rounded-lg border border-border px-2 py-1 font-mono text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+            className="shrink-0 rounded-lg border border-border px-2 py-1 font-mono text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
           >
             ✕
           </button>
@@ -614,8 +614,8 @@ export function Inspector({
               }}
               onClick={() => setSelected(view.id)}
               onKeyDown={(event) => onTabKeyDown(event, index)}
-              className={`-mb-px flex h-10 min-w-0 flex-1 items-center justify-center gap-2 border-b-2 px-3 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper motion-reduce:transition-none ${
-                active ? 'border-copper text-text' : 'border-transparent text-muted hover:text-text'
+              className={`-mb-px flex h-10 min-w-0 flex-1 items-center justify-center gap-2 border-b-2 px-3 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent motion-reduce:transition-none ${
+                active ? 'border-accent text-text' : 'border-transparent text-muted hover:text-text'
               }`}
             >
               <span className={`truncate text-sm leading-[20px] ${active ? 'font-semibold' : ''}`}>
@@ -641,7 +641,7 @@ export function Inspector({
           // The hidden panel is display:none and so is out of the tab order
           // and out of the accessibility tree with it.
           tabIndex={0}
-          className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper ${
+          className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
             selected === 'tasks' ? '' : 'hidden'
           }`}
         >
@@ -652,7 +652,7 @@ export function Inspector({
           role="tabpanel"
           aria-labelledby="inspector-tab-history"
           tabIndex={0}
-          className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper ${
+          className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
             selected === 'history' ? '' : 'hidden'
           }`}
         >
@@ -715,7 +715,7 @@ function EmptyWorkbench({
       <button
         type="button"
         onClick={onAddTool}
-        className="rounded-lg border border-copper bg-copper px-3 py-1.5 text-xs leading-[18px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+        className="rounded-lg border border-accent bg-accent px-3 py-1.5 text-xs leading-[18px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
       >
         Add a tool
       </button>

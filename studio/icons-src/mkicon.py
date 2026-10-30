@@ -1,43 +1,58 @@
 import struct, zlib
 
 N, SS = 1024, 3                      # output size, supersampling factor
-GROUND, SURFACE, COPPER = (0x10,0x11,0x12), (0x17,0x19,0x1B), (0xE5,0xA1,0x7C)
+# RAISED, not SURFACE: the icon tile is --color-raised #121C3C. --color-surface
+# is #0C142E and is NOT used here -- renaming this to SURFACE would invite a
+# future palette sync to "correct" it and change the shipped tile.
+GROUND, RAISED, ACCENT = (0x08,0x0F,0x24), (0x12,0x1C,0x3C), (0x76,0xCF,0xFF)
 
 TILE_HALF, TILE_EXP = 412, 5         # squircle |x/412|^5 + |y/412|^5 = 1 on (512,512)
 MARK = 532                           # mark box, 51.95% of N -> spans 246..778
-UNIT = MARK / 18                     # effi-mark.svg grid unit -> canvas px (29.5556)
-ORIGIN = (N - MARK) / 2 - 3 * UNIT   # grid (3,3) is the mark box corner (157.3333)
-MITER = 2 ** 0.5                     # 45deg miter offset for a 2-wide stroke
+UNIT = MARK / 24                     # effi-mark.svg grid unit -> canvas px (22.1667)
+ORIGIN = (N - MARK) / 2              # grid (0,0) is the mark box corner (246.0)
 
 def in_squircle(x, y, n, half, p):
     return abs((x - n / 2) / half) ** p + abs((y - n / 2) / half) ** p <= 1
 
+QUADS = [
+    ((8.16, 1.50), (23.84, 1.50), (20.07, 6.76), (4.22, 6.76)),    # top bar
+    ((2.49, 6.76), (8.62, 6.76), (6.66, 9.38), (0.53, 9.38)),      # fold A
+    ((6.46, 9.38), (19.07, 9.38), (14.92, 14.63), (2.30, 14.63)),  # middle bar
+    ((2.33, 14.63), (8.37, 14.63), (6.39, 17.27), (0.35, 17.27)),  # fold B
+    ((0.37, 17.27), (20.19, 17.27), (23.98, 22.52), (5.38, 22.52)),# bottom bar
+]
+
+def inside_quad(u, v, quad):
+    """Sign-consistency across the four edges. All five quads are convex."""
+    sign = 0
+    for i in range(4):
+        ax, ay = quad[i]
+        bx, by = quad[(i + 1) % 4]
+        cross = (bx - ax) * (v - ay) - (by - ay) * (u - ax)
+        if cross > 0:
+            if sign < 0:
+                return False
+            sign = 1
+        elif cross < 0:
+            if sign > 0:
+                return False
+            sign = -1
+    return True
+
 def in_mark(u, v):
-    """True inside effi-mark.svg, in its 24-unit grid. Stroke 2, butt caps,
-    miter joins -> every edge is a half-plane, so each piece is an intersection
-    of inequalities."""
-    # Open angular frame "M21 4H8L4 8v8l4 4h13": the stroke is the +-1 offset
-    # hexagon minus the -1 offset hexagon. Both 45deg chamfers sit on x+y and
-    # y-x, displaced by the miter offset. The right side stays open: neither
-    # hexagon is bounded on the right, so nothing closes the frame.
-    outer = (3 <= u <= 21 and 3 <= v <= 21
-             and u + v >= 12 - MITER and v - u <= 12 + MITER)
-    inner = (u >= 5 and 5 <= v <= 19
-             and u + v >= 12 + MITER and v - u <= 12 - MITER)
-    if outer and not inner:
-        return True
-    # Interior bars "M8 9h8M8 15h8"
-    if 8 <= u <= 16 and (8 <= v <= 10 or 14 <= v <= 16):
-        return True
-    # Right-hand square "M18 10.5h3v3h-3z"
-    return 18 <= u <= 21 and 10.5 <= v <= 13.5
+    """True inside effi-mark.svg, in its 24-unit grid. Five filled
+    quadrilaterals -- three sheared bars and two folds -- so each piece is an
+    intersection of half-planes. Corners are copied from
+    ../src/assets/effi-mark.svg, which stays the master; change all five
+    consumers together."""
+    return any(inside_quad(u, v, q) for q in QUADS)
 
 def sample(x, y):
     """Returns (r,g,b,a) for one supersample point."""
     if in_mark((x - ORIGIN) / UNIT, (y - ORIGIN) / UNIT):
-        return COPPER + (255,)
+        return ACCENT + (255,)
     if in_squircle(x, y, N, TILE_HALF, TILE_EXP):
-        return SURFACE + (255,)
+        return RAISED + (255,)
     return GROUND + (255,)
 
 rows = []

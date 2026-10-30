@@ -126,7 +126,7 @@ const NO_PREVIEWS: Record<string, readonly PreviewLine[] | undefined> = {};
  *  than added to connections-page.tsx: the page owns no navigation, and the
  *  host is the only thing that knows what is behind it.
  *
- *  Not styled as the primary action. Copper is selection and the primary act,
+ *  Not styled as the primary action. Accent is selection and the primary act,
  *  and the primary act on this surface is on the page. */
 function ConnectionsExit({ onClose }: { onClose: () => void }) {
   return (
@@ -134,7 +134,7 @@ function ConnectionsExit({ onClose }: { onClose: () => void }) {
       <button
         type="button"
         onClick={onClose}
-        className="rounded-lg border border-border px-2 py-1 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+        className="rounded-lg border border-border px-2 py-1 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
       >
         ← Back to the workspace
       </button>
@@ -1812,7 +1812,12 @@ export default function App() {
   // answers. A missing provider is a property of one pane, never a reason to
   // withhold the shell.
   return (
-    <div className="flex h-screen bg-ground text-text">
+    // `h-full`, not `h-screen`: the shell measures the box it is in, through
+    // the locked html/body/#root chain, rather than the visual viewport, which
+    // in WKWebView is not reliably the same number. `overflow-hidden` is the
+    // second half of the lock in styles.css: the chrome stays put and every
+    // surface below scrolls inside its own region.
+    <div className="flex h-full overflow-hidden bg-ground text-text">
       {!panels.sidebarCollapsed && (
         <div
           id="project-drawer"
@@ -1831,7 +1836,7 @@ export default function App() {
               type="button"
               onClick={() => setOverlay(null)}
               aria-label="Close the projects drawer"
-              className="shrink-0 rounded-lg border border-border px-2 py-1 font-mono text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+              className="shrink-0 rounded-lg border border-border px-2 py-1 font-mono text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
             >
               ✕
             </button>
@@ -1879,7 +1884,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* The Build workspace. A SIBLING of the two surfaces below, hidden by a
             class and never removed from the tree: the alternate views are added
             beside it, so opening one changes nothing about what is mounted
@@ -2188,12 +2193,22 @@ export default function App() {
 
       {/* A column beside the workspace, not over it and not instead of it: the
           terminal panes above stay mounted while this is open, so visiting
-          Diagnostics cannot interrupt a running /ec-execute. */}
+          Diagnostics cannot interrupt a running /ec-execute.
+
+          `overflow-y-auto` and NOT `overflow-hidden` like the two columns
+          above: this column's non-shrinkable stack is taller than the window
+          minimum -- 40px close header, the installer's ~418px block
+          (install-pane.tsx:70, holding an `h-64` terminal), and SettingsPage's
+          own `shrink-0` heading and jump nav at settings-page.tsx:481, ~191px.
+          At 560px height that is ~89px past the box, and clipping it put every
+          Settings section out of reach: nothing in the column scrolls and the
+          document no longer can. Scrolling the column instead keeps it
+          reachable at ANY height rather than above one magic number. */}
       {settingsOpen && (
         <aside
           id="settings-drawer"
           aria-label="Settings"
-          className="flex w-96 shrink-0 flex-col border-l border-border bg-surface"
+          className="flex w-96 shrink-0 flex-col overflow-y-auto border-l border-border bg-surface"
         >
           {/* The frame supplies the CLOSE affordance and NOTHING ELSE.
               settings-page.tsx renders its own `<h2>Settings</h2>`, and a
@@ -2204,7 +2219,7 @@ export default function App() {
               type="button"
               onClick={() => setSettingsOpen(false)}
               aria-label="Close settings"
-              className="shrink-0 rounded-lg border border-border px-2 py-1 font-mono text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+              className="shrink-0 rounded-lg border border-border px-2 py-1 font-mono text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
             >
               ✕
             </button>
@@ -2359,7 +2374,7 @@ export default function App() {
           onClick={() => setOverlay('sidebar')}
           aria-expanded={overlay === 'sidebar'}
           aria-controls="project-drawer"
-          className={`fixed bottom-4 left-4 z-50 rounded-lg border border-border bg-surface px-2 py-1 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none ${
+          className={`fixed bottom-4 left-4 z-50 rounded-lg border border-border bg-surface px-2 py-1 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none ${
             overlay === 'sidebar' || onboardingView ? 'hidden' : 'block min-[900px]:hidden'
           }`}
         >
@@ -2371,7 +2386,7 @@ export default function App() {
         onClick={() => setOverlay('inspector')}
         aria-expanded={overlay === 'inspector'}
         aria-controls="project-inspector"
-        className={`fixed right-4 bottom-4 z-50 rounded-lg border border-border bg-surface px-2 py-1 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none ${
+        className={`fixed right-4 bottom-4 z-50 rounded-lg border border-border bg-surface px-2 py-1 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none ${
           overlay === 'inspector' || onboardingView ? 'hidden' : 'block min-[1100px]:hidden'
         }`}
       >

@@ -236,14 +236,14 @@ const DISABLED =
  *  deliberately absent from this list: paired with `outline-2` under Tailwind
  *  v4 it emits `outline-style: none` and cancels the ring it looks like it is
  *  setting. */
-const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper';
+const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
 
 const MOTION = 'transition-colors duration-150 motion-reduce:transition-none';
 
 const BODY = 'text-sm leading-[21px]';
 const META = 'text-xs leading-[18px]';
 
-const PRIMARY = `flex h-9 shrink-0 items-center gap-2 rounded-lg border border-copper bg-copper px-4 ${BODY} font-semibold text-on-copper hover:bg-copper/90 ${MOTION} ${FOCUS} ${DISABLED}`;
+const PRIMARY = `flex h-9 shrink-0 items-center gap-2 rounded-lg border border-accent bg-accent px-4 ${BODY} font-semibold text-on-accent hover:bg-accent/90 ${MOTION} ${FOCUS} ${DISABLED}`;
 const SECONDARY = `flex h-9 shrink-0 items-center gap-2 rounded-lg border border-border bg-raised px-4 ${BODY} text-text hover:bg-hover ${MOTION} ${FOCUS} ${DISABLED}`;
 
 // ---------------------------------------------------------------------------
@@ -260,7 +260,7 @@ interface Treatment {
   /** The state, in a word, beside its glyph. */
   word: string;
   icon: ReactNode;
-  /** Text token. Sage is healthy, warm amber is attention; copper stays the
+  /** Text token. Mint is healthy, warm amber is attention; accent stays the
    *  primary action and is never used to say "fine". */
   tone: string;
   /** The panel frame. `notEnabled` is dashed and borrows no error colour. */
@@ -562,7 +562,7 @@ export function DevicePane({
           work in progress. */}
       <div className="h-0.5 shrink-0 bg-border">
         {busy !== null && (
-          <div className="h-full w-full animate-pulse bg-copper motion-reduce:animate-none" />
+          <div className="h-full w-full animate-pulse bg-accent motion-reduce:animate-none" />
         )}
       </div>
 

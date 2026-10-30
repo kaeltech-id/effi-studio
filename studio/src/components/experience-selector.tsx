@@ -12,7 +12,7 @@ const COPY: Record<ExperienceId, { name: string; blurb: string }> = {
   verify: { name: 'Verify', blurb: 'Test and capture evidence.' },
 };
 
-/** Availability as words, never as colour alone: the sage/muted split is a
+/** Availability as words, never as colour alone: the mint/muted split is a
  *  second channel on top of the label, not the label itself. */
 function AvailabilityBadge({ available }: { available: boolean }) {
   return (
@@ -57,9 +57,9 @@ function EnableSwitch({ name, enabled, selectable, describedBy, onToggle }: Enab
       disabled={!selectable}
       title={selectable ? `Enable ${name}` : `${name} cannot be enabled yet`}
       onClick={() => onToggle(!enabled)}
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border text-sm leading-none transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper motion-reduce:transition-none ${
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border text-sm leading-none transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent motion-reduce:transition-none ${
         enabled
-          ? 'border-copper bg-copper text-on-copper'
+          ? 'border-accent bg-accent text-on-accent'
           : selectable
             ? 'border-muted bg-raised text-transparent hover:bg-hover'
             : 'cursor-not-allowed border-dashed border-muted bg-raised text-transparent'
@@ -86,10 +86,10 @@ function ExperienceRow({ experience, active, onOpen, onToggle }: ExperienceRowPr
 
   return (
     <li
-      // Selection is copper and bg-ground, the same marker the project rows
-      // use. Sage is reserved for health and must not appear here.
+      // Selection is accent and bg-ground, the same marker the project rows
+      // use. Mint is reserved for health and must not appear here.
       className={`border-l-2 transition-colors duration-150 motion-reduce:transition-none ${
-        experience.enabled ? 'border-copper bg-ground' : 'border-transparent'
+        experience.enabled ? 'border-accent bg-ground' : 'border-transparent'
       }`}
     >
       <div className="flex items-start gap-1 pr-2">
@@ -99,7 +99,7 @@ function ExperienceRow({ experience, active, onOpen, onToggle }: ExperienceRowPr
           type="button"
           onClick={() => onOpen(experience.id)}
           aria-current={active ? 'page' : undefined}
-          className="flex min-w-0 flex-1 flex-col px-2 py-2 text-left transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper motion-reduce:transition-none"
+          className="flex min-w-0 flex-1 flex-col px-2 py-2 text-left transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent motion-reduce:transition-none"
         >
           {/* Wraps rather than truncates. At the 192px sidebar band the name,
               the availability badge and the checkbox do not fit on one line,
@@ -223,7 +223,7 @@ export function ExperienceSelector({
           id="experience-selector-heading"
           className="flex items-center gap-2 px-2 pt-1 pb-2 text-sm leading-[20px] font-semibold text-text"
         >
-          <span className="text-copper">
+          <span className="text-accent">
             <BrandMark size={16} />
           </span>
           Experiences
@@ -260,8 +260,8 @@ export function ExperienceSelector({
         mounted. A page of its own here would be a second configure draft, a
         second error string and a second reading of the same matrix.
 
-        The marker is copper and bg-ground, the same selection marker the
-        experience rows and the project rows use — sage is health and must not
+        The marker is accent and bg-ground, the same selection marker the
+        experience rows and the project rows use — mint is health and must not
         appear on a selection. */}
       {onOpenConnections && (
         <nav
@@ -271,7 +271,7 @@ export function ExperienceSelector({
           <ul className="overflow-hidden rounded-xl border border-border bg-raised">
             <li
               className={`border-l-2 transition-colors duration-150 motion-reduce:transition-none ${
-                connectionsActive ? 'border-copper bg-ground' : 'border-transparent'
+                connectionsActive ? 'border-accent bg-ground' : 'border-transparent'
               }`}
             >
               <button
@@ -281,7 +281,7 @@ export function ExperienceSelector({
                 // passes `active: null` for the same moment, so exactly one row
                 // in this sidebar carries the marker at a time.
                 aria-current={connectionsActive ? 'page' : undefined}
-                className="flex w-full min-w-0 flex-col px-2 py-2 text-left transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper motion-reduce:transition-none"
+                className="flex w-full min-w-0 flex-col px-2 py-2 text-left transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent motion-reduce:transition-none"
               >
                 <span className="min-w-0 truncate text-sm leading-[21px] text-text">
                   Connections

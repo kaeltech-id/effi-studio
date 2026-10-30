@@ -243,7 +243,7 @@ export function BrowserPane({
           autoComplete="off"
           spellCheck={false}
           placeholder="localhost:3000 — or any http:// or https:// address"
-          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-ground px-3 font-mono text-sm leading-[21px] text-text placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-ground px-3 font-mono text-sm leading-[21px] text-text placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         />
 
         <button
@@ -251,7 +251,7 @@ export function BrowserPane({
           onClick={() => void run('open', onOpenExternally)}
           disabled={!canOpen}
           title={view.url ? `${OPEN_EXTERNALLY}: ${view.url}` : undefined}
-          className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-raised px-3 text-sm leading-[21px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none disabled:cursor-default disabled:bg-surface disabled:text-muted"
+          className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-raised px-3 text-sm leading-[21px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none disabled:cursor-default disabled:bg-surface disabled:text-muted"
         >
           <External />
           {OPEN_EXTERNALLY}
@@ -264,7 +264,7 @@ export function BrowserPane({
           animating and stays visible, which still reads as in progress. */}
       <div className="h-0.5 shrink-0 bg-border">
         {state.kind === 'working' && (
-          <div className="h-full w-full animate-pulse bg-copper motion-reduce:animate-none" />
+          <div className="h-full w-full animate-pulse bg-accent motion-reduce:animate-none" />
         )}
       </div>
 
@@ -309,8 +309,8 @@ export function BrowserPane({
                   disabled={action.disabled}
                   className={
                     action.primary
-                      ? 'rounded-lg bg-copper px-4 py-2 text-sm leading-[21px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none disabled:cursor-default disabled:bg-raised disabled:text-muted'
-                      : 'rounded-lg border border-border bg-raised px-4 py-2 text-sm leading-[21px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none disabled:cursor-default disabled:bg-surface disabled:text-muted'
+                      ? 'rounded-lg bg-accent px-4 py-2 text-sm leading-[21px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none disabled:cursor-default disabled:bg-raised disabled:text-muted'
+                      : 'rounded-lg border border-border bg-raised px-4 py-2 text-sm leading-[21px] text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none disabled:cursor-default disabled:bg-surface disabled:text-muted'
                   }
                 >
                   {action.label}
@@ -323,7 +323,7 @@ export function BrowserPane({
               than repeated in every state's body text. */}
           {!view.embeddedSurface && surfaceReason && (
             <details className="rounded-xl border border-border bg-surface">
-              <summary className="cursor-default rounded-xl px-4 py-3 text-sm leading-[21px] text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper">
+              <summary className="cursor-default rounded-xl px-4 py-3 text-sm leading-[21px] text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
                 Why the page is not drawn here
               </summary>
               <p
@@ -372,7 +372,7 @@ export function BrowserPane({
     if (inFlight) {
       return {
         kind: 'working',
-        tone: 'text-copper',
+        tone: 'text-accent',
         icon: <Spinner />,
         heading: WORKING_HEADING[inFlight],
         body: 'Working. There is no progress to report — this step either completes or comes back with a reason.',
@@ -400,7 +400,7 @@ export function BrowserPane({
       case 'loading':
         return {
           kind: 'working',
-          tone: 'text-copper',
+          tone: 'text-accent',
           icon: <Spinner />,
           heading: 'Loading',
           body: 'Loading. No progress is measurable here, so none is shown.',
@@ -549,7 +549,7 @@ function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-raised text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none disabled:cursor-default disabled:bg-surface disabled:text-muted"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-raised text-text transition-colors duration-150 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none disabled:cursor-default disabled:bg-surface disabled:text-muted"
     >
       {children}
     </button>

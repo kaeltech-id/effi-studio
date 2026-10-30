@@ -337,7 +337,7 @@ export function TabStrip({
                 // hold their width and the box below them overflows.
                 className={`flex h-9 min-w-[160px] max-w-[260px] shrink-0 items-center rounded-lg border pr-1 transition-colors duration-150 motion-reduce:transition-none ${
                   active
-                    ? 'border-copper bg-copper-tint'
+                    ? 'border-accent bg-accent-tint'
                     : 'border-border bg-raised hover:bg-hover'
                 }`}
               >
@@ -391,11 +391,11 @@ export function TabStrip({
                       requestClose(tab);
                     }
                   }}
-                  className={`flex h-full min-w-0 items-center gap-2 rounded-l-lg pl-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper ${
+                  className={`flex h-full min-w-0 items-center gap-2 rounded-l-lg pl-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
                     active ? 'text-text' : 'text-muted'
                   }`}
                 >
-                  <span className={active ? 'shrink-0 text-copper' : 'shrink-0'}>
+                  <span className={active ? 'shrink-0 text-accent' : 'shrink-0'}>
                     <Icon path={KIND_ICON[tab.type]} />
                   </span>
                   {/* The title has a floor of its own, so the frame's ceiling
@@ -436,7 +436,7 @@ export function TabStrip({
                     anchorUnder(tab.id);
                     setMenuFor(tab.id);
                   }}
-                  className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper motion-reduce:transition-none"
+                  className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent motion-reduce:transition-none"
                 >
                   <Icon path={DOTS} />
                 </button>
@@ -448,7 +448,7 @@ export function TabStrip({
                   // tab it sits in.
                   aria-label={`Close ${tab.title}`}
                   onClick={() => requestClose(tab)}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper motion-reduce:transition-none"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent motion-reduce:transition-none"
                 >
                   <Icon path={CROSS} size={14} />
                 </button>
@@ -470,7 +470,7 @@ export function TabStrip({
           type="button"
           onClick={onAddTool}
           aria-label="Add a tool"
-          className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+          className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
         >
           <Icon path={PLUS} />
         </button>
@@ -534,7 +534,7 @@ export function TabStrip({
                 setConfirmFor(null);
                 tabRefs.current.get(confirming.id)?.focus();
               }}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+              className="rounded-lg border border-border px-3 py-1.5 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
             >
               Cancel
             </button>
@@ -554,7 +554,7 @@ export function TabStrip({
                 setConfirmFor(null);
                 onCloseSession(confirming, sessionId);
               }}
-              className="rounded-lg border border-copper bg-copper px-3 py-1.5 text-xs leading-[18px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-copper motion-reduce:transition-none"
+              className="rounded-lg border border-accent bg-accent px-3 py-1.5 text-xs leading-[18px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
             >
               Close session
             </button>
@@ -582,7 +582,7 @@ function MenuItem({
       role="menuitem"
       disabled={disabled}
       onClick={onClick}
-      className={`flex h-8 w-full items-center rounded-lg px-2 text-left text-xs leading-[18px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-copper motion-reduce:transition-none ${
+      className={`flex h-8 w-full items-center rounded-lg px-2 text-left text-xs leading-[18px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent motion-reduce:transition-none ${
         disabled ? 'cursor-default text-muted' : 'text-text hover:bg-hover'
       }`}
     >

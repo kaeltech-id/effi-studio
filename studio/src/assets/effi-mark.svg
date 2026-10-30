@@ -1,41 +1,56 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" role="img" aria-label="Effi">
-  <!--
-    Effi brand mark — master vector.
+  <!-- Effi brand mark — MASTER VECTOR.
 
-    Construction (24-unit grid, stroke weight 2):
-      - Open angular frame: top arm, 45° chamfered shoulder, left spine,
-        45° chamfered shoulder, bottom arm. The right side is DELIBERATELY
-        open (14-unit gap) — it must never close into a rectangle.
-      - Two interior horizontal bars complete the capital E.
-      - A small solid square sits on the right, on the optical midline.
-      Meaning: efficiency (the E) inside a workspace frame.
+       FOUR files carry copies of the five path strings below and must change
+       in lockstep with it:
+         studio/src/components/brand-mark.tsx   (inlined, currentColor)
+         studio/src/assets/effi-logo.svg        (inlined under one transform)
+         studio/icons-src/effi-icon.svg         (inlined under one transform)
+         studio/icons-src/mkicon.py             (QUADS, as numbers)
+       tests/test_studio_guards.py asserts all four stay identical.
 
-    Colour: every stroke and fill is currentColor. Set `color` on the
-    parent — copper #E5A17C on dark, parchment #F3EFE9 on graphite.
+       Ribbon E. Three sheared bars joined down the left by two folds, so the
+       whole reads as one ribbon turning back on itself. Geometry measured
+       from design/rebrand/effi-studio-mark-transparent.png (opaque bbox
+       982x860), normalised to height 24, then scaled 0.876 and offset y+1.5
+       to fit the square box.
 
-    CLEAR SPACE: keep a margin of half the symbol height — the symbol is
-    18 grid units tall, so clear space is 9 units (0.5x) on all four
-    sides. Nothing may intrude into that zone.
+       The top and middle bars shear LEFT going down (dx/dy = -0.75 and
+       -0.79); the bottom bar shears RIGHT (+0.95). That asymmetry is
+       measured, not invented — it is what makes the ribbon read as folded
+       rather than as three parallel slabs. Do not "correct" it.
 
-    Minimum size: 16px. All counters (gaps) are 3-4 grid units = 2-2.7px
-    at 16px against a 1.33px stroke, so the interior bars stay separate
-    and the frame stays visibly open.
-  -->
-  <path
-    d="M21 4H8L4 8v8l4 4h13"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="butt"
-    stroke-linejoin="miter"
-    stroke-miterlimit="4"
-  />
-  <path
-    d="M8 9h8M8 15h8"
-    stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="butt"
-    stroke-linejoin="miter"
-    stroke-miterlimit="4"
-  />
-  <path d="M18 10.5h3v3h-3z" fill="currentColor" />
+       Those figures are each bar's LEFT edge. The bars are NOT parallelograms:
+       every right edge runs at its own measured angle (top -0.72, bottom
+       +0.72), so the top bar widens slightly downward and the bottom bar
+       tapers. That is faithful to the raster — do not regenerate the quads as
+       parallelograms from the left-edge slopes alone.
+
+       The raster has rounded fold terminals. They are squared off here: the
+       two counters measure 2.62 and 2.64 grid units, which is ~1.75px at the
+       16px minimum (2.6px at 24px), and a rounded terminal closes them.
+
+       Colour is currentColor throughout. The purple-to-cyan gradient lives
+       on the large lockup (effi-logo.svg) only — across a 20px glyph a
+       gradient is invisible, and buying it here would cost currentColor,
+       which is the one thing BrandMark depends on.
+
+       KNOWN DEVIATION — top bar width. The quads give the top bar 17.9 grid
+       units; the reference raster measures ~20.1 on any clean row. The 17.9
+       figure was taken from the raster's topmost scanline, which the rounded
+       corner clips, so it under-measures. Consequence: the implemented
+       bottom/top ratio is 1.26 where the reference is 1.16. The mark reads
+       correctly on its own and is faithful everywhere else (fold A 7.0 vs
+       7.12, fold B 6.9 vs 6.89, middle 14.4 vs 14.7, bottom 22.7 vs 22.9,
+       aspect 1.142 vs 1.139). Re-cutting it means regenerating all five
+       quads in all five consumers, so it is recorded here rather than done
+       silently.
+
+       CLEAR SPACE: half the glyph height on all four sides.
+       Minimum size: 16px. -->
+  <path fill="currentColor" d="M8.16 1.5L23.84 1.5L20.07 6.76L4.22 6.76Z"/>
+  <path fill="currentColor" d="M2.49 6.76L8.62 6.76L6.66 9.38L0.53 9.38Z"/>
+  <path fill="currentColor" d="M6.46 9.38L19.07 9.38L14.92 14.63L2.3 14.63Z"/>
+  <path fill="currentColor" d="M2.33 14.63L8.37 14.63L6.39 17.27L0.35 17.27Z"/>
+  <path fill="currentColor" d="M0.37 17.27L20.19 17.27L23.98 22.52L5.38 22.52Z"/>
 </svg>

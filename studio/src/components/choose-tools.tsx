@@ -228,8 +228,8 @@ interface RowStatus {
 }
 
 function StatusChip({ label, tone }: RowStatus) {
-  // Sage is health, copper is selection, and the two never swap: a chip that
-  // went copper when a box was ticked would claim the machine was ready.
+  // Mint is health, accent is selection, and the two never swap: a chip that
+  // went accent when a box was ticked would claim the machine was ready.
   const marks: Record<StatusTone, { icon: string; className: string }> = {
     healthy: { icon: CHECK_CIRCLE, className: 'text-success' },
     attention: { icon: ALERT, className: 'text-warning' },
@@ -274,13 +274,13 @@ function ToolRow({
   const frame = disabled
     ? 'bg-surface'
     : checked
-      ? 'bg-copper-tint'
+      ? 'bg-accent-tint'
       : 'bg-surface hover:bg-hover';
 
   return (
     <label
       htmlFor={controlId}
-      className={`flex items-center gap-4 border-b border-border px-4 py-3 transition-colors duration-150 last:border-b-0 motion-reduce:transition-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-copper has-[:focus-visible]:ring-inset ${frame} ${
+      className={`flex items-center gap-4 border-b border-border px-4 py-3 transition-colors duration-150 last:border-b-0 motion-reduce:transition-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent has-[:focus-visible]:ring-inset ${frame} ${
         disabled ? 'cursor-default' : 'cursor-pointer'
       }`}
     >
@@ -293,9 +293,9 @@ function ToolRow({
           aria-labelledby={labelId}
           aria-describedby={descriptionId}
           onChange={(e) => onChange(e.target.checked)}
-          className="peer h-5 w-5 appearance-none rounded-lg border border-border bg-raised transition-colors duration-150 checked:border-copper checked:bg-copper focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none disabled:cursor-default motion-reduce:transition-none"
+          className="peer h-5 w-5 appearance-none rounded-lg border border-border bg-raised transition-colors duration-150 checked:border-accent checked:bg-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none disabled:cursor-default motion-reduce:transition-none"
         />
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-on-copper opacity-0 transition-opacity duration-150 peer-checked:opacity-100 motion-reduce:transition-none">
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-on-accent opacity-0 transition-opacity duration-150 peer-checked:opacity-100 motion-reduce:transition-none">
           <Icon path={CHECK} size={14} />
         </span>
       </span>
@@ -497,7 +497,7 @@ export function ChooseTools({
           className={`${EDITORIAL_COLUMN_VISIBILITY} flex-col gap-10 border-r border-border px-10 py-10`}
         >
           <div className="flex items-center gap-3">
-            <span className="text-copper">
+            <span className="text-accent">
               <BrandMark size={24} />
             </span>
             <span className="text-[20px] leading-[28px] font-semibold text-text">Effi</span>
@@ -526,13 +526,13 @@ export function ChooseTools({
                       done
                         ? 'border-success text-success'
                         : current
-                          ? 'border-copper text-copper'
+                          ? 'border-accent text-accent'
                           : 'border-border text-muted'
                     }`}
                     aria-hidden="true"
                   >
                     {done && <Icon path={CHECK} size={12} />}
-                    {current && <span className="h-2 w-2 rounded-full bg-copper" />}
+                    {current && <span className="h-2 w-2 rounded-full bg-accent" />}
                   </span>
                   <span className="font-mono text-xs leading-[18px] text-muted">
                     {String(i + 1).padStart(2, '0')}
@@ -574,9 +574,9 @@ export function ChooseTools({
                   type="button"
                   onClick={() => jump(s.id)}
                   aria-current={active ? 'true' : undefined}
-                  className={`-mb-px flex items-center gap-2 border-b-2 px-3 py-3 text-sm leading-[20px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none ${
+                  className={`-mb-px flex items-center gap-2 border-b-2 px-3 py-3 text-sm leading-[20px] transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none ${
                     active
-                      ? 'border-copper text-text'
+                      ? 'border-accent text-text'
                       : 'border-transparent text-muted hover:text-text'
                   }`}
                 >
@@ -689,7 +689,7 @@ export function ChooseTools({
                 onClick={() => setToolkitOverride(!toolkitExpanded)}
                 aria-expanded={toolkitExpanded}
                 aria-controls="toolkit-rows"
-                className="flex w-full items-center gap-3 bg-surface px-4 py-3 text-left transition-colors duration-150 hover:bg-hover focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset focus-visible:outline-none motion-reduce:transition-none"
+                className="flex w-full items-center gap-3 bg-surface px-4 py-3 text-left transition-colors duration-150 hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none motion-reduce:transition-none"
               >
                 <span
                   className={`text-muted transition-transform duration-150 motion-reduce:transition-none ${
@@ -766,14 +766,14 @@ export function ChooseTools({
               <button
                 type="button"
                 onClick={onBack}
-                className="rounded-lg border border-border px-4 py-2.5 text-sm leading-[20px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
+                className="rounded-lg border border-border px-4 py-2.5 text-sm leading-[20px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
               >
                 Back
               </button>
               <button
                 type="button"
                 onClick={() => onContinue(plan, summary.needsReview)}
-                className="flex items-center gap-2 rounded-lg bg-copper px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
+                className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none"
               >
                 {ctaLabel}
                 <span aria-hidden="true">→</span>

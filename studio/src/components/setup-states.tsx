@@ -312,7 +312,7 @@ function PrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-2 rounded-lg bg-copper px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-copper transition-colors duration-150 hover:bg-copper/90 focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed disabled:bg-raised disabled:text-muted"
+      className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm leading-[20px] font-semibold text-on-accent transition-colors duration-150 hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed disabled:bg-raised disabled:text-muted"
     >
       {children}
     </button>
@@ -333,7 +333,7 @@ function SecondaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded-lg border border-border px-4 py-2.5 text-sm leading-[20px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed disabled:text-muted disabled:hover:bg-transparent"
+      className="rounded-lg border border-border px-4 py-2.5 text-sm leading-[20px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed disabled:text-muted disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -766,7 +766,7 @@ export function SetupStates({
                       type="button"
                       onClick={() => retryOne(row.id)}
                       disabled={busy}
-                      className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed"
+                      className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs leading-[18px] text-muted transition-colors duration-150 hover:bg-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed"
                     >
                       Retry this component
                     </button>

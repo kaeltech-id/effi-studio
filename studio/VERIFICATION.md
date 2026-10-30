@@ -25,8 +25,8 @@ sizes from Task 118.
 `screenshots/onboarding-01-choose-experiences.png`
 
 Matches on structure, copy and palette: the `Effi STUDIO` wordmark, the
-editorial column, the three-step rail with 01 active in copper, *"How will you
-use Effi?"*, the Build card selected with a copper check and an `AVAILABLE`
+editorial column, the three-step rail with 01 active in accent, *"How will you
+use Effi?"*, the Build card selected with an accent check and an `AVAILABLE`
 badge, the Verify card inert with `COMING SOON` and *"Not available to install
 yet."*, *"Build and Verify share one app"*, and the `Continue with Build` /
 `Set up later` pair.
@@ -38,10 +38,10 @@ yet."*, *"Build and Verify share one app"*, and the `Continue with Build` /
   equivalent.
 - **Checked and found correct, not a defect:** the `AVAILABLE` badge reads
   paler than the mockup's green. The code is `border-success/40 text-success` —
-  the sage token — carrying a deliberate rule: *"Copper is selection and primary
-  action; sage is healthy. A checked box is never sage, and an availability
-  badge is never copper."* The token is right; `#9CC5AF` is simply a
-  desaturated sage that renders paler at 12px than the mockup's rendering.
+  the mint token — carrying a deliberate rule: *"Accent is selection and primary
+  action; mint is healthy. A checked box is never mint, and an availability
+  badge is never accent."* The token is right; `#7FD4A8` is simply a
+  desaturated mint that renders paler at 12px than the mockup's rendering.
 - **Deviation:** the mockup draws a vertical connector line between the three
   step markers; the implementation draws the markers without it.
 
@@ -66,8 +66,8 @@ row carries the backend's own sentence, `Android SDK not found at
 `screenshots/workbench-1440x900.png`, `-1180x760`, `-980x700`, `-800x650`
 
 Matches on hierarchy: the project header with branch, the one-row tab strip with
-per-provider glyphs, the copper-selected tab, the Tasks/History inspector with
-`Source: Claude plan`, a sage progress bar, `N complete · M remaining`, task text
+per-provider glyphs, the accent-selected tab, the Tasks/History inspector with
+`Source: Claude plan`, a mint progress bar, `N complete · M remaining`, task text
 **verbatim including its `[M]` and `[agent: …]` tags**, and the Project & Git
 disclosure with the branch list and the unfinished-task warning.
 

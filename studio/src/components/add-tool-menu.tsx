@@ -148,8 +148,8 @@ export interface AddToolMenuProps {
   className?: string;
 }
 
-/** A row the user can press. `available` is sage on the right because the tool
- *  is healthy; `missing` is copper because setup is the primary action being
+/** A row the user can press. `available` is mint on the right because the tool
+ *  is healthy; `missing` is accent because setup is the primary action being
  *  offered. The two tokens never swap. */
 function ActionRow({ item }: { item: Exclude<MenuItem, { state: 'unsupported' }> }) {
   const ready = item.state === 'available';
@@ -159,7 +159,7 @@ function ActionRow({ item }: { item: Exclude<MenuItem, { state: 'unsupported' }>
         type="button"
         data-add-tool-item=""
         onClick={item.activate}
-        className="flex w-full items-start gap-3 px-4 py-2 text-left transition-colors duration-150 hover:bg-hover focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset focus-visible:outline-none motion-reduce:transition-none"
+        className="flex w-full items-start gap-3 px-4 py-2 text-left transition-colors duration-150 hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none motion-reduce:transition-none"
       >
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text">
           <Icon path={item.icon} size={18} />
@@ -172,7 +172,7 @@ function ActionRow({ item }: { item: Exclude<MenuItem, { state: 'unsupported' }>
         </span>
         <span
           className={`flex shrink-0 items-center gap-1 pt-0.5 text-xs leading-[18px] ${
-            ready ? 'text-success' : 'text-copper'
+            ready ? 'text-success' : 'text-accent'
           }`}
         >
           {item.statusLabel}
@@ -465,9 +465,9 @@ export function AddToolMenu({
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((was) => !was)}
-        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none ${
+        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ground focus-visible:outline-none motion-reduce:transition-none ${
           open
-            ? 'border-copper bg-copper-tint text-copper'
+            ? 'border-accent bg-accent-tint text-accent'
             : 'border-border bg-raised text-muted hover:bg-hover hover:text-text'
         }`}
       >
@@ -478,7 +478,7 @@ export function AddToolMenu({
         <div
           ref={popoverRef}
           aria-labelledby={headingId}
-          className={`absolute top-full right-0 z-30 mt-2 w-72 rounded-[10px] border border-border bg-surface shadow-lg transition-[opacity,transform] duration-150 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none ${
+          className={`absolute top-full right-0 z-30 mt-2 max-h-[min(70vh,480px)] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[10px] border border-border bg-surface shadow-lg transition-[opacity,transform] duration-150 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none ${
             entered ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'
           }`}
         >
@@ -505,7 +505,7 @@ export function AddToolMenu({
               type="button"
               onClick={() => runAndClose(onManageTools)}
               data-add-tool-item=""
-              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-hover focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset focus-visible:outline-none motion-reduce:transition-none"
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none motion-reduce:transition-none"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center text-muted">
                 <Icon path={GEAR} size={18} />

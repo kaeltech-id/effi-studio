@@ -5,6 +5,7 @@ was written; the point is that none of them could FAIL before it. An invariant
 with no test is a convention, and conventions drift silently.
 """
 
+import json
 import os
 import re
 
@@ -489,3 +490,255 @@ class TestFocusAffordance:
                if 'outline-none' in cls and 'outline-2' in cls]
         assert not out, (
             'outline-none cancels the outline ring beside it:\n  ' + '\n  '.join(out))
+
+
+class TestShellContainment:
+    """The app-shell lock. Studio is a window, not a page: before this, nothing
+    stopped the document from growing behind a descendant taller than the
+    webview, and the user could drag the whole interface off the top of the
+    window and sit looking at bare --color-ground. The fix is four class
+    strings and two config keys, every one of which a later edit could quietly
+    undo -- so each one is asserted here."""
+
+    def _css(self):
+        return _read('studio', 'src', 'styles.css')
+
+    def _document_block(self):
+        """The `html, body, #root` rule, and nothing else in the file."""
+        m = re.search(r'html,\s*body,\s*#root\s*\{(.*?)\}', self._css(), re.S)
+        assert m, 'the html, body, #root block is gone from styles.css'
+        return m.group(1)
+
+    def test_the_block_matcher_actually_finds_the_rule(self):
+        """A regex that matched nothing would make every test below vacuous."""
+        assert 'height: 100%' in self._document_block()
+
+    def test_the_document_chain_cannot_scroll(self):
+        """Asserted against the DECLARATIONS, not the block text: the comment
+        above them names both properties in prose, so a substring check would
+        stay green with the rule itself deleted."""
+        block = _strip_comments(self._document_block())
+        missing = [d for d in ('overflow: hidden;', 'overscroll-behavior: none;')
+                   if not re.search(r'(?m)^\s*' + re.escape(d) + r'$', block)]
+        assert not missing, (
+            'the document would scroll behind the shell again, exposing bare '
+            'ground below it: ' + ', '.join(missing))
+
+    def test_the_shell_root_clips_its_children(self):
+        """Matched on MEANING, not on the class string in order: quote style,
+        wrapping and utility order are a formatter's business, and pinning the
+        whole string made an earlier guard in this file cry wolf over an intact
+        invariant (see test_studio_guards.py:414-418)."""
+        app = _strip_comments(_read('studio', 'src', 'App.tsx'))
+        m = re.search(r'<div className="([^"]*bg-ground text-text[^"]*)"', app)
+        assert m, 'the shell root element is gone from App.tsx'
+        classes = m.group(1).split()
+        missing = [c for c in ('h-full', 'overflow-hidden') if c not in classes]
+        assert not missing, (
+            'the shell root must clip and must measure its own box, not the '
+            'viewport: ' + ', '.join(missing))
+
+    def test_no_viewport_unit_sizes_the_shell(self):
+        """100vh is not the webview box in WKWebView. The shell measures the
+        locked html/body/#root chain instead. Scoped to class strings: the
+        comment at the shell root quotes the old utility on purpose."""
+        unit = re.compile(r'\b(?:min-|max-)?h-screen\b|\bh-\[100d?vh\]')
+        out = []
+        for path in _walk('studio/src', {'.ts', '.tsx'}):
+            code = _strip_comments(
+                open(path, encoding='utf-8', errors='replace').read())
+            for hit in set(unit.findall(code)):
+                out.append(
+                    f'{os.path.relpath(path, _repo()).replace(os.sep, "/")}: {hit}')
+        assert not out, (
+            'these size the shell by the viewport rather than by the locked '
+            'html/body/#root chain: ' + ', '.join(sorted(out)))
+
+    # The floors the layout was actually audited at: 720 sits inside the
+    # sub-900px sidebar-drawer band and the sub-1100px inspector-drawer band,
+    # and 560 was measured against the workbench chrome. Asserted as VALUES,
+    # because `"minWidth": 0` would satisfy the keys and none of the claim.
+    MIN_WINDOW = {'minWidth': 720, 'minHeight': 560}
+
+    def test_the_settings_drawer_scrolls_rather_than_clipping(self):
+        """The one column that must NOT clip. Its non-shrinkable stack -- close
+        header, the installer's `h-64` terminal block, and SettingsPage's own
+        heading and jump nav -- is taller than the window minimum, so clipping
+        it put every Settings section out of reach once the document lock
+        removed the page-scroll fallback. Found in review, after the clip had
+        already been applied here."""
+        app = _strip_comments(_read('studio', 'src', 'App.tsx'))
+        m = re.search(r'className="(flex w-96[^"]*)"', app)
+        assert m, 'the settings drawer column is gone from App.tsx'
+        classes = m.group(1).split()
+        assert 'overflow-y-auto' in classes and 'overflow-hidden' not in classes, (
+            'the settings drawer must scroll, not clip: its stack exceeds the '
+            f'window minimum and nothing else can reach it -- got {m.group(1)!r}')
+
+    def test_the_add_tool_popover_is_bounded(self):
+        """`<main>` clips now, and this popover is inside it with no height of
+        its own, so an unbounded menu loses its footer row at small window
+        heights with no scroller behind it."""
+        menu = _strip_comments(
+            _read('studio', 'src', 'components', 'add-tool-menu.tsx'))
+        m = re.search(r'absolute top-full[^`"]*', menu)
+        assert m, 'the add-tool popover element is gone from add-tool-menu.tsx'
+        assert 'max-h-[' in m.group(0) and 'overflow-y-auto' in m.group(0), (
+            'the popover needs a height cap and its own scroller, or <main>'
+            f"'s clip hides its last rows -- got {m.group(0)!r}")
+
+    # Scroll regions whose last content is NOT focusable, so tabbing to the
+    # final button leaves the text below it off screen. With the document
+    # locked these need to be focus stops or a keyboard user cannot reach it.
+    FOCUSABLE_SCROLLERS = (
+        ('studio/src/components/verify-landing.tsx', 'verify-landing-heading'),
+        ('studio/src/components/choose-experiences.tsx', 'choose-experiences-heading'),
+        ('studio/src/components/choose-experiences.tsx', 'neutral-shell-heading'),
+    )
+
+    @pytest.mark.parametrize('rel,heading', FOCUSABLE_SCROLLERS)
+    def test_a_page_scroller_is_reachable_from_the_keyboard(self, rel, heading):
+        code = _strip_comments(_read(*rel.split('/')))
+        m = re.search(r'<section\s+aria-labelledby="' + re.escape(heading)
+                      + r'"(.*?)>', code, re.S)
+        assert m, f'the section labelled by {heading} is gone from {rel}'
+        el = m.group(1)
+        assert 'tabIndex={0}' in el, (
+            f'{rel}: this region scrolls and its last content is not '
+            'focusable, so without a focus stop a keyboard user cannot scroll '
+            'to it now that the document cannot move')
+
+    def test_the_window_declares_a_minimum_size(self):
+        conf = json.loads(_read('studio', 'src-tauri', 'tauri.conf.json'))
+        win = conf['app']['windows'][0]
+        bad = []
+        for key, floor in self.MIN_WINDOW.items():
+            got = win.get(key)
+            if not isinstance(got, (int, float)) or got < floor:
+                bad.append(f'{key}={got!r} (needs >= {floor})')
+        assert not bad, (
+            'without a minimum the window can be dragged below what the '
+            'breakpoint bands render, and the clip then hides real chrome: '
+            + ', '.join(bad))
+
+
+# ─── Tasks 13 and 14: the navy + cyan palette is the only palette ────────────
+
+_COPPER = re.compile(r'copper', re.I)
+
+# A Tailwind utility role, not a CSS custom property. The role name must start
+# a token (so `context-brand-violet` is not a text role), and `brand-` must
+# follow it across a single `-`, so the `--color-brand-violet:` declaration in
+# styles.css -- where `brand-` is preceded by `color`, which is not a role --
+# cannot trip this.
+_INTERACTIVE_BRAND = re.compile(
+    r'(?<![A-Za-z0-9_-])'
+    r'(?:text|border|ring|stroke|divide|outline|caret|placeholder|decoration)'
+    r'-brand-(?:violet|blue)')
+
+
+class TestTheBrandPaletteIsTheOnlyPalette:
+    """The rebrand deleted --color-copper outright rather than aliasing it.
+    Tailwind resolves an unknown colour to no rule at all, so a surviving
+    bg-copper renders transparent and reviews as 'looks fine' on a dark
+    surface. Only a string check catches it."""
+
+    def test_no_copper_token_survives_in_studio(self):
+        # Scope is studio/ on purpose, not the repo. This file names the
+        # retired token in its own docstring and failure message, so a
+        # repo-wide sweep would trip on itself.
+        offenders = []
+        scanned = 0
+        for path in _walk('studio',
+                          {'.ts', '.tsx', '.css', '.svg', '.py', '.md'}):
+            scanned += 1
+            with open(path, encoding='utf-8', errors='replace') as f:
+                if _COPPER.search(f.read()):
+                    offenders.append(os.path.relpath(path, _repo()))
+        assert scanned > 20, (
+            'only {} file(s) scanned -- the walk stopped resolving and this '
+            'guard would pass over nothing'.format(scanned))
+        assert not offenders, (
+            'the copper palette is gone, so a surviving copper token names a '
+            'colour Tailwind cannot resolve and renders as nothing at all: '
+            + ', '.join(sorted(offenders)))
+
+    def test_violet_and_blue_never_carry_an_interactive_role(self):
+        """#8B5CF6 measures 4.49:1 on navy and #4263EB measures 3.82:1 --
+        both below the 4.5:1 AA floor for body text. They are gradient
+        colours. The moment one is used as text, a border, an icon stroke or
+        a focus ring, the app has an accessibility regression that renders
+        perfectly well and is therefore invisible in review."""
+        offenders = []
+        for path in _walk('studio/src', {'.ts', '.tsx', '.css'}):
+            with open(path, encoding='utf-8', errors='replace') as f:
+                text = f.read()
+            rel = os.path.relpath(path, _repo())
+            offenders += [f'{rel}: {hit}'
+                          for hit in set(_INTERACTIVE_BRAND.findall(text))]
+        assert not offenders, (
+            'brand violet and brand blue are gradient and fill colours only; '
+            'giving one a text, border, ring, stroke, divide, outline, caret, '
+            'placeholder or decoration role drops it below the 4.5:1 AA floor '
+            'on navy: ' + ', '.join(sorted(offenders)))
+
+
+class TestTheMarkHasExactlyOneMaster:
+    """studio/src/assets/effi-mark.svg holds the five quadrilaterals of the
+    brand mark. Four files carry copies -- a React component that needs
+    currentColor, the lockup, the icon source, and an analytic rasteriser in
+    Python -- because they span three languages with no shared build step.
+    The duplication is justified; its silent drift is not. Nothing else fails
+    if one copy is edited alone: the app still builds, the icon still renders,
+    and the mark is simply wrong in one place."""
+
+    MASTER = 'studio/src/assets/effi-mark.svg'
+    SVG_COPIES = ('studio/src/components/brand-mark.tsx',
+                  'studio/src/assets/effi-logo.svg',
+                  'studio/icons-src/effi-icon.svg')
+    PATH_D = re.compile(r'd="(M[0-9][^"]*Z)"')
+    NUM = re.compile(r'-?\d+\.?\d*')
+
+    def _master(self):
+        quads = self.PATH_D.findall(_read(self.MASTER))
+        assert len(quads) == 5, (
+            '{} should hold exactly five quadrilaterals, found {}'.format(
+                self.MASTER, len(quads)))
+        return quads
+
+    @pytest.mark.parametrize('rel', SVG_COPIES)
+    def test_every_svg_copy_is_character_identical(self, rel):
+        """Containment, not extraction. Each consumer legitimately holds other
+        paths too -- the lockup carries the wordmark letterforms, the icon
+        source carries the squircle -- and they are small-coordinate paths like
+        the mark, so no coordinate filter separates them. What must hold is
+        that the master's five strings appear verbatim, in order."""
+        master = self._master()
+        body = _read(rel)
+        missing = [d for d in master if d not in body]
+        assert not missing, (
+            '{} has drifted from {} -- {} of 5 quadrilaterals no longer appear '
+            'verbatim. Edit the master and re-copy all four consumers '
+            'together. Missing: {}'.format(
+                rel, self.MASTER, len(missing), '; '.join(missing)))
+        order = [body.index(d) for d in master]
+        assert order == sorted(order), (
+            '{} holds all five quadrilaterals but not in master order (top '
+            'bar, fold A, middle bar, fold B, bottom bar); later consumers '
+            'copy them positionally.'.format(rel))
+
+    def test_the_rasteriser_carries_the_same_corners(self):
+        """mkicon.py stores the corners as Python numbers, so string equality
+        cannot be used -- 2.30 in the SVG is 2.3 here. Compare numerically."""
+        master = [[float(n) for n in self.NUM.findall(d)]
+                  for d in self._master()]
+        body = _read('studio/icons-src/mkicon.py')
+        start = body.index('QUADS')
+        quads_src = body[start:body.index('\n\n', start)]
+        nums = [float(n) for n in self.NUM.findall(
+            quads_src[quads_src.index('['):])]
+        flat = [n for quad in master for n in quad]
+        assert nums == flat, (
+            'studio/icons-src/mkicon.py QUADS no longer matches {}. The '
+            'rasterised icon and the shipped vector would disagree.'.format(
+                self.MASTER))
