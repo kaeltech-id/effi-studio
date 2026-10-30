@@ -111,6 +111,11 @@ Report each as template drift with the task number. These fields are **exception
 
 After spec compliance is confirmed, review code quality on all modified files.
 
+### Reviewing the dimensions
+The gates below are independent: a security finding does not depend on a type-safety finding, and neither needs the other's output. Spawn ONE subagent PER APPLICABLE GATE as concurrent reviewers **in a single message**, at most 8 in flight, each over the same file set, then merge their findings into one list before fixing anything.
+
+Skip a gate that does not apply rather than spawning a reviewer that reports nothing — no Design Contract means no Visual Fidelity reviewer, no API calls means no API Error Handling reviewer. Merge first, fix second: two reviewers may land on the same line, and fixing as reports arrive would have them fighting over it.
+
 ### Code Quality
 - Naming, structure, file organization matches conventions
 - Best practices for detected stack
@@ -163,6 +168,8 @@ Skip this gate entirely when the plan has a Design Contract or no design block.
 - Failures surface in the UI as a recoverable state — no blank screen, no endless spinner
 - No empty catch blocks and no log-only handling
 
+Running the gates concurrently never relaxes a gate. Every gate above is applied in full, every finding is still fixed, and the definitive global gate in Step 2 still runs ONCE, serially, in the orchestrator — a build and a test suite must not race each other.
+
 ### API Correctness (if docs available)
 - Compare implemented API calls against cached docs
 - Flag any usage of deprecated or incorrect APIs
@@ -179,7 +186,9 @@ Run every global invariant for this project ONCE, here, and record the real outp
 - the type-check — `tsc --noEmit`, `mypy`, or equivalent
 - the full test suite
 
-`/ec-execute` no longer runs these per task, so **this is the authoritative gate** and a failure here is a review failure. Skip cleanly any step this project does not have — a missing build step is not a failure. If the plan exceeds 40 tasks, the evidence audit below may sample rather than re-run everything; this gate never samples.
+`/ec-execute` no longer runs these per task, so on `in-cycle` **this is the authoritative gate** and a failure here is a review failure. On `handoff` it is the authoritative STATIC gate only: compilation is deliberately deferred to the user, so a clean review on `handoff` never claims the code was built. Skip cleanly any step this project does not have — a missing build step is not a failure. If the plan exceeds 40 tasks, the evidence audit below may sample rather than re-run everything; this gate never samples.
+
+**Scope by proof mode.** Resolve the mode first: read the `Proof mode:` line from `{PLAN_FILE}`, falling back to `## Proof Mode` in `{DECISION_FILE}`; when neither says, treat it as `handoff`. On `handoff`, skip the build step and any launch step entirely: run only the project's cheap static checks — a syntax parse, a JSON/YAML parse, `tsc --noEmit`, and the existing test suite when it finishes in seconds. Do NOT run a whole-project linter, and do NOT reach for `cargo check` as the "equivalent" type-check: it is a Rust compile, measured at 35.97s on this repo, and `/ec-plan`'s allowed-check rule names it a Handoff step. Never produce a distributable artifact and never launch the app. Anything heavier stays in the plan's `### Handoff` for the user to run. On `in-cycle` the gate runs in full exactly as specified above.
 
 ### Evidence audit
 For each `- [x]` task in the plan, confirm its `Verify (local)` evidence was actually produced:
@@ -188,12 +197,14 @@ For each `- [x]` task in the plan, confirm its `Verify (local)` evidence was act
 
 This closes the failure mode where a subagent invents output to clear a threshold. A local verify that was correct when the task ran but was invalidated by a LATER task's change is a plan-ordering defect, not a fabrication — report it as such.
 
-**How to tell the two apart.** A fabrication shows a count BELOW the expectation, or a string that was never written. A plan-ordering defect shows a count ABOVE it, and every extra occurrence is attributable by line number to a later task in the same plan. Always attribute before judging: run the bare `grep -n` and name which task added each extra hit. Only an unattributable discrepancy is a fabrication. Report plan-ordering defects against `/ec-plan`'s count-stability rule, not against the task that ran.
+**How to tell the two apart.** A fabrication shows a count BELOW the expectation, or a string that was never written. A plan-ordering defect shows a count ABOVE it, and every extra occurrence is attributable by line number to a later or concurrent task in the same plan — inside a wave there is no earlier or later, so a same-wave sibling's write is attributable, not a fabrication. Always attribute before judging: run the bare `grep -n` and name which task added each extra hit. Only an unattributable discrepancy is a fabrication. Report plan-ordering defects against `/ec-plan`'s count-stability rule, not against the task that ran.
 
 ### Scope boundary
 Collect every `File:` value in the plan. Then run `git status --short` (read-only — never stage, commit or revert) and confirm every changed path appears in that list. Report any path that does not as an out-of-scope change, naming the task that should have declared it. Exclude workflow artefacts written by the commands themselves (`.claude/plans/`, `.claude/decisions/`, `.claude/docs/`, review summaries) and build output that belongs in gitignore (for example `token-optimizer/target/`).
 
 ### Unit tests
+On `handoff`, ask the authoring half of this gate but not the running half. Writing a test is **changing** — a code deliverable — so the offer stands in every mode; executing a slow suite is **proving**, and that belongs in `### Handoff`. So on `handoff`: ask the question below, add the tests if the user says yes, and then stop — do not run a suite that takes more than seconds, list it in the Handoff block instead. On `in-cycle`, ask and run as specified:
+
 Ask: "Add unit tests for this feature? (y/n):"
 
 If yes:
@@ -248,7 +259,12 @@ curl -s -X POST http://localhost:37777/memory/observe \
 
 ### What Changed
 {concise list of all files modified during review}
+
+### Handoff — your turn
+{the plan's `### Handoff` block, echoed verbatim. Omit this section only when the plan had none.}
 ```
+
+The Handoff block is the whole point of `handoff` mode and the plan is archived moments later, so this report is the last place the user sees it. Echo it verbatim rather than summarising, and copy it into `{REVIEW_SUMMARY}` as well.
 
 **If review is clean**, delete `{DECISION_FILE}` if it exists (run `rm -f {DECISION_FILE}`), then write the review-done sentinel: `touch {REVIEW_DONE}` — this records that review is complete so the next run routes to `/ec-git`.
 
@@ -289,12 +305,16 @@ _Date: {date}_
 {list Stage 1 compliance fixes and Stage 2 quality fixes here}
 If none: "No issues found."
 
+## Handoff — your turn
+{the plan's `### Handoff` block, verbatim, or "none"}
+
 ## Review result
 | Check | Status |
 |-------|--------|
 | Spec compliance | ✓ |
 | Code quality | ✓ |
 | Tests | {added / skipped} |
+| Compilation | {verified here on `in-cycle` / deferred to Handoff on `handoff`} |
 ```
 
 Then update `docs/PROJECT.md` if it exists:

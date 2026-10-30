@@ -376,13 +376,102 @@ class TestFeatureTemplateRules:
         assert '**Honest dependencies.**' in self.content
         assert 'no fabricated Task N-1 chain' in self.content
 
-    def test_feature_self_review_checklist_has_twenty_items(self):
-        """The Step 4 checklist must keep all 20 rules."""
+    def test_feature_self_review_checklist_has_twenty_five_items(self):
+        """The Step 4 checklist must keep all 25 rules."""
         start = self.content.index('## Step 4 — Self-Review Before Presenting')
         end = self.content.index('## Step 5 — Save Feature Intent to Memory')
         items = [line for line in self.content[start:end].splitlines()
                  if line.startswith('- [ ]')]
-        assert len(items) == 20, f'checklist has {len(items)} items'
+        assert len(items) == 25, f'checklist has {len(items)} items'
+
+
+class TestIndependenceScheduling:
+    """ec-execute levels the plan's DAG into concurrent waves. Each rule here
+    is load-bearing: drop one and concurrency stops being provably safe."""
+
+    def setup_method(self):
+        self.content = read_command('ec-execute.md')
+
+    def test_step3_is_wave_based_not_sequential(self):
+        assert 'Execute in Dependency Waves' in self.content
+        assert 'in document order' not in self.content
+
+    def test_admission_rule_covers_dependencies_and_files(self):
+        assert 'Wave admission' in self.content
+        assert 'names any path in' in self.content
+
+    def test_barriers_and_width_are_declared(self):
+        assert 'WAVE_WIDTH' in self.content
+        assert 'is admitted alone' in self.content
+        assert 'degrades to waves of one' in self.content
+
+    def test_wave_is_spawned_in_one_message(self):
+        assert 'For each wave, in level order' in self.content
+        assert 'in a single message' in self.content
+
+    def test_global_invariants_stay_in_the_orchestrator(self):
+        assert 'never runs inside a unit' in self.content
+
+    def test_wave_failure_keeps_the_plan_file_accurate(self):
+        assert '### Wave failure handling' in self.content
+        assert 'Do NOT admit the next wave' in self.content
+        assert 'A failed task keeps its' in self.content
+
+    def test_report_contract_bounds_orchestrator_context(self):
+        assert 'three-line report' in self.content
+
+    def test_concurrency_cannot_be_silently_neutered(self):
+        assert 'WAVE_WIDTH = 8' in self.content
+        assert 'Spawn at most' in self.content
+        assert 'sole writer of' in self.content
+
+    def test_intra_unit_edges_are_excluded_from_admission(self):
+        assert 'excluding edges to tasks inside U itself' in self.content
+
+    def test_fusion_survives_as_the_unit_builder(self):
+        assert 'Fuse CONSECUTIVE' in self.content
+        assert 'Hand the units to the wave scheduler' in self.content
+
+
+class TestBatchedProbesAndReviewFanout:
+    """The other three stages walked their work serially too. Probes batch into
+    one run; review gates fan out. Neither may weaken a check."""
+
+    def test_refine_batches_its_probes_with_a_timeout(self):
+        content = read_command('ec-refine.md')
+        assert '## Step 0.5 — Batched probe script' in content
+        assert 'timeout 10 bash -c "$2"' in content
+        assert content.count('same batched run') == 2
+
+    def test_refine_keeps_its_verdict_table(self):
+        content = read_command('ec-refine.md')
+        for row in ["| equals the task's stated expectation | **DEFECT** |",
+                    '| equals the baseline recorded in `### Grounding` | **PASS** |',
+                    '| neither | **DEFECT** |',
+                    '**UNVERIFIABLE** | Never run it; report it |']:
+            assert row in content, row
+
+    def test_refine_checks_the_created_file_edge(self):
+        content = read_command('ec-refine.md')
+        assert '## Step 4.5 — Confirm dependency edges are honest' in content
+        assert 'created by another task' in content
+
+    def test_plan_batches_grounding_and_stays_read_only(self):
+        content = read_command('ec-plan.md')
+        assert '### Batched probe script' in content
+        assert 'MUST NOT run any command that writes' in content
+
+    def test_plan_explains_derived_waves(self):
+        content = read_command('ec-plan.md')
+        assert 'LEVELS this field into waves' in content
+        assert 'derived at execution time, never authored' in content
+
+    def test_review_fans_out_without_relaxing_a_gate(self):
+        content = read_command('ec-review.md')
+        assert 'concurrent reviewers' in content
+        assert 'never relaxes a gate' in content
+        assert 'in a single message' in content
+        assert 'runs ONCE, serially' in content
 
 
 # --- Ranged reads, fusion and evidence rules in ec-execute.md ---
@@ -510,3 +599,168 @@ class TestRetiredCommandsFullyRemoved:
         assert re.findall(r'"([^"]+)"', arr.group(1)) == [
             'ec-setup', 'ec-brainstorm', 'ec-plan', 'ec-refine',
             'ec-execute', 'ec-review', 'ec-git', 'ec-selfhealing']
+
+
+# --- Proof Mode across the /ec-* chain ---
+
+PROOF_MODE_COMMANDS = ['ec-brainstorm.md', 'ec-plan.md', 'ec-refine.md',
+                       'ec-execute.md', 'ec-review.md']
+
+
+class TestProofMode:
+    """Proof Mode moves wall-clock proof steps out of the task list and into a
+    Handoff block. Each rule here is the only thing stopping that from
+    decaying back into a plan that makes the user wait for a build they will
+    redo themselves."""
+
+    @pytest.mark.parametrize('name', PROOF_MODE_COMMANDS)
+    def test_every_chain_command_knows_the_mode(self, name):
+        """A passing prose mention is not knowledge of the mode. Each command
+        must name where the mode comes from, not merely the words."""
+        content = read_command(name).lower()
+        assert 'proof mode' in content
+        if name != 'ec-brainstorm.md':
+            assert 'handoff' in content and 'in-cycle' in content
+
+    def test_deliverable_rule_comes_before_the_proof_rule(self):
+        """Stated the other way round, the mode would reject the very
+        non-code deliverables it is supposed to allow — server work, config,
+        migrations."""
+        content = read_command('ec-plan.md')
+        assert content.index('Deliverable rule') < content.index('Proof rule')
+
+    def test_deliverable_rule_names_non_code_work(self):
+        """Grepping the whole file passed on unrelated text — 'config' from
+        project-config.json, 'migration' from the agent table — so it passed
+        even with the rule deleted."""
+        content = read_command('ec-plan.md')
+        start = content.index('**Deliverable rule')
+        para = content[start:content.index('**Proof rule')]
+        for medium in ['config', 'migration', 'server']:
+            assert medium in para, medium
+
+    DEFAULT_SENTENCES = {
+        'ec-plan.md': 'If the section is absent, or names no mode, treat it as `handoff`',
+        'ec-refine.md': 'when neither says, it means\n`handoff`',
+        'ec-execute.md': 'when neither says, it means `handoff`',
+        'ec-review.md': 'when neither says, treat it as `handoff`',
+    }
+
+    @pytest.mark.parametrize('name', sorted(DEFAULT_SENTENCES))
+    def test_handoff_defaults_when_undeclared(self, name):
+        """`'handoff' in content` passed on any passing mention — including on a
+        file that said 'never default to handoff'. The exact sentence is the
+        behaviour; the bare word is not."""
+        assert self.DEFAULT_SENTENCES[name] in read_command(name)
+
+    def test_mode_is_stamped_into_the_plan_file(self):
+        """The decision file is deleted on a clean review and never created on
+        the saved-brainstorm path, so it cannot be the mode's system of record."""
+        assert 'Proof mode: {handoff | in-cycle}' in read_command('ec-plan.md')
+        for name in ('ec-refine.md', 'ec-execute.md', 'ec-review.md'):
+            assert '{PLAN_FILE}' in read_command(name), name
+
+    def test_plan_template_has_a_handoff_block(self):
+        assert '### Handoff' in read_command('ec-plan.md')
+
+    def test_refine_rejects_proof_verbs_mechanically(self):
+        content = read_command('ec-refine.md')
+        assert 'proof-verb gate' in content
+        for verb in ['cargo build', 'npm run build', 'pytest']:
+            assert verb in content, verb
+
+    def test_execute_confirms_outward_facing_tasks_even_on_auto(self):
+        content = read_command('ec-execute.md')
+        assert 'Outward-facing tasks always confirm' in content
+        assert 'Ask even when `AUTO=yes`' in content
+        assert 'stop and ask the user' in content
+        assert content.index('Outward-facing tasks always confirm') < \
+            content.index('## Step 3'), 'rule must govern, not sit in an appendix'
+        assert '.awaiting-confirm-' in content
+
+    def test_subagent_prompt_carries_the_outward_facing_constraint(self):
+        """The orchestrator asks, but subagents run the commands and have no
+        channel to the user. A rule that never reaches the Step 4 prompt list
+        governs a context no outward-facing command passes through."""
+        content = read_command('ec-execute.md')
+        start = content.index('## Step 4 — Execute with Evidence Verification')
+        end = content.index('### Agent Context Injection')
+        prompt_list = content[start:end]
+        assert 'outward-facing constraint' in prompt_list
+        assert 'do NOT run it' in prompt_list
+        assert 'needs user confirmation' in prompt_list
+
+    def test_stop_hook_yields_to_a_pending_confirmation(self):
+        """The driver injects 'Do not stop, continue the chain' at the decision
+        point, which beats a prose rule telling the agent to wait for an answer."""
+        hook = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'session_stop.py')
+        with open(hook, encoding='utf-8') as fh:
+            body = fh.read()
+        assert '.awaiting-confirm-' in body
+
+    def test_execute_records_a_denial_durably(self):
+        content = read_command('ec-execute.md')
+        assert '- [~]' in content
+
+    def test_anchor_and_do_not_touch_survive_the_slim_template(self):
+        """These two fields are what make concurrent waves provably safe. The
+        assertion must read the mode paragraph, not the generic template, or it
+        passes even on a paragraph that dropped both."""
+        content = read_command('ec-plan.md')
+        start = content.index('**Fields by proof mode.**')
+        para = content[start:content.index('On `in-cycle`, every field')]
+        assert 'Anchor' in para
+        assert 'Do not touch' in para
+        assert 'never dropped' in para
+
+    def test_slim_template_keeps_anchor_exception_only(self):
+        """'exactly six lines / never dropped' made authors write
+        `Anchor: new file` on every new-file task, which the plan lint then
+        flags as drift on every one of them."""
+        content = read_command('ec-plan.md')
+        assert 'six core lines' in content
+        assert '`Anchor: new file` is the defect' in content
+
+    def test_handoff_still_records_a_baseline_a_verify_needs(self):
+        """Skipping every baseline makes /ec-refine Step 1's PASS row
+        unreachable, so a correct `grep -c` task is reported DEFECT and the
+        chain deadlocks on the first handoff plan."""
+        assert 'Per-string baselines are NOT skipped' in read_command('ec-plan.md')
+
+    def test_one_authoritative_allowed_check_rule(self):
+        """A whitelist in one file and a blacklist in another left `npm test`
+        on neither, so it passed refine and burned the wall-clock the mode
+        exists to remove."""
+        plan = read_command('ec-plan.md')
+        assert 'The allowed-check rule' in plan
+        for runner in ['npm test', 'cargo check', 'jest', 'eslint']:
+            assert runner in plan, runner
+        for name in ('ec-refine.md', 'ec-execute.md'):
+            assert 'allowed-check rule' in read_command(name), name
+
+    def test_refine_requires_removed_proof_steps_to_reappear(self):
+        """Without this, deleting a proof step is the cheapest way to pass the
+        gate — the decay path the class docstring claims to prevent."""
+        assert 'Removed proof steps must reappear' in read_command('ec-refine.md')
+
+    def test_refine_scans_for_outward_facing_commands(self):
+        content = read_command('ec-refine.md')
+        assert 'Outward-facing scan' in content
+        for verb in ['ssh', 'kubectl', 'terraform', 'npm publish']:
+            assert verb in content, verb
+
+    def test_review_defers_compilation_rather_than_claiming_it(self):
+        content = read_command('ec-review.md')
+        assert 'authoritative STATIC gate only' in content
+        assert 'do NOT reach for `cargo check`' in content
+
+    def test_review_surfaces_the_handoff_block(self):
+        """The Handoff block is the whole point of the mode and the plan is
+        archived moments later, so the review report is the last place the user
+        can still see it."""
+        assert 'Handoff — your turn' in read_command('ec-review.md')
+
+    def test_plan_escalates_when_the_deliverable_is_the_artifact(self):
+        """'build the DMG' under the default mode pits the never-overridden
+        deliverable rule against the no-build checklist item."""
+        assert 'escalate rather than guess' in read_command('ec-plan.md')

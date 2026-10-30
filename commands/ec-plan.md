@@ -67,6 +67,12 @@ This write targets `.claude/plans/` — permitted by the No-Code Rule.
 - Skip asking about approach — user already decided
 - Note: "({DECISION_FILE} loaded — using chosen approach from brainstorm)"
 - Do NOT delete `{DECISION_FILE}` here — it will be deleted by `/ec-review` after a clean review
+- Parse `## Proof Mode` from the decision. If the section is absent, or names no mode, treat it as `handoff`.
+  Note: "(proof mode: {MODE})". `PROOF_MODE` governs Step 2.5, the task template, and the Handoff block below.
+  Whichever path supplied it, STAMP the resolved mode into the plan file as a `Proof mode: {MODE}` line directly
+  under `## Feature:` (Step 3). The plan file is the only artifact all four commands read, that survives both
+  decision-file deletion paths, and that is archived with the cycle — so it, not the decision, is the mode's
+  system of record downstream.
 
 **Check for saved brainstorms:** If no `{DECISION_FILE}` was found:
 - Check if `.claude/brainstorms/` exists and contains `.md` files
@@ -78,6 +84,7 @@ This write targets `.claude/plans/` — permitted by the No-Code Rule.
   Pick a number to use, or 'skip' for a new feature:
   ```
 - If user picks a number: load that file as the decision source, pre-fill Chosen Approach, note "(brainstorm loaded: {filename})", delete the picked file after plan is complete
+- A saved brainstorm uses the same template as a decision, so it may carry `## Proof Mode`. Parse it here exactly as the decision branch does, default to `handoff` when absent, note "(proof mode: {MODE})", and stamp it into the plan file. Skipping this would silently downgrade a declared `in-cycle` to `handoff` and then destroy the only record when the brainstorm is deleted.
 - If user types 'skip' or no files exist: proceed to Step 1 normally
 
 **No-Code Rule:** This command MUST NOT create, edit, or write any project files.
@@ -220,27 +227,97 @@ Add the design tag only to tasks that render UI. Omit it entirely on non-UI task
 If no agent clearly matches, omit the tag entirely.
 
 ## Step 2.5 — Grounding Pass (mandatory)
+**Scope by proof mode.** On `handoff`, the pass records only what stays
+checkable in milliseconds: the line count of each file a task touches, the
+exact `Anchor` string with its line number, and `test -f` for every file a
+task claims is new. The test baseline and the whole-project baselines are
+skipped. **Per-string baselines are NOT skipped when a task needs one:** a
+`Verify (local)` of the form `grep -c "{string}" {file}` → `== n` is a numeric
+threshold like any other, and it MUST record its current count here. The rule
+skips the baselines nothing needs; it never forbids one that is needed.
+Omitting a needed baseline makes `/ec-refine`'s Step 1 unable to reach its PASS
+row, which would fail a correct plan. On `in-cycle` the full pass runs exactly
+as specified, every baseline included.
+
 Before writing any task, measure the codebase instead of assuming it. For every file a task will touch:
 1. Confirm the file exists and record its line count: `wc -l {file}`
 2. Record the exact anchor string each task will locate, with its line number: `grep -n "{anchor}" {file}`
 3. For every string a Verify step will count, record its CURRENT count: `grep -c "{string}" {file}`
 4. Record the current test baseline if the project has a suite
 
+### Batched probe script
+Issue these measurements as ONE script, not one call per file or per task. A 130-task plan is several hundred read-only probes; as separate calls that is most of an hour of round-trips.
+
+```bash
+probe() { printf '%s|%s|%s\n' "$1" "$2" "$(timeout 10 bash -c "$2" 2>&1 | tail -1)"; }
+probe 'lines src/a.ts'  'wc -l < src/a.ts'
+probe 'anchor T1'       'grep -n -F "export function foo" src/a.ts | head -1'
+probe 'count foo'       'grep -c -F "foo" src/a.ts'
+probe 'absent src/b.ts' 'test -f src/b.ts; echo $?'
+```
+
+Every probe here is read-only, which is what makes batching safe. The output of the script IS the `### Grounding` content — transcribe it, never retype it from memory.
+
 Write all of it into the plan's `### Grounding` section verbatim — actual output, never predicted output.
 
 **Traceability rule:** every numeric threshold in a Verify step MUST be derived from a baseline recorded here. Write `== n` when the exact post-change count is known from the baseline plus the edits specified; use `>= n` only when the edit count genuinely varies. A threshold that cannot be traced to a baseline is a planning defect — measure it, do not guess it.
 
-**Count stability rule.** An exact `grep -c "{string}" {file}` → `== n` is only stable while no LATER task in this plan touches that file or adds that string. Co-location fusion makes several tasks per file the norm, so before writing `== n`, scan the remaining tasks: if any later task touches the same file, or adds test fixtures containing the same string, either use `>= n` or anchor the count to a construct unique to this task (a function signature, a full statement) rather than a bare substring. Otherwise `/ec-review`'s evidence audit will re-run the check against a file that has legitimately moved on, and report a plan-ordering defect for a task that was correct when it ran.
+**Count stability rule.** An exact `grep -c "{string}" {file}` → `== n` is only stable while no LATER OR CONCURRENT task in this plan touches that file or adds that string. Inside a wave there is no earlier or later, so a same-wave sibling counts as concurrent. Co-location fusion makes several tasks per file the norm, so before writing `== n`, scan the remaining tasks: if any later task touches the same file, or adds test fixtures containing the same string, either use `>= n` or anchor the count to a construct unique to this task (a function signature, a full statement) rather than a bare substring. Otherwise `/ec-review`'s evidence audit will re-run the check against a file that has legitimately moved on, and report a plan-ordering defect for a task that was correct when it ran.
 
 Only read-only commands are permitted here (see the No-Code Rule).
 
 ## Step 3 — Write Plan
 
+### What belongs in a task — deliverable first
+
+**Deliverable rule (applies in every mode).** Whatever the cycle was asked to
+produce is always a task, whatever its medium and however long it takes —
+writing code, editing config, running a migration, or entering a server to
+change its state. This rule is stated first and is never overridden: the mode
+below never judges whether work is "code".
+
+**Proof rule (`handoff` mode only).** A step whose only job is to prove the
+change works must not spend wall-clock inside the cycle. Building an artifact
+so it can be inspected, launching an app or a browser to look at it, bundling,
+compiling Rust, or running a suite to feel sure — all move to `### Handoff`.
+The one exception is a static check that finishes in about two seconds, which
+stays as `Verify (local)`.
+
+**The allowed-check rule — stated here once; `/ec-refine`, `/ec-execute` and
+`/ec-review` reference this paragraph rather than restating it.** A
+`Verify (local)` on `handoff` must be a read-only command that inspects files
+already on disk and finishes in about two seconds. These qualify: `grep` and
+`grep -c`, `test -f` / `test -x` / `test -d`, `wc -l`, `ls`, `sed -n`, `head`,
+`tail`, `jq`, `bash -n`, `node --check`, `python3 -m json.tool`,
+`python3 -I -c` on a parse, and `tsc --noEmit`. These do not, and are Handoff
+steps however quick they feel: any build or bundle (`npm run build`,
+`vite build`, `cargo build`, `go build`, `make`, `mvn`, `gradle`,
+`xcodebuild`), any Rust compile-check (`cargo check`), any test runner
+(`pytest`, `npm test`, `jest`, `vitest`, `cargo test`, `go test`), any linter
+or type-checker that walks the whole project (`eslint`, `ruff`, `mypy`), any
+launcher or driver (`npm run tauri`, `hdiutil`, `docker build`, `playwright`,
+`cypress`, `curl` against a running server), and anything reaching outside this
+working tree. A command on neither list is judged by the principle above, and
+ambiguity resolves to Handoff. Measured on this repo: 16 allowed checks cost
+0.04s in total, `tsc --noEmit` 2.19s, `cargo check` 35.97s, a universal DMG
+build 122s — which is where the line was drawn.
+
+In `in-cycle` mode the proof rule does not apply, because there the artifact or
+the running system is itself the deliverable and the deliverable rule covers it.
+
+**When the two rules appear to collide, escalate rather than guess.** If what
+the cycle was asked to produce IS an artifact or a running system — "build the
+DMG", "publish the package", "get the app launching" — then that build is the
+deliverable, not a proof of it, and `handoff` is the wrong mode for the cycle.
+Say so and switch to `in-cycle`, noting "(deliverable is an artifact —
+escalated to in-cycle)". Never resolve the collision by dropping the
+deliverable: the deliverable rule is never overridden.
+
 ### Task Granularity Rules
 Each task must represent 2–5 minutes of focused work. One action per task.
 Never write tasks like "implement the feature" or "handle edge cases".
 Instead, split into atomic steps:
-- "Write failing test for {behavior}"
+- "Add {field} to {type} in {file}"
 - "Create {ComponentName} with {props}"
 - "Add {endpoint} call in {file}"
 - "Handle loading state in {component}"
@@ -257,9 +334,11 @@ Every task must include:
 - Add the design tag only to tasks that render UI. Omit it entirely on non-UI tasks. `{source}` is the path or URL from the Design Contract Source line, or the literal `direction` when the plan carries a `### Design Direction` instead (which has no Source line) — e.g. `[design: direction#SettingsPanel]`; `{frame}` is the specific screen or component name, or `main` when the reference has a single frame. The design tag always comes after the agent tag.
 - Task numbers are sequential integers 1 to N, no gaps, no sub-numbering (1.1, 1.2, etc.)
 - Size of the feature does not affect format — 3 tasks or 50 tasks use identical flat structure
+- Why flat: `/ec-execute` groups the work itself, from `File:` and `Dependencies:`. Waves are derived at execution time, never authored — a hand-written grouping would freeze one ordering into the plan and override the only grouping that reflects the real graph
 
 ```
 ## Feature: {feature_name}
+Proof mode: {handoff | in-cycle}
 
 ### Impact Analysis
 - Files affected: {list}
@@ -304,6 +383,12 @@ A Verify step with no numeric threshold — file existence, exit status, string 
 - [ ] Task 2: {name} [S/M/L] [agent: ec-xxx] — {one-line description}
 - [ ] Task N: ...
 
+### Handoff
+_Written on `handoff` mode. The proof steps this plan deliberately does not run,
+as commands you can paste. Omit the section only when there are none._
+- {what it proves} → `{exact command}`   (e.g. "DMG is universal and mounts" → `cd studio && npm run build:dmg`)
+- {what to open} → {exact URL or app}    (e.g. "the new settings pane" → launch Effi Studio, Settings tab)
+
 ### Per Task Detail
 **Task 1 — {name}** `S/M/L`
 - File: {exact path to create/modify}
@@ -317,7 +402,7 @@ A Verify step with no numeric threshold — file existence, exit status, string 
 - Verify (local): {a command that FAILS if this task is wrong — a specific grep -c, test -f, or anchor match. Milliseconds. Traced to a baseline in ### Grounding}
 - Verify (global): {omit on most tasks. Only at a module boundary: the whole-project invariant — build, type-check, or test suite}
 - Rollback: {only when undoing this task needs more than reverting the file — omit this line entirely otherwise}
-- Dependencies: {ONLY the tasks whose output this task genuinely requires — "none" is the common and correct answer. Never write "Task N-1" merely because it precedes this one}
+- Dependencies: {ONLY the tasks whose output this task genuinely requires — "none" is the common and correct answer. Never write "Task N-1" merely because it precedes this one. The one edge that is never optional: the task that creates the file this task edits}
 
 **Task 2 — {name}**
 ...
@@ -325,7 +410,21 @@ A Verify step with no numeric threshold — file existence, exit status, string 
 
 **Exception-only fields.** `Rollback`, `⚠️ Breaking change` and `Anchor` are written ONLY when their value differs from the mechanical default. A `Rollback` that is merely a revert or delete of that task's own `File:` is derivable from `File:` — omit it. Omitting one of these lines is correct, not an oversight; `/ec-review` treats a default value as the defect, never the absence.
 
-**Honest dependencies.** A dependency means this task cannot start until that task's output exists. A straight 1→2→3→…→N chain is almost always fabricated, and `/ec-execute` now READS this field to fuse co-located work and order execution — so a false edge costs real time, and an empty value is a valid and common answer.
+**Fields by proof mode.** On `handoff`, a task carries these six core lines:
+`File`, `Anchor`, `Code sample`, `Do not touch`, `Verify (local)`,
+`Dependencies`. `Reuse` and `Edge cases` fold into `Code sample`; `Acceptance`
+folds into `Verify (local)`; `Verify (global)` is omitted entirely. `Anchor`
+and `Do not touch` are never dropped — they are what makes `/ec-execute`'s
+concurrent waves provably safe. `⚠️ Breaking change` and `Rollback` stay
+exception-only exactly as above, and `Anchor` keeps its own exception: a task
+that CREATES its file omits it, because there is nothing to locate — writing
+`Anchor: new file` is the defect, not the omission. So a `handoff` task carries
+five or six core lines plus any exception-only line that applies. Extra fields
+are verbose, not wrong: the rule names what is required, it does not forbid
+more. On `in-cycle`, every field documented above applies as written, and
+`### Handoff` is unnecessary rather than forbidden.
+
+**Honest dependencies.** A dependency means this task cannot start until that task's output exists. A straight 1→2→3→…→N chain is almost always fabricated, and `/ec-execute` LEVELS this field into waves of concurrent units — so a false edge directly narrows the wave and costs real minutes, while an empty value is a valid and common answer. One edge is mandatory: if this task edits a file another task in this plan creates, name that task. `/ec-refine` fails the plan for that omission, because under concurrency it would let this task run before the file exists.
 
 **Two kinds of verification.** Local evidence proves THIS task did what it claims. A global invariant (build, type-check, test suite) proves a repo-wide property and must NOT be attached to every task — a passing whole-project compile says nothing about the task that triggered it, and attaching it everywhere is both slower and less accurate. Place global invariants at module boundaries and let `/ec-review` run the definitive gate. A task whose only honest proof is a compile may carry a global verify; the rule is "not on every task", not "never".
 
@@ -355,19 +454,24 @@ Before showing the plan, check:
 - [ ] No task would take more than 5 minutes
 - [ ] Dependencies are correctly ordered
 - [ ] Every task that edits an existing file has an Anchor confirmed to exist by the Grounding Pass; new-file tasks omit the line and are recorded in ### Grounding instead
-- [ ] Every numeric threshold in a Verify step traces to a baseline in ### Grounding
-- [ ] Every task has an Acceptance stated independently of its Verify command
-- [ ] No Verify threshold was written without measuring the current value first
+- [ ] Every numeric threshold in a Verify step traces to a baseline in ### Grounding — in both modes, since a `grep -c` threshold on `handoff` records its own baseline
+- [ ] On `in-cycle`, every task has an Acceptance stated independently of its Verify command; on `handoff` it folds into `Verify (local)`, which must therefore be falsifiable on its own
+- [ ] No Verify threshold was written without measuring the current value first — including a `grep -c` on `handoff`
 - [ ] No task carries a mechanical Rollback, a "none" Breaking change, or a "new file" Anchor — those lines are omitted
 - [ ] Every task has a Verify (local) that fails if the task is wrong
 - [ ] Global invariants appear only at module boundaries, not on every task
 - [ ] Dependencies name only genuine prerequisites — no fabricated Task N-1 chain
+- [ ] Every task that edits a file another task creates declares that edge
 - [ ] Every file a task claims is new was confirmed absent by the Grounding Pass — never assumed
 - [ ] Design Contract is present and self-contained if the feature has UI scope
 - [ ] Every UI task carries a [design:] tag
 - [ ] A UI feature carries exactly one of ### Design Contract / ### Design Direction — never both, never neither
 - [ ] Design Direction states all three dials with a one-line reason each
-- [ ] Every task that calls an API names its error-handling approach — reused existing handler, or a new handler to create
+- [ ] Every task that calls an API names its error-handling approach — reused existing handler, or a new handler to create. On `handoff` that naming folds into `Code sample`
+- [ ] Proof mode is resolved and noted, defaulting to `handoff` when the decision does not say
+- [ ] On `handoff`, no task builds, launches, serves, bundles, compiles Rust, or runs a suite — those are in `### Handoff`
+- [ ] On `handoff`, every `Verify (local)` is one of the allowed static checks
+- [ ] On `handoff`, `### Handoff` lists every proof step the plan chose not to run, or is omitted because there are none
 
 Fix any issues found, then present the plan.
 

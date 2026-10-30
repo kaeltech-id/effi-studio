@@ -219,6 +219,13 @@ _Include this section only when the problem has UI/frontend scope AND no visual 
 - Identity motif: {the repeated gesture or pattern specific to this product}
 - Rules: apply ~/.claude/agents/ec-antislop.md in full — hard gates, purpose gates, quality locks
 
+## Proof Mode
+_Who proves this cycle works. Omit the section and `/ec-plan` reads it as `handoff`._
+- `handoff` (default) — the cycle makes the change; you run, launch and verify it afterwards
+- `in-cycle` — the cycle also builds, launches and proves it, because the artifact or the running system IS the deliverable
+
+Mode: {handoff | in-cycle}
+
 ## Key Assumptions
 - {assumption 1}
 - {assumption 2}

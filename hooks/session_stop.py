@@ -247,7 +247,13 @@ def _autoflow_end(path, why):
 
 def autoflow_driver(hook_input):
     """Keep an auto-flow chain running across context loss. Returns a Stop-hook
-    payload dict to emit, or None to let the session stop normally."""
+    payload dict to emit, or None to let the session stop normally.
+
+    A pending outward-facing confirmation outranks the chain. When
+    .claude/.awaiting-confirm-{branch} exists the driver stays silent, because
+    the "Do not stop, continue the chain" message it would otherwise emit is
+    injected at the decision point and beats the prose rule in ec-execute.md
+    that told the agent to stop and ask."""
     if hook_input.get("stop_hook_active"):
         return None
     path = AUTOFLOW_PATH
@@ -255,6 +261,8 @@ def autoflow_driver(hook_input):
     if not fields:
         return None
     branch = _current_branch()
+    if os.path.exists(os.path.join(".claude", f".awaiting-confirm-{branch}")):
+        return None
     try:
         age = time.time() - os.path.getmtime(path)
     except Exception:

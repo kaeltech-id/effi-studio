@@ -1,4 +1,4 @@
-Execute the current feature plan sequentially, one task at a time, with resumable state.
+Execute the current feature plan in dependency waves, running independent work concurrently, with resumable state.
 
 ## Step 1 — Load Context
 
@@ -87,20 +87,63 @@ if [ -f "$AUTOFLOW" ]; then
   if [ "$AGE" -gt 7200 ] || [ "$SENT_BRANCH" != "$BRANCH" ]; then rm -f "$AUTOFLOW"; else AUTO="yes"; fi
 fi
 ```
-When `AUTO=yes`: auto-skip confirmation gates. On any abnormal stop, delete the sentinel (see Error Recovery / Timeout). On successful completion, leave the sentinel for `/ec-review` to consume. Partial progress is safe: if this context ends mid-plan (context exhaustion or compaction), the Stop-hook driver re-invokes `/ec-execute` from the plan file's remaining `- [ ]` lines — so do NOT delete the sentinel merely because the context ended mid-plan; only a genuine abort (Error Recovery / Timeout) deletes it.
+When `AUTO=yes`: auto-skip the confirmation gates that concern plan content. NEVER skip the outward-facing confirmation in Step 2 — that one binds in every mode. On any abnormal stop, delete the sentinel (see Error Recovery / Timeout). On successful completion, leave the sentinel for `/ec-review` to consume. Partial progress is safe: if this context ends mid-plan (context exhaustion or compaction), the Stop-hook driver re-invokes `/ec-execute` from the plan file's remaining `- [ ]` lines — so do NOT delete the sentinel merely because the context ended mid-plan; only a genuine abort (Error Recovery / Timeout) deletes it.
 
 ## Step 2 — Pre-flight Check
 Before executing, verify:
 - All files referenced in the plan exist (if modifying existing files)
-- No two tasks write to the same file (conflict risk)
+- No two tasks in the SAME WAVE write to the same file. Several tasks per file is normal and expected — fusion groups them into one unit, and `/ec-plan` states it is the norm. Only a shared path across two units admitted to one wave is a conflict
 - Dependencies between tasks are correctly ordered
 - Every task has a verify step defined
+- Proof mode resolved from the `Proof mode:` line in `{PLAN_FILE}` — `/ec-plan` stamps it there — falling back to `## Proof Mode` in `{DECISION_FILE}` (`.claude/decisions/{BRANCH}.md`); when neither says, it means `handoff`. Noted as "(proof mode: {MODE})"
+- On `handoff`, every task's `Verify (local)` satisfies the allowed-check rule in `/ec-plan` — that paragraph lists what qualifies and what is a Handoff step. One that does not is a pre-flight failure: the step belongs in the plan's `### Handoff`, not in a task.
 
 If any issue found, report it and ask:
 "Found pre-flight issue: {issue}. Continue anyway? (y/n):"
 If `AUTO=yes`: do not prompt — abort the chain instead. Delete the sentinel (`rm -f .claude/.autoflow`), release the lock, report the pre-flight issue, and stop. Auto-flow never silently continues past a pre-flight failure.
 
-## Step 3 — Execute Sequentially
+**Outward-facing tasks always confirm.** The deliverable rule makes server
+work, deploys, migrations and release publication legitimate tasks. It does
+not make them silent.
+
+Outward-facing means **any effect that `git checkout` of this working tree
+cannot undo.** Remote hosts, deploys, migrations, published artifacts,
+infrastructure, third-party APIs, messages that reach real recipients, and
+writes outside this tree — including `$HOME`, `~/.claude/` and `~/.efficlaude/`
+— all qualify. That list is illustrative, never exhaustive: if you cannot name
+the command's effect as undoable by reverting a file in this tree, it is
+outward-facing. Classification errors must fail toward asking, and a step is
+never labelled read-only in order to skip the confirmation — a remote read
+still authenticates with real credentials.
+
+Before executing such a task, stop and ask the user, naming the exact command
+and the target. Ask even when `AUTO=yes`: auto-flow confirms plan gates, never
+outward-facing effects. Git stays excluded entirely under `CLAUDE.md` GIT RULES.
+
+Because the Stop-hook driver would otherwise inject "Do not stop, continue the
+chain" at the very moment you are waiting for the answer, write the pending
+confirmation to disk before you ask and remove it once answered:
+
+```bash
+touch ".claude/.awaiting-confirm-${BRANCH}"   # before asking
+rm -f ".claude/.awaiting-confirm-${BRANCH}"   # on any answer, yes or no
+```
+
+`hooks/session_stop.py` returns silently while that file exists, so the
+confirmation survives the one mechanism that otherwise outranks it.
+
+On `in-cycle` the pre-flight proof check above does not apply — a build or a
+launch is the declared deliverable there, so a task may run one. This
+confirmation rule is unaffected by mode and binds in both.
+
+If the user denies the confirmation, record the denial so it is not re-offered:
+replace that task's `- [ ]` with `- [~] Task N: {name} (denied: {command})`.
+`- [~]` matches neither the done nor the pending counter, so the driver stops
+treating it as outstanding work, Error Recovery must not offer it as **Retry**,
+and any resumed run skips it with its note. Only the user re-authorizing it
+clears the mark.
+
+## Step 3 — Execute in Dependency Waves
 Read all tasks from `{PLAN_FILE}`. Find all lines matching `- [ ]`.
 Compute: total = count of ALL task lines (both `[x]` and `[ ]`).
 
@@ -113,34 +156,56 @@ Before the loop, build execution units from the task list. Opening the same file
    - a task whose name contains `GATE` — gates exist to stop work before cost is spent, so fusion must never cross one
    - a task carrying a `Verify (global)` line — that task is a module boundary
    - a task with no `File:` line, or whose `File:` names more than one path
-3. Execute units in dependency order. Within a unit: open the file once, apply every task's change, then run each task's `Verify (local)` separately.
+3. Hand the units to the wave scheduler below — it decides which may run together. Within a unit: open the file once, apply every task's change, then run each task's `Verify (local)` separately.
 4. Mark `- [x]` for each task in the unit individually, and only after that task's own local verify passes.
 
 Tasks that share a file but are separated by a task on a different file are NOT consecutive and must not be fused.
 
-For each `- [ ]` task in document order:
-1. Show: "▶ Task {current}/{total}: {task name} [{size}]"
-2. Spawn one subagent with full task context (file path, code sample, verify step)
-3. Each task's `Verify (local)` MUST be run and its real output confirmed before the task is marked done
-4. A task carrying a `Verify (global)` line is a module boundary: run the global invariant after that task's unit completes. If it fails, STOP — do not continue to the next unit
-5. Never substitute a global invariant for a missing local verify. "The project still compiles" is not evidence that this task is correct — it is a repo-wide property that holds whether or not this task did its job
-6. After the task's local verify passes: edit `{PLAN_FILE}` — replace `- [ ] Task N: {name}` with `- [x] Task N: {name}` for this task only
-7. Show: "✓ Task {current}/{total}: {task name} — verified"
+### Wave scheduling — concurrency the plan already proves safe
+A unit's independence is not a guess: `Dependencies:` and `File:` state it outright. Walking units one at a time discards that information, and on a 130-task plan it costs hours. Level the units instead.
+
+**Wave admission.** Unit U joins wave *k* when BOTH hold:
+- every unit U depends on sits in a wave below *k* — resolved transitively through each fused task's `Dependencies:`, **excluding edges to tasks inside U itself**. Fusion deliberately keeps intra-run edges (it stops only on edges pointing OUTSIDE the run), so counting them here would make every fused unit depend on itself and nothing would ever be admitted
+- no other unit already admitted to wave *k* names any path in U's `File:` set
+
+Two units that share even one path are never admitted to the same wave. That is the entire safety argument for concurrency here, and it is decidable from the plan alone — no diff inspection, no guessing.
+
+**Wave barriers.** A unit is admitted alone, as a wave of one, when any of its tasks:
+- carries a `Verify (global)` line — that task is a module boundary
+- has `GATE` in its name — a gate exists to stop work before cost is spent
+
+A barrier closes every wave below it: no unit whose lowest task number is greater than the barrier task's may be levelled past it, and no further wave is admitted until the barrier wave has run and passed. Dependency level alone is NOT enough here — an independent unit would otherwise level to wave 1 and run before the gate, which is exactly what a gate exists to prevent. A `GATE` task with no `Verify (global)` passes when its own `Verify (local)` passes. These are the same two conditions that stop a fusion run, used for the same reason.
+
+**Width.** Spawn at most `WAVE_WIDTH = 8` units concurrently; a wider wave splits into consecutive sub-waves of 8. This is the only tunable number in the scheduler — lower it and behaviour degrades smoothly toward serial execution.
+
+**Degradation.** A plan whose `Dependencies:` form a straight `Task N-1` chain degrades to waves of one — exactly today's behaviour, and not an error. A plan with honest `none` values and distinct `File:` paths yields wide waves. Wave width is a readout of plan quality, not of this scheduler.
+
+For each wave, in level order:
+1. Show: "▶ Wave {w}: {m} unit(s), {k} task(s)"
+2. Spawn every unit in the wave as concurrent subagents **in a single message**. Spawning a wave's units one message at a time is the serial walk this step replaced — it is not an acceptable fallback
+3. Each task's `Verify (local)` MUST be run inside its own unit and its real output confirmed before that task is reported done
+4. Never substitute a global invariant for a missing local verify. "The project still compiles" is not evidence that this task is correct — it is a repo-wide property that holds whether or not this task did its job
+5. After the wave returns: for each task whose own local verify passed, edit `{PLAN_FILE}` — replace `- [ ] Task N: {name}` with `- [x] Task N: {name}` for that task only. The orchestrator is the sole writer of `{PLAN_FILE}`; no subagent ever edits it, and that is what makes recording a concurrent wave safe
+6. Show: "✓ Wave {w}: {k}/{k} verified" — or the failure report below
+
+A `Verify (global)` never runs inside a unit. It runs here, in the orchestrator, after its barrier wave returns, and one at a time — concurrent builds would contend on a cargo or npm lock and a failure would be unattributable. If it fails, STOP: do not admit the next wave.
 
 A plan written before this convention has no `Verify (global)` lines at all; treat every verify as local and let `/ec-review` catch a broken build at its definitive gate.
 
-Repeat until no `- [ ]` lines remain in `{PLAN_FILE}`.
+Repeat until no `- [ ]` lines remain in `{PLAN_FILE}`, or until a wave fails — see Wave failure handling.
 
 ## Step 3.5 — Pre-spawn Verification Anchor
 Before spawning any subagent, explicitly confirm each item:
 - [ ] `{PLAN_FILE}` is loaded and all tasks are numbered
 - [ ] Every task has an exact file path, code sample, and verify step
-- [ ] No two tasks write to the same file (checked in Step 2)
 - [ ] `{PLAN_FILE}` will be updated with `[x]` after each task completes
+- [ ] No two units in the same wave name a shared path in their `File:` sets
+- [ ] Every unit carrying a `GATE` task or a `Verify (global)` line stands as its own wave
+- [ ] Every unit's `Code sample` lines were read and no outward-facing command is being delegated unconfirmed — Step 1's read order skips `### Per Task Detail`, so this is the first point at which an `ssh`, deploy or publish hiding in a code sample becomes visible
 Only proceed after all items are confirmed. If any item fails, report and ask user before continuing.
 
 ## Step 4 — Execute with Evidence Verification
-For each task, spawn one subagent. Each subagent prompt must include:
+For each execution unit in the current wave, spawn one subagent — a unit holding several fused tasks gets ONE subagent carrying all of their contexts, not one subagent each. The prompt must include, for every task that unit covers:
 - Task name, description, file path, code sample
 - Only the context relevant to that specific task (stack, structure, conventions)
 - Reuse instructions from plan
@@ -153,6 +218,9 @@ For each task, spawn one subagent. Each subagent prompt must include:
 - Clean code rules: readable, best practices, no unnecessary comments
 - ⚠️ Breaking change note if flagged in plan
 - The verify step from the plan
+- The concurrency boundary: every path outside this unit's `File:` set may be mid-write by a wave-mate right now. Do not read it, do not verify against it, and do not edit it. A write outside that set is a FAILED task even if everything else verifies — under concurrency it can silently clobber a wave-mate's work, which serial execution made harmless. `/ec-review`'s Scope boundary is the audit that catches it after the fact; this constraint is what prevents it
+- The outward-facing constraint: if this task's command changes state outside this working tree — a remote host, a deploy, a migration, a publish, a third-party API, a message to real recipients, or a write outside this tree including `$HOME` — do NOT run it. Report `(⚠️ outward-facing: {command} → {target} — needs user confirmation)` and stop. A subagent has no channel to the user, so the orchestrator owns that confirmation; running it instead is a FAILED task
+- The report contract: reply with a three-line report per task and nothing else — `task: {N}` · `verify: {command}` · `output: {last line of real output}`. Orchestrator context then grows with the wave count rather than the task count, which is what keeps a 130-task plan inside one context
 - Nothing from memory or docs search — see Step 1. Task-specific context only.
 
 ### Agent Context Injection
@@ -199,6 +267,14 @@ Each subagent MUST prove completion before claiming done:
 - Locate the `Anchor:` string before editing; if it is absent from the target file, stop and report `(⚠️ anchor not found in {file} — plan is stale, not executing)`. If the anchor reads `new file`, there is nothing to locate — skip the check. If the task carries no anchor line, skip the check
 - Never widen an edit beyond what the task specifies to make a verify step pass
 - Respect `Do not touch:` absolutely — an edit inside that boundary is a failed task even if everything else verifies
+
+### Wave failure handling
+A failure does not abort its wave mid-flight: the other units are already writing, and killing them would leave `{PLAN_FILE}` a less accurate resume point than letting them finish.
+1. Let every unit in the wave return
+2. Mark `- [x]` only for tasks whose own local verify passed. A failed task keeps its `- [ ]`, so `{PLAN_FILE}` stays a correct resume point
+3. Report every failure in the wave together — one report, not one per unit
+4. Do NOT admit the next wave
+5. Then follow Error Recovery below
 
 ### Error Recovery
 If a subagent fails or cannot verify:
