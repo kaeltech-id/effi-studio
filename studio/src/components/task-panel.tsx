@@ -103,18 +103,22 @@ export function TaskPanel({
         <SourceLabel percent={percent} />
         {percent !== null && (
           <>
-            {/* Mint, because a finished task is healthy and not a selection.
+            {/* Cyan, because the Contract gives the progress bar the accent
+                (design/rebrand/mockups/01-build-workbench-v2.png). The per-row
+                checks below stay success-green, which is the palette's
+                "healthy", so a completed task is never painted as a selection.
                 Decorative: the counts below say the same thing in words, so
                 the bar is hidden from the accessibility tree rather than
-                repeated into it. The width transition is a layout change at
-                the contract's 150ms, not a loop — there is no spinner here
-                because nothing on this panel is running. */}
+                repeated into it. It is drawn from the guarded `percent` above
+                and nothing else — no ratio, no bar. The width transition is a
+                layout change at the contract's 150ms, not a loop — there is no
+                spinner here because nothing on this panel is running. */}
             <div
               aria-hidden="true"
               className="mt-2 h-1.5 overflow-hidden rounded-lg border border-border bg-raised"
             >
               <div
-                className="h-full rounded-lg bg-success transition-[width] duration-150 motion-reduce:transition-none"
+                className="h-full rounded-lg bg-accent transition-[width] duration-150 motion-reduce:transition-none"
                 style={{ width: `${percent}%` }}
               />
             </div>
@@ -124,29 +128,80 @@ export function TaskPanel({
           </>
         )}
       </div>
-      <ol className="min-h-0 flex-1 overflow-y-auto p-2">
-        {state.tasks.map((t, i) => (
-          <li
-            key={i}
-            ref={i === pendingIndex ? firstPending : null}
-            className="flex gap-2 px-2 py-1 font-mono text-xs"
-          >
-            {/* State, never activity: a hollow circle is "not done yet", which is
-                why there is no spinner. The glyph is decorative and the status is
-                carried in text beside it — colour alone is not a status. */}
-            <span
-              aria-hidden="true"
-              className={`shrink-0 ${t.done ? 'text-success' : 'text-muted'}`}
+      <ol className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
+        {state.tasks.map((t, i) => {
+          // Three states from one source. `done` is the checklist's own box;
+          // "next" is nothing more than the FIRST not-done row — a position in
+          // a list the CLI wrote, not a guess by this panel about what anyone
+          // is working on right now. It is the same index the scroll target
+          // uses, so the highlighted row and the scrolled-to row cannot drift.
+          const isNext = i === pendingIndex;
+          // The border is present on every row and only coloured in on the
+          // next one, so marking a row never shifts the rows below it.
+          return (
+            <li
+              key={i}
+              ref={isNext ? firstPending : null}
+              className={`flex gap-2.5 rounded-lg border p-2.5 ${
+                isNext ? 'border-accent bg-accent-tint' : 'border-transparent'
+              }`}
             >
-              {t.done ? '✓' : '○'}
-            </span>
-            <span className="sr-only">{t.done ? 'done' : 'pending'}</span>
-            {/* Verbatim, tags and all — [M], [agent: …] and [design: …] are information. */}
-            <span className={`min-w-0 break-words ${t.done ? 'text-muted line-through' : 'text-text'}`}>
-              {t.text}
-            </span>
-          </li>
-        ))}
+              {/* State, never activity: a hollow ring is "not done yet", which is
+                  why there is no spinner. The marks are decorative and the status
+                  is carried in words beside each one — the badge on the next row,
+                  an sr-only prefix on the others — so colour is never the only
+                  thing saying which state a row is in. Still not interactive:
+                  these are spans, not checkboxes, because the CLI writes the
+                  checklist and a clickable box would promise otherwise. */}
+              <span aria-hidden="true" className="mt-0.5 shrink-0">
+                {t.done ? (
+                  <span className="grid size-[18px] place-items-center rounded-full bg-success text-ground">
+                    <svg
+                      viewBox="0 0 12 12"
+                      className="size-3"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M2.5 6.3 4.7 8.5 9.5 3.7" />
+                    </svg>
+                  </span>
+                ) : isNext ? (
+                  <span className="grid size-[18px] place-items-center rounded-full border-2 border-accent">
+                    <span className="size-1.5 rounded-full bg-accent" />
+                  </span>
+                ) : (
+                  <span className="block size-[18px] rounded-full border border-muted" />
+                )}
+              </span>
+              <span className="flex min-w-0 flex-1 items-start gap-2">
+                {/* Verbatim, tags and all — [M], [agent: …] and [design: …] are information. */}
+                <span
+                  className={`min-w-0 flex-1 break-words text-[13px] leading-[18px] font-medium ${
+                    t.done ? 'text-muted' : 'text-text'
+                  }`}
+                >
+                  {!isNext && <span className="sr-only">{t.done ? 'Done: ' : 'Pending: '}</span>}
+                  {t.text}
+                </span>
+                {isNext && (
+                  <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[11px] leading-[16px] font-semibold text-on-accent">
+                    Up next
+                  </span>
+                )}
+                {/* No second line is drawn. A `Task` is `{ done, text }`
+                    (src-tauri/src/plan.rs:6) and the reader produces exactly one
+                    line per checklist item, so the subtitle in the mockup is
+                    sample data with no real value behind it — the same reason
+                    `percent` stays null when there is no ratio. If a detail line
+                    is ever parsed, render it here as `{t.subtitle && …}`; never
+                    synthesise one by splitting `text`. */}
+              </span>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );

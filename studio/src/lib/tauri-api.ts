@@ -13,11 +13,12 @@ import type {
   DeviceDiscovery,
   DevicePlatform,
   Diagnostics,
+  DiffStat,
   Experience,
   GitInfo,
   LaunchOutcome,
-  OwnedDevice,
   LegacyInstall,
+  OwnedDevice,
   PaneBounds,
   PanelState,
   Project,
@@ -60,6 +61,7 @@ export const api = {
   readState: (path: string) => invoke<ProjectState>('read_project_state', { path }),
 
   gitInfo: (path: string) => invoke<GitInfo>('git_info', { path }),
+  gitDiffStat: (path: string) => invoke<DiffStat>('git_diff_stat', { path }),
   gitCheckout: (path: string, branch: string) => invoke<GitInfo>('git_checkout', { path, branch }),
   gitCreateBranch: (path: string, name: string) =>
     invoke<GitInfo>('git_create_branch', { path, name }),

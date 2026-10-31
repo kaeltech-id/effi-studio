@@ -18,9 +18,9 @@ import {
   type PreviewLine,
 } from './components/connections-page';
 import { DevicePane } from './components/device-pane';
-import { ExperienceSelector } from './components/experience-selector';
 import { InstallPane } from './components/install-pane';
 import { ProjectSidebar } from './components/project-sidebar';
+import { WorkspaceRail, type RailSectionId } from './components/workspace-rail';
 import { SettingsPage } from './components/settings-page';
 import { ReviewSetup, SetupStates, toWireSelection } from './components/setup-states';
 import { VerifyLanding } from './components/verify-landing';
@@ -487,6 +487,16 @@ export default function App() {
   // Settings is a surface the user opens, never one they are sent to. Local
   // state, not PanelState: that struct mirrors a persisted Rust type.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // What the workspace rail's search field holds. A VIEW of the project list
+  // and nothing more: it never touches `projects`, so a filter that matches
+  // nothing hides rows and removes no configured folder. Not persisted — a
+  // search is a momentary question, not a preference.
+  const [projectSearch, setProjectSearch] = useState('');
+  // Why the last `Add project` press did not add a folder, or null. The rail is
+  // the only add control now, so a rejected `add_project` has to be reported in
+  // the rail — a press that opens no panel and says nothing is indistinguishable
+  // from a dead button.
+  const [addError, setAddError] = useState<string | null>(null);
   // --- TASK 110. The two width-driven drawers ------------------------------
   //
   // ONE field holding at most one name, rather than two booleans. That is the
@@ -512,8 +522,8 @@ export default function App() {
   //
   // TASK 109. ONE Connections surface, mounted beside the workspace. Both
   // entry points flip this one flag: the Settings drawer's Connections section
-  // below, and the sidebar's Connections entry — which is a row in
-  // experience-selector.tsx and will call exactly this setter rather than
+  // below, and the workspace rail's Connections entry — the third nav card in
+  // workspace-rail.tsx, which calls exactly this setter rather than
   // mounting a second copy of the page. A duplicate would be two drafts, two
   // error strings and two readings of the same matrix.
   const [connectionsOpen, setConnectionsOpen] = useState(false);
@@ -1454,8 +1464,33 @@ export default function App() {
     setOverlay(null);
   }, []);
 
-  /** The selector has already written Build's flag; this only re-reads so this
-   *  component's copy agrees with the backend, which stays the authority. */
+  /** A nav card in the workspace rail was pressed. The rail's three sections
+   *  are the two experiences plus Connections, and Connections is NOT an
+   *  experience — it has no availability and no enable flag — so it is routed
+   *  to the one `connectionsOpen` flag the Settings drawer's Connections
+   *  section already sets. Both doors still reach THE single ConnectionsPage
+   *  mounted below; nothing new is mounted here.
+   *
+   *  The overlay is closed on the Connections arm for the reason
+   *  `handleOpenExperience` closes it on the other two: in a drawer band the
+   *  card that was just pressed is sitting over the surface it asked for. */
+  const handleRailSection = useCallback(
+    (id: RailSectionId) => {
+      if (id === 'connections') {
+        setConnectionsOpen(true);
+        setOverlay(null);
+        return;
+      }
+      handleOpenExperience(id);
+    },
+    [handleOpenExperience],
+  );
+
+  /** Build's flag has already been written by whoever called this; this only
+   *  re-reads so this component's copy agrees with the backend, which stays the
+   *  authority. Its one caller is `handleToggleExperience` below: the workspace
+   *  rail replaced the experience selector in the left column and carries no
+   *  enable switch, so the Settings screen's switch is the only one left. */
   const handleEnabledChange = useCallback((enabled: boolean) => {
     void api
       .experiences()
@@ -1466,9 +1501,10 @@ export default function App() {
     if (enabled) setView('build');
   }, []);
 
-  /** The Settings screen's experience switch. The selector above writes Build's
-   *  flag itself and then reports; this screen is props-only and performs no
-   *  I/O at all, so the write lives here.
+  /** The Settings screen's experience switch — now the ONLY enable affordance:
+   *  the workspace rail's nav cards navigate and nothing else, so turning Build
+   *  off and on lives on one surface instead of two. That screen is props-only
+   *  and performs no I/O at all, so the write lives here.
    *
    *  `set_experiences` takes Build's flag and nothing else (experiences.rs), so
    *  there is no id to send and no way this call could write Verify's value.
@@ -1796,6 +1832,45 @@ export default function App() {
    *  per column rather than a `hidden` appended to a class list: a trailing
    *  `hidden` beside `min-[900px]:flex` would still resolve to flex above 900.
    */
+  /* --- The rail's search field, as a VIEW of the project list -------------
+   *
+   *  Matched on the name AND the absolute path: a user with several checkouts
+   *  of one repo tells them apart by the folder, not by the name. Trimmed and
+   *  case-folded, and an empty field is every project rather than none.
+   *
+   *  `projects` is never filtered. The workbenches below are rendered from the
+   *  full list, so typing in the rail cannot unmount the pane an /ec-execute is
+   *  running in, and the active project stays active while it is filtered out
+   *  of the list. Memoised so a render that changed neither the list nor the
+   *  query hands ProjectSidebar the same array it had. */
+  const projectQuery = projectSearch.trim().toLowerCase();
+  const visibleProjects = useMemo(() => {
+    if (!projectQuery) return projects;
+    return projects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(projectQuery) || p.path.toLowerCase().includes(projectQuery),
+    );
+  }, [projects, projectQuery]);
+  /** A query that matches nothing. Said in words below rather than drawn as a
+   *  blank column — and NOT left to ProjectSidebar, whose own empty copy is
+   *  about having no projects at all. That is a different absence and would be
+   *  the wrong sentence for a filter the user can clear. */
+  const searchMissed = projects.length > 0 && visibleProjects.length === 0;
+
+  /** Which rail card is the open page, in the one union the rail takes.
+   *
+   *  The same reading the experience selector was given, with Connections
+   *  folded in: `null` while Connections is up used to be how Build was stopped
+   *  from keeping `aria-current` behind it, and now Connections says so itself.
+   *  `null` stays for the neutral shell, which is none of the three sections. */
+  const railSection: RailSectionId | null = connectionsView
+    ? 'connections'
+    : verifyView
+      ? 'verify'
+      : shellView
+        ? null
+        : 'build';
+
   const sidebarBand = onboardingView
     ? 'hidden'
     : overlay === 'sidebar'
@@ -1821,9 +1896,16 @@ export default function App() {
       {!panels.sidebarCollapsed && (
         <div
           id="project-drawer"
-          /* 220 / 208 / 192, then a 260px overlay below 900px. `w-64` (256)
-             used to stand here and matched no band at all. */
-          className={`fixed inset-y-0 left-0 z-40 w-[260px] max-w-[85vw] shrink-0 flex-col overflow-hidden bg-surface min-[900px]:static min-[900px]:w-[192px] min-[1100px]:w-[208px] min-[1360px]:w-[220px] ${sidebarBand}`}
+          /* ONE width now, at every band: 300px, the width WorkspaceRail
+             asserts on its own `<aside>` (workspace-rail.tsx). Task 110's
+             220 / 208 / 192 bands sized the old bare project nav; the rail
+             carries a search field, three nav cards and a three-row footer, and
+             clipping those to 192px inside this column's `overflow-hidden`
+             would hide real controls. `max-w-[85vw]` is kept for the drawer
+             band and is inert above it, where 85vw is past 300px anyway.
+             `fixed` → `static` at 900px is untouched: the drawer is still a
+             positioning change and never an unmount. */
+          className={`fixed inset-y-0 left-0 z-40 w-[300px] max-w-[85vw] shrink-0 flex-col overflow-hidden bg-surface min-[900px]:static ${sidebarBand}`}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOverlay(null);
           }}
@@ -1842,44 +1924,83 @@ export default function App() {
             </button>
           </div>
 
-          {/* Above the project list and OUTSIDE <main>: the selector is how all
+          {/* THE left column, composed of exactly two pieces.
+              WorkspaceRail owns the brand row, the three nav cards, the
+              WORKSPACE label with its plus, the search field and the footer;
+              ProjectSidebar is the list it wraps. App adds no second brand row,
+              no second nav list and no second add control — ExperienceSelector
+              stood here and is gone, because its two experience rows and its
+              Connections row ARE the rail's three cards now.
+
+              OUTSIDE <main>, exactly as the selector was: this nav is how all
               three surfaces are reached, so it must never sit inside a subtree
               that two of them hide.
-              TASK 109: `active` is null while Connections is the open page, so
-              the Connections row below it owns `aria-current` instead of Build
-              keeping it — Build's workspace is behind Connections, not in
-              front of the user. */}
-          <ExperienceSelector
-            active={connectionsView ? null : verifyView ? 'verify' : shellView ? null : 'build'}
-            onOpen={handleOpenExperience}
-            onEnabledChange={handleEnabledChange}
-            connectionsActive={connectionsView}
-            // THE SAME SETTER the Settings drawer's Connections section calls.
-            // One surface, two doors: no second ConnectionsPage, no second
-            // draft and no second reading of the matrix. The overlay is closed
-            // with it, because in a drawer band this column is sitting over the
-            // surface the press just asked for.
-            onOpenConnections={() => {
-              setConnectionsOpen(true);
-              setOverlay(null);
-            }}
-          />
-          {/* A row wrapper, so the nav's own `flex-1 overflow-y-auto` project
-              list still has a bounded height now that it shares the column. */}
+
+              A row wrapper, so the rail's own `flex-1 overflow-y-auto` list
+              region is bounded by this column's height rather than by its
+              content — the same reason the wrapper was here for the bare nav. */}
           <div className="flex min-h-0 flex-1">
-            <ProjectSidebar
-              projects={projects}
-              activeId={activeId}
-              states={states}
-              expanded={expanded}
-              levels={levels}
-              activity={activity}
-              onSelect={handleSelect}
-              onToggle={(p) => void handleToggle(p)}
-              onPromote={(p) => void handlePromote(p)}
-              onAdd={handleAdd}
-              onRemove={(id) => void handleRemove(id)}
-            />
+            <WorkspaceRail
+              // TASK 109's reading, now in one value: Connections owns
+              // `aria-current` while it is the open page instead of Build
+              // keeping it behind the surface.
+              experience={railSection}
+              // Build and Verify go to the same navigation callback as before;
+              // Connections flips the same one flag the Settings drawer's
+              // Connections section does. One surface, two doors.
+              onExperience={handleRailSection}
+              search={projectSearch}
+              onSearch={setProjectSearch}
+              // The ONE add control for this column now. `handleAdd` opens the
+              // native folder panel, so a rejection is a real failure and is
+              // said out loud below rather than swallowed — cancelling the
+              // panel resolves without a project and is not an error.
+              onAddProject={() => {
+                setAddError(null);
+                void handleAdd().catch((e: unknown) => setAddError(String(e)));
+              }}
+              // The same toggle the workbench header's Settings button uses, so
+              // the rail's row is never a dead control once the drawer is up.
+              onSettings={() => setSettingsOpen((open) => !open)}
+              // `user` is deliberately omitted. This app has no sign-in and
+              // knows no name, and the rail's contract is that no name means no
+              // profile row — never a placeholder one.
+            >
+              {addError !== null && (
+                <p
+                  role="alert"
+                  className="mb-3 rounded-lg border border-error px-2.5 py-1.5 text-xs leading-[18px] text-error"
+                >
+                  Adding a project failed: {addError}. Press Add project to try again.
+                </p>
+              )}
+              {searchMissed ? (
+                // The search missed. Said in words, with the way back in the
+                // same sentence: an empty column would read as "you have no
+                // projects", which is not what happened.
+                <p role="status" className="px-1 py-2 text-sm leading-[21px] text-muted">
+                  No project matches “{projectSearch.trim()}”. Clear the search to see{' '}
+                  {projects.length === 1 ? 'your project' : `all ${projects.length} projects`}{' '}
+                  again.
+                </p>
+              ) : (
+                <ProjectSidebar
+                  // The FILTERED list. `projects` itself is untouched, so the
+                  // workbenches below keep every pane mounted and the active
+                  // project stays active while it is filtered out of view.
+                  projects={visibleProjects}
+                  activeId={activeId}
+                  states={states}
+                  expanded={expanded}
+                  levels={levels}
+                  activity={activity}
+                  onSelect={handleSelect}
+                  onToggle={(p) => void handleToggle(p)}
+                  onPromote={(p) => void handlePromote(p)}
+                  onRemove={(id) => void handleRemove(id)}
+                />
+              )}
+            </WorkspaceRail>
           </div>
         </div>
       )}
@@ -2137,8 +2258,8 @@ export default function App() {
             mounted-but-hidden copy costs a render and nothing else.
 
             BOTH entry points reach THIS element. The Settings drawer's
-            Connections section below sets `connectionsOpen`, and the sidebar's
-            Connections entry — a row in experience-selector.tsx, beside Build
+            Connections section below sets `connectionsOpen`, and the workspace
+            rail's Connections entry — its third nav card, beside Build
             and Verify — calls the same setter. Neither renders a page of its
             own: a second ConnectionsPage would be a second draft, a second
             error string and a second reading of the same matrix. */}
@@ -2301,6 +2422,7 @@ export default function App() {
           read taken for that project's path, and a copy per project would show
           every hidden project the active one's branches. */}
       <Inspector
+        projectPath={active?.path ?? null}
         // `workspaceHidden`, not `onboardingView`: the inspector shows the
         // ACTIVE PROJECT's plan and git read, so it belongs to the workspace
         // and must leave with it. Gating on onboarding alone left the task

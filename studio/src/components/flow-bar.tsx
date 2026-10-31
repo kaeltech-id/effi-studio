@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FLOW_STEPS, type FlowStep } from '../lib/flow';
+import type { Stage } from '../lib/types';
 
 /** The one session a click may reach. `sessionId` is what a dispatch is
  *  addressed to — never "whatever is current" — and `providerName` is the
@@ -58,6 +59,124 @@ interface FlowBarProps {
  *  banner: the row below it is the point of the pane. */
 const NO_ADAPTER = 'Workflow shortcuts are not configured for this agent.';
 
+const CHECK = 'M5 12.5l4.5 4.5L19 7';
+
+/** Outline mark at the spec's stroke weight, inline so `currentColor` keeps it
+ *  on the token the medallion already set. Same helper shape as
+ *  setup-states.tsx and choose-tools.tsx — the screens are one product. */
+function Icon({ path, size = 14 }: { path: string; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={path} />
+    </svg>
+  );
+}
+
+/** The five stages a project moves through, named from the `Stage` union so a
+ *  rename in types.ts breaks the build rather than mislabelling the strip.
+ *
+ *  `Idle` is a `Stage` but not a step: it is the absence of one, which is why
+ *  flow.ts:33 answers it with the brainstorm step. A project sitting at Idle
+ *  therefore reads as the first step being current, and Idle is never drawn.
+ *
+ *  Deliberate deviation from the mockup, recorded in the Design Contract: the
+ *  reference draws four generic steps. These five are the user's own /ec-*
+ *  chain, and the mockup's wording would name a workflow this product does not
+ *  have. The treatment is the mockup's; the names are the product's. */
+const STAGES: ReadonlyArray<{ stage: Stage; blurb: string }> = [
+  { stage: 'Brainstorm', blurb: 'Weigh the approaches' },
+  { stage: 'Plan', blurb: 'Break it into tasks' },
+  { stage: 'Refine', blurb: 'Audit before any code' },
+  { stage: 'Execute', blurb: 'Make the changes' },
+  { stage: 'Review', blurb: 'Verify and refine' },
+];
+
+type StepState = 'done' | 'current' | 'upcoming';
+
+/** Said in words beside every mark, so no step is told by colour alone. */
+const STATE_WORD: Record<StepState, string> = {
+  done: 'done',
+  current: 'current step',
+  upcoming: 'not started',
+};
+
+/** Which step the strip fills, read off the step the project is waiting on —
+ *  never off a stage this component decides for itself. `derive_stage`
+ *  (plan.rs) owns the routing; `next` is its answer as this bar received it.
+ *
+ *  Three readings: no step at all means no project state has been read yet and
+ *  nothing has begun, so every stage is upcoming; the git step carries no stage
+ *  (flow.ts:23) and only follows review, so all five are behind it; otherwise
+ *  the waiting stage is the current one and everything before it is done. */
+function currentIndexOf(next: FlowStep | null): number {
+  if (!next) return -1;
+  if (!next.stage) return STAGES.length;
+  return STAGES.findIndex((s) => s.stage === next.stage);
+}
+
+/** The Contract's strip: a check medallion per finished stage, a filled number
+ *  for the current one, an outlined number for the ones ahead, each over its
+ *  own blurb and joined by a hairline. */
+function StageStrip({ currentIndex }: { currentIndex: number }) {
+  return (
+    <ol aria-label="Workflow stages" className="flex min-w-0 items-start gap-2 px-2 pt-2">
+      {STAGES.map((s, i) => {
+        const state: StepState =
+          i < currentIndex ? 'done' : i === currentIndex ? 'current' : 'upcoming';
+        return (
+          <li
+            key={s.stage}
+            aria-current={state === 'current' ? 'step' : undefined}
+            className="flex min-w-0 flex-1 items-start gap-2"
+          >
+            {/* Decorative: the label names the stage and the word below names
+                its state, so the medallion repeats rather than carries. */}
+            <span
+              aria-hidden="true"
+              className={`grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${
+                state === 'upcoming'
+                  ? 'border border-border text-muted'
+                  : 'bg-accent text-on-accent'
+              }`}
+            >
+              {state === 'done' ? <Icon path={CHECK} /> : i + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`truncate text-[13px] leading-6 font-semibold ${
+                    state === 'current' ? 'text-accent' : 'text-text'
+                  }`}
+                >
+                  {s.stage}
+                </span>
+                <span className="sr-only">{STATE_WORD[state]}</span>
+                {i < STAGES.length - 1 && (
+                  <span
+                    aria-hidden="true"
+                    className={`h-px min-w-2 flex-1 ${state === 'done' ? 'bg-accent' : 'bg-border'}`}
+                  />
+                )}
+              </div>
+              <p className="truncate text-xs text-muted">{s.blurb}</p>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** Names the six commands literally and types one into a NAMED session on
  *  click. It owns no workflow state and answers no question a command asks. */
 export function FlowBar({
@@ -115,6 +234,11 @@ export function FlowBar({
 
   return (
     <div className="shrink-0 border-b border-border">
+      {/* Where the project stands, which is true of the plan file whether or
+          not a session is open — so it sits above the command row and outside
+          the target branches below. */}
+      {!collapsed && <StageStrip currentIndex={currentIndexOf(next)} />}
+
       {/* Wraps instead of clipping: at the default 1180px window the main pane
           is about 602px and the six names alone need most of it, so a fixed
           height would put the last button out of reach. */}

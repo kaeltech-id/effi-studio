@@ -278,7 +278,7 @@ export function TabStrip({
     // this box, so they are never clipped by the tab run's own overflow.
     <div
       ref={rootRef}
-      className="relative shrink-0 border-b border-border bg-surface"
+      className="relative shrink-0"
     >
       <div className="flex h-10 items-center gap-1 px-2">
         {/* min-w-0 lets this box shrink below its content, which is what turns

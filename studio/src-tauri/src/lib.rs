@@ -851,6 +851,7 @@ pub fn run() {
             git::git_info,
             git::git_checkout,
             git::git_create_branch,
+            git::git_diff_stat,
             projects::panels,
             projects::set_panels,
             experiences::experiences,

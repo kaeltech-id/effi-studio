@@ -1,412 +1,591 @@
-## Feature: Proof Mode — pisahkan "mengubah" dari "membuktikan" di plan/refine/execute
+## Feature: Workbench v2 — ambil mockup persis di mana produk bisa jujur
+Proof mode: handoff
 
 ### Impact Analysis
-- Files affected: `commands/ec-brainstorm.md`, `commands/ec-plan.md`, `commands/ec-refine.md`, `commands/ec-execute.md`, `commands/ec-review.md`, `tests/test_command_docs.py`
-- ⚠️ Breaking change risk: `tests/test_command_docs.py:385` asserts the Step 4 checklist has exactly 21 items; adding mode rules changes that count and the assertion must move with it. No other existing assertion breaks, because this cycle is additive — nothing is deleted from the command docs.
+- Files affected: `studio/src/components/workspace-rail.tsx` (new), `studio/src/components/segmented.tsx` (new), `studio/src/components/project-activity.tsx` (new), `studio/src/components/composer.tsx` (new), `studio/src/components/project-sidebar.tsx`, `studio/src/components/task-panel.tsx`, `studio/src/components/history-panel.tsx`, `studio/src/components/flow-bar.tsx`, `studio/src/components/workbench.tsx`, `studio/src/App.tsx`, `studio/src/lib/types.ts`, `studio/src/lib/tauri-api.ts`, `studio/src-tauri/src/git.rs`, `studio/src-tauri/src/lib.rs`
+- ⚠️ Breaking change risk: `studio/src/App.tsx` hosts `ProjectSidebar` and `FlowBar`; changing either component's props changes a call site in a 1900-line file. Nothing outside `studio/` is touched.
 
 ### Reusable Existing Code
-- `commands/ec-plan.md:3-20` — the existing Step 0 block already reads the decision file and notes branch/AUTO state; the Proof Mode read is appended there rather than given its own step
-- `commands/ec-plan.md:346` — the existing `**Exception-only fields.**` convention already expresses "this field is written only when it differs from the default"; Proof Mode reuses that same vocabulary instead of inventing a second one
-- `commands/ec-brainstorm.md:222` — the decision template's section order is the insertion point; `## Proof Mode` lands immediately before `## Key Assumptions`
-- `tests/test_command_docs.py` `read_command()` helper and class-docstring style — the new guards follow it exactly
-- `commands/ec-execute.md:171,217` — Acceptance injection is already conditional ("if the task has no such line, inject nothing"), so a handoff-mode plan that omits Acceptance needs no executor change
+- `studio/src/components/tree-row.tsx:25` — `TreeRow` renders a folder/file row with git mark; the Contract's folder tree reuses it rather than reimplementing indentation
+- `studio/src/components/tab-strip.tsx` — the Contract's tab strip already exists; only its container chrome changes
+- `studio/src/components/brand-mark.tsx:12` — `BrandMark({ size })` is the ribbon-E; the rail's brand row uses it
+- `studio/src/components/experience-selector.tsx:11-12` — already holds the exact Contract copy `Build / Code with your agents.` and `Verify / Test and capture evidence.`; the rail's nav cards read from this map instead of restating strings
+- `studio/src/lib/tauri-api.ts:87` — `ptyWrite(sessionId, data)` already wraps `pty_write`; the composer calls it and adds no new IPC
+- `studio/src-tauri/src/git.rs:38` — `run(root, args)` is the one git helper (resolved binary, explicit `-C`, never a shell); `git_diff_stat` uses it
+- `studio/src-tauri/src/git.rs:56-57` — `#[tauri::command] pub fn git_info(path: String) -> GitInfo` is the shape `git_diff_stat` copies, including the `error: Option<String>` field rendered as a disabled state
+- `studio/src/components/task-panel.tsx:10-30` — the anti-fabrication precedent: a value is shown only when real. Every new card follows it.
+
+### Design Contract
+- Source: `/Users/admin/Developer/Projects/effi-studio/design/rebrand/mockups/01-build-workbench-v2.png`  ·  Viewport: 1586x992 desktop, jendela macOS dengan traffic lights di kiri atas
+- Layout: tiga kolom tetap. Kiri ±300px, tengah ±880px melar, kanan ±400px. Latar jendela `--color-ground`; tiap kolom dipisah border tipis `--color-border`. Kiri dan kanan menggulir mandiri; tengah menumpuk breadcrumb, tab strip, strip alur, badan percakapan yang melar, lalu composer yang menempel di bawah.
+- Spacing: padding kolom 16–20px; gap antar kartu 12–16px; padding dalam kartu 14–16px; radius kartu 10–12px, radius pill 999px, radius chip 8px; gap baris daftar 10–12px; indentasi tree 16px per tingkat dengan garis panduan vertikal 1px.
+- Typography: judul rail kanan `Project activity` ±20px/600; subtitle `Everything moving forward.` ±13px/400 `--color-muted`; judul percakapan `A better home for your projects` ±22px/600; stempel waktu ±12px `--color-muted`; nama proyek di kartu ±14px/600 dengan subtitle ±12px `--color-muted`; label nav ±14px/600 dengan subtitle ±12px `--color-muted`; label `WORKSPACE` ±11px/600 uppercase dengan letter-spacing; teks task ±13px/500 dengan subtitle ±12px `--color-muted`; badge dan pill ±11–12px.
+- Color: ground `#080F24`; surface kartu `#0C142E`; kartu terangkat `#121C3C`; hover `#1A254C`; border `#2A3663`; teks `#F5F8FF`; muted `#9FB0D4`; aksen cyan `#76CFFF` untuk progress bar, medali riwayat, dan tombol kirim; biru `#4263EB` untuk baris terpilih, bubble pengguna, dan segmented control aktif; ungu `#8B5CF6` untuk border tab aktif; hijau `--color-success` untuk centang dan angka tambah; merah `--color-error` untuk angka kurang.
+- Elements: **Kiri** — traffic lights; mark ribbon-E + wordmark `Effi Studio`; kartu nav `Build` terpilih berlatar biru tipis dengan ikon `</>` dan chevron kanan, `Verify` dengan ikon kaca pembesar, `Connections` dengan ikon rantai, masing-masing bersubtitle; divider; baris `WORKSPACE` dengan tombol plus bundar di kanan; field pencarian dengan ikon kaca pembesar dan placeholder; kartu proyek terpilih `orbit-web` dengan kotak inisial biru `O`, subtitle, branch pill, dan tombol elipsis; folder tree — `src` terbuka dengan chevron bawah lalu anak `components`, `pages`, `styles`, kemudian `public` dan file `package.json`; kartu proyek `atlas-api` tertutup dengan kotak inisial ungu `A` dan chevron bawah; tombol outline `Add project` berikon plus; baris `Settings` berikon gerigi; baris profil dengan avatar inisial dan chevron. **Tengah** — breadcrumb `Workspace / orbit-web`; branch pill dengan ikon git, nama branch, chevron; tombol elipsis; tab `Claude Code` aktif berborder ungu dengan ikon dan tombol tutup, tab `Codex`, tab `Browser`, tombol plus; strip alur berisi empat langkah bertanda centang, nomor aktif, dan nomor menunggu, dihubungkan garis tipis; judul percakapan dan stempel waktu; badan percakapan; composer berborder biru dengan placeholder, ikon penjepit kertas, chip konteks berikon dan tombol silang, dan tombol kirim bundar cyan berpanah atas; teks bantuan `Enter to send · Shift + Enter for a new line`. **Kanan** — judul dan subtitle; segmented control `Tasks`/`History`; kartu rencana dengan ikon dokumen, judul, badge rasio, subtitle sumber, tombol elipsis, progress bar, dan label persen; empat baris task dengan ikon lingkaran bercentang, bertitik, atau kosong, judul, subtitle, serta badge `Up next` pada baris aktif yang berlatar biru tipis dan berborder; judul `Recent history` dengan tautan `View all`; dua entri timeline bermedali centang cyan terhubung garis vertikal, masing-masing berjudul, berbranch pill, bertombol elipsis, berstempel waktu, dan berkartu catatan; kartu `Project & Git` dengan branch pill dan baris jumlah berkas berubah beserta angka tambah dan kurang.
+- Copy: `Effi Studio`; `Build` / `Code with your agents.`; `Verify` / `Test and capture evidence.`; `Connections` / `One surface, two doors.`; `WORKSPACE`; `Find a project…`; `Add project`; `Settings`; `Workspace /`; `Project activity`; `Everything moving forward.`; `Tasks`; `History`; `Recent history`; `View all`; `Up next`; `Project & Git`; `What would you like to build next?`; `Enter to send · Shift + Enter for a new line`. Nama proyek, nama pengguna, judul task, dan seluruh angka pada mockup adalah data contoh dan WAJIB diganti nilai nyata dari aplikasi.
+- States: default dan selected tampak pada kartu nav, kartu proyek, tab, segmented control, dan baris task; `Up next` tampak sebagai badge; hover tidak tampak dan memakai `--color-hover`; focus tidak tampak dan memakai ring aksen agar navigasi papan ketik tetap terlihat; disabled tidak tampak; loading tidak tampak dan TIDAK boleh digambar sebagai spinner palsu sesuai larangan di prompt mockup; empty tidak tampak dan wajib dibuat untuk daftar proyek kosong, task kosong, riwayat kosong, serta git tidak tersedia; error tidak tampak dan wajib dibuat untuk kegagalan baca git dan kegagalan baca rencana.
+- Deviations allowed: strip alur memakai enam tahap `Stage` yang asli (`Brainstorm`, `Plan`, `Refine`, `Execute`, `Review`, plus `Idle`) alih-alih empat label mockup, karena empat label itu akan salah menamai rantai `/ec-*` milik pengguna sendiri; badan percakapan tetap `TerminalPane` dan tidak digambar sebagai bubble, avatar, kartu tool-call, maupun kartu diff, karena tidak ada sumber data terstruktur; pemilih model `Claude Sonnet` dihilangkan karena aplikasi tidak mengetahui model agent; seluruh angka dan nama memakai data nyata; lebar kolom boleh menyesuaikan jendela sempit selama urutan elemen dipertahankan.
 
 ### Grounding
-Measured 2026-10-30 — real command output only.
-- `wc -l`: `commands/ec-brainstorm.md` → 300 · `commands/ec-plan.md` → 432 · `commands/ec-refine.md` → 145 · `commands/ec-execute.md` → 319 · `commands/ec-review.md` → 317 · `tests/test_command_docs.py` → 601
-- Baseline test result: `python3 -m pytest -q` → `238 passed, 1 warning in 4.29s`; `python3 -m pytest tests/test_command_docs.py -q` → `110 passed in 0.07s`
+Measured 2026-10-30 — real command output only. Proof mode `handoff`, so only anchors, new-file absence, and the per-string baselines a `Verify (local)` actually needs are recorded.
+- `wc -l`: `workbench.tsx` 724 · `project-sidebar.tsx` 154 · `task-panel.tsx` 153 · `history-panel.tsx` 38 · `flow-bar.tsx` 207 · `tab-strip.tsx` 592 · `tree-row.tsx` 110 · `brand-mark.tsx` 25 · `types.ts` 532 · `tokens.ts` 23 · `git.rs` 124 · `lib.rs` 1235 · `styles.css` 94
+- New files confirmed absent (`test -f; echo $?` → `1`): `studio/src/components/composer.tsx`, `studio/src/components/project-activity.tsx`, `studio/src/components/workspace-rail.tsx`, `studio/src/components/segmented.tsx`
 - Baseline string counts:
-  - `grep -rc "Proof Mode" commands/` → `0` in every file
-  - `grep -c -F "## Handoff" commands/ec-plan.md` → `0`
-  - `grep -c -F "Write failing test" commands/ec-plan.md` → `1`
-  - `grep -c -F "Verify (global)" commands/ec-plan.md` → `1`
-  - task template field count (lines matching `^- [A-Za-z⚠]` inside the `**Task 1 — {name}**` block) → `12`
-  - Step 4 checklist items (`^- \[ \]` between Step 4 and Step 5 headers) → `21`
+  - `grep -rEc '#[0-9a-fA-F]{6}' studio/src/components/` → no file above `0` (token discipline holds today and must keep holding)
+  - `grep -rc 'Find a project' studio/src` → `0` files
+  - `grep -rc 'Project activity' studio/src` → `0` files
+  - `grep -rc 'git_diff_stat' studio/src-tauri/src` → `0` files
+  - `grep -c 'Brainstorm' studio/src/components/flow-bar.tsx` → `0`
+  - `grep -rc 'pty_write' studio/src` → `1` file (`lib/tauri-api.ts:87`), so a component calling `ptyWrite` is new
+- Baseline test result: `python3 -m pytest -q` → `265 passed, 1 warning`; `cd studio && npm run build` → exits 0, no `error` lines
 - Verified anchors:
-  - `## Key Assumptions` → `commands/ec-brainstorm.md:222`
-  - `## Step 0 — Load Context & Memory` → `commands/ec-plan.md:3`
-  - `## Step 2.5 — Grounding Pass (mandatory)` → `commands/ec-plan.md:222`
-  - `- "Write failing test for {behavior}"` → `commands/ec-plan.md:256`
-  - `- Baseline string counts:` → `commands/ec-plan.md:309`
-  - `**Task 1 — {name}** \`S/M/L\`` → `commands/ec-plan.md:322`
-  - `- Verify (global): {omit on most tasks` → `commands/ec-plan.md:332`
-  - `- [ ] Every task that calls an API names its error-handling approach` → `commands/ec-plan.md` checklist tail
-  - `**Branch detection:** Run:` → `commands/ec-refine.md:3`
-  - `## Step 1 — Dry-run every Verify (local)` → `commands/ec-refine.md:55`
-  - `## Step 2 — Pre-flight Check` → `commands/ec-execute.md:92`
-  - `### Timeout Rule` → `commands/ec-execute.md:241`
-  - `### Definitive global gate` → `commands/ec-review.md:183`
-  - `Ask: "Add unit tests for this feature? (y/n):"` → `commands/ec-review.md:204`
-  - `assert len(items) == 21` → `tests/test_command_docs.py:385`
-  - `**Check for brainstorm decision:** If \`{DECISION_FILE}\` exists, read it silently.` → `commands/ec-plan.md:56`
-  - `### Task Granularity Rules` → `commands/ec-plan.md:252`
-  - `**Exception-only fields.**` → `commands/ec-plan.md:340`
-  - `### Per Task Detail` → `commands/ec-plan.md:321`
-  - `- [ ] Every task that calls an API names its error-handling approach` → `commands/ec-plan.md:385`
-  - `# --- Exception-only fields + verify split in ec-plan.md ---` → `tests/test_command_docs.py:356`
-  - `pytest` already imported at `tests/test_command_docs.py:3`, so Task 13's `@pytest.mark.parametrize` needs no new import
-- Existing assertions that constrain this design (all must keep passing):
-  - `tests/test_command_docs.py:261-263` requires `- Anchor:`, `- Do not touch:`, `- Acceptance:`, `- Rollback:` present in `ec-plan.md`
-  - `tests/test_command_docs.py:266-268` requires `Traceability rule` and `traces to a baseline` present in `ec-plan.md`
-  - `tests/test_command_docs.py:371-372` requires `- Verify (local):` and `- Verify (global):` present in `ec-plan.md`
-  - `tests/test_command_docs.py:252-253` requires `## Step 2.5 — Grounding Pass` and `### Grounding` present in `ec-plan.md`
-  - These are why the approach is mode-conditional rather than subtractive.
+  - `export function ProjectSidebar({` → `studio/src/components/project-sidebar.tsx:46`
+  - `Add Folder…` → `studio/src/components/project-sidebar.tsx:150`
+  - `export function TaskPanel({` → `studio/src/components/task-panel.tsx:40`
+  - `Source: Claude plan` → `studio/src/components/task-panel.tsx:26`
+  - `export function HistoryPanel({ history }: { history: HistoryEntry[] }) {` → `studio/src/components/history-panel.tsx:8`
+  - `export function FlowBar({` → `studio/src/components/flow-bar.tsx:63`
+  - `const INSPECTOR_TABS` → `studio/src/components/workbench.tsx:464`
+  - `aria-label="Project inspector"` → `studio/src/components/workbench.tsx:594`
+  - `<TaskPanel state={state} claudeContext={claudeContext} />` → `studio/src/components/workbench.tsx:648`
+  - `<HistoryPanel history={state?.history ?? []} />` → `studio/src/components/workbench.tsx:664`
+  - `export type ThemeToken` → `studio/src/lib/tokens.ts:6`
+  - `pub struct GitInfo {` → `studio/src-tauri/src/git.rs:24`
+  - `fn run(root: &Path, args: &[&str]) -> Result<String, String> {` → `studio/src-tauri/src/git.rs:38`
+  - `.invoke_handler(tauri::generate_handler![` → `studio/src-tauri/src/lib.rs:833`
+  - `export interface GitInfo {` → `studio/src/lib/types.ts:68`
+  - `ptyWrite: (sessionId: string, data: string)` → `studio/src/lib/tauri-api.ts:87`
+  - `import { ProjectSidebar } from './components/project-sidebar';` → `studio/src/App.tsx:23`
+  - `build: { name: 'Build', blurb: 'Code with your agents.' },` → `studio/src/components/experience-selector.tsx:11`
+  - new files — no anchor
 
 ### Tasks
-- [x] Task 1: Add Proof Mode to the decision template [S] — new `## Proof Mode` section in `commands/ec-brainstorm.md`
-- [x] Task 2: Read Proof Mode in ec-plan Step 0 [S] — resolve mode, default `handoff` when absent
-- [x] Task 3: State the deliverable rule and the proof rule [M] — two separate rules, deliverable first, with the allowed static-check list
-- [x] Task 4: Replace the test-authoring granularity example [S] — drop the line that steers plans toward writing tests
-- [x] Task 5: Mark task template fields by mode [M] — six required on `handoff`, the rest `in-cycle` or exception-only
-- [x] Task 6: Add the Handoff block to the plan template [M] — where moved proof steps land
-- [x] Task 7: Scope the Grounding Pass by mode [M] — slim pass on `handoff`, full baseline pass on `in-cycle`
-- [x] Task 8: Add the new self-review checklist items [S] — keep the checklist authoritative
-- [x] Task 9: Teach ec-refine the mode and the proof-verb rejection [M] — mechanical enforcement, not prose
-- [x] Task 10: Teach ec-execute the mode, pre-flight abort, and outward-facing confirmation [M] — server work is a task, but never silent
-- [x] Task 11: Scope the ec-review unit-test gate and global gate by mode [M] — stop asking for tests a handoff cycle declined
-- [x] Task 12: Update the checklist-count assertion [S] — move it to the new exact count
-- [x] Task 13: Add Proof Mode guard tests [M] [agent: ec-python] — lock every rule this cycle introduces
+- [x] Task 1: Add git_diff_stat to the Rust git module [M] [design: design/rebrand/mockups/01-build-workbench-v2.png#ProjectAndGit] — real "N files changed, +X −Y"
+- [x] Task 2: Register git_diff_stat in the handler list [S] — without this the command is unreachable
+- [x] Task 3: Mirror DiffStat in the frontend types and api wrapper [S] — typed access, no `any`
+- [x] Task 4: Build the Segmented control [S] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#Segmented] — Tasks/History switch
+- [x] Task 5: Build the WorkspaceRail left column [L] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#LeftRail] — brand, nav cards, WORKSPACE, search, project cards, tree, footer
+- [x] Task 6: Rewrite ProjectSidebar as the rail's project list [M] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#ProjectCards] — initial squares, subtitle, branch pill, tree
+- [x] Task 7: Build the ProjectActivity right column [L] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#RightRail] — heading, segmented, plan card, history timeline, git card
+- [x] Task 8: Restyle TaskPanel rows to the Contract [M] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#TaskRows] — three states, Up next badge
+- [x] Task 9: Restyle HistoryPanel as a medallion timeline [M] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#HistoryTimeline] — cyan medallions, connecting line, note cards
+- [x] Task 10: Build the Composer wired to ptyWrite [M] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#Composer] — real send, Enter/Shift+Enter, context chips
+- [x] Task 11: Name the real six stages in FlowBar [M] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#FlowStrip] — declared deviation from the mockup's four
+- [x] Task 12: Assemble the three columns in Workbench [L] [agent: ec-react] [design: design/rebrand/mockups/01-build-workbench-v2.png#Layout] — breadcrumb, chrome, terminal-as-card, rails
+- [x] Task 13: Wire the new rail into App.tsx [M] [agent: ec-react] — replace the old sidebar call site
+- [x] Task 14: Add the workbench-v2 guard tests [M] [agent: ec-python] — lock the Contract copy, the deviations, and token discipline
+
+### Regression introduced by following the mockup
+**Branch checkout and create-branch are no longer reachable in the UI.** The right
+column used to mount `PanelSection` + `PropertiesPanel`, which carried the branch list,
+its checkout buttons and the create-branch field. The Contract's right column ends with
+the `Project & Git` card and draws no switcher, so following it removed that surface.
+Verified: `PropertiesPanel` is now referenced nowhere outside its own file (the only
+other hit is a comment at `workbench.tsx:677`), and `App.tsx:2448-2449` still passes
+`onCheckout` / `onCreateBranch` into props that are declared optional and never read.
+The Rust commands (`git_checkout`, `git_create_branch`) and the `tauri-api.ts` wrappers
+are all intact — only the UI is gone. This is a product decision for the user, not a
+defect to patch silently: either the mockup's right column gains a switcher, or the
+feature moves elsewhere, or it is dropped deliberately.
+
+### Execution incidents
+- Wave 3's two units (Tasks 7 and 13) were both killed mid-run by an API outage
+  (`ENOTFOUND`), after writing their files but before reporting. Both outputs were
+  verified by the orchestrator instead: `tsc --noEmit` clean, braces balanced, every
+  Contract string present. No work was lost and neither file was left half-written.
+- `Project & Git` is written in JSX as `Project &amp; Git`. Task 14's guard must match
+  the entity form, or it will assert the card is missing when it is present.
+
+### Contract defects found during execution
+Recorded so `/ec-review` reads these as attributed, not as undeclared deviations.
+- The Design Contract specifies a note card under each history entry. `HistoryEntry`
+  (`studio/src/lib/types.ts:33-40`) is `{file, branch, date, time, slug, title|null}` —
+  there is no note field and never was. The mockup's note text is sample data, so Task 9
+  correctly did not render it. The Contract was wrong, not the implementation.
+- The Contract specifies a per-entry ellipsis menu on history rows. No handler exists on
+  this component's props, and a dead control is forbidden by the plan's own Constraints,
+  so Task 9 omitted it.
+- Task 9's code sample used `last:hidden` on the connecting line. The line span is the
+  FIRST child of its `li`, so that selector could never match and the line would have
+  drawn past the final entry. Implemented as `group-last:hidden` instead.
+- The plan told Task 5 to import experience copy from `experience-selector.tsx`. That
+  file declares it as a module-private `const COPY` with no export, and the file was on
+  Task 5's do-not-touch list, so the import was impossible as instructed. A local const
+  keyed by the shared `ExperienceId` was used instead, with a comment naming the drift
+  risk. The reuse instruction was wrong, not the implementation.
+- Task 4's active segment carries no blue edge stroke. `tests/test_studio_guards.py:666`
+  bans `#4263EB` (3.82:1 on navy) and `#8B5CF6` (4.49:1) in any border, ring, text or
+  icon-stroke role. Used as a fill with text on top, which the guard permits.
+- Task 4 added roving `tabIndex` plus Arrow/Home/End beyond the sample, which is the
+  expected keyboard contract for `role="tab"`.
+
+### Handoff
+_Proof mode is `handoff`, so the cycle writes the UI and you judge it. These are the steps it deliberately does not run._
+- The rails and chrome actually look like the mockup → `cd studio && npm run tauri dev`, open a project, compare side by side with `design/rebrand/mockups/01-build-workbench-v2.png`
+- The composer really reaches the agent → open a Claude Code tab, type in the composer, press Enter, confirm the text appears in the terminal session
+- `git_diff_stat` reports real numbers → edit a file in the open project, confirm the Project & Git card's count and +/− match `git diff --numstat`
+- Nothing is cramped at small window sizes → resize to 980x700 and 800x650, confirm the three columns still read correctly
+- Keyboard navigation reaches every new control → Tab through the rail, the segmented control, and the composer; confirm a visible focus ring on each
+- The new guards actually pass, and nothing regressed → `python3 -m pytest -q` (baseline before this cycle: `265 passed`)
+- The frontend still type-checks and builds → `cd studio && npm run build`
+- The Rust side still compiles with the new command → `cd studio/src-tauri && cargo check`
 
 ### Per Task Detail
 
-**Task 1 — Add Proof Mode to the decision template** `S`
-- File: `commands/ec-brainstorm.md`
-- Anchor: `## Key Assumptions` → `commands/ec-brainstorm.md:222`
-- Reuse: the template's existing section style — `##` heading, one italic `_..._` explainer line, then bullets
-- Code sample: insert immediately before the anchor
-  ```markdown
-  ## Proof Mode
-  _Who proves this cycle works. Omit the section and `/ec-plan` reads it as `handoff`._
-  - `handoff` (default) — the cycle makes the change; you run, launch and verify it afterwards
-  - `in-cycle` — the cycle also builds, launches and proves it, because the artifact or the running system IS the deliverable
+**Task 1 — Add git_diff_stat to the Rust git module** `M`
+- File: `studio/src-tauri/src/git.rs`
+- Anchor: `#[tauri::command]` immediately preceding `pub fn git_checkout` at line 112
+- Code sample: add a struct and a command above that anchor, using the existing `run` helper at line 38
+  ```rust
+  #[derive(serde::Serialize)]
+  #[serde(rename_all = "camelCase")]
+  pub struct DiffStat {
+      pub available: bool,
+      pub files_changed: usize,
+      pub insertions: usize,
+      pub deletions: usize,
+      /// Why the stat could not be read. Rendered as a disabled card, never as
+      /// zeros — "0 files changed" and "git unavailable" are different facts.
+      pub error: Option<String>,
+  }
 
-  Mode: {handoff | in-cycle}
+  #[tauri::command]
+  pub fn git_diff_stat(path: String) -> DiffStat {
+      let root = Path::new(&path);
+      let empty = |error: Option<String>| DiffStat {
+          available: error.is_none(),
+          files_changed: 0,
+          insertions: 0,
+          deletions: 0,
+          error,
+      };
+      let out = match run(root, &["diff", "--numstat", "HEAD"]) {
+          Ok(out) => out,
+          Err(e) => return empty(Some(e)),
+      };
+      let mut stat = empty(None);
+      for line in out.lines().filter(|l| !l.trim().is_empty()) {
+          let mut cols = line.split('\t');
+          let added = cols.next().unwrap_or("-");
+          let removed = cols.next().unwrap_or("-");
+          stat.files_changed += 1;
+          // A binary file reports "-" for both columns; count the file, not a
+          // line total that does not exist.
+          stat.insertions += added.parse::<usize>().unwrap_or(0);
+          stat.deletions += removed.parse::<usize>().unwrap_or(0);
+      }
+      stat
+  }
   ```
-- Do not touch: the `## Design Contract` and `## Design Direction` sections above the anchor, and their mutual-exclusivity note; `## Key Assumptions` itself and every section after it
-- Edge cases: a decision file written before this section existed is valid input — the absence of the section means `handoff`, which Task 2 implements; the template edge-case list already says old decision files are never rewritten
-- Acceptance: the decision template offers Proof Mode as a declared section with `handoff` named as the default
-- Verify (local): `grep -c -F '## Proof Mode' commands/ec-brainstorm.md` → `== 1` (baseline: `0` across all of `commands/`)
+- Do not touch: `GitInfo` at line 24, `run` at line 38, `git_info`, `git_checkout`, `git_create_branch`. Keep using `run` — never a shell, never an unresolved `git`.
+- Verify (local): `grep -c 'pub fn git_diff_stat' studio/src-tauri/src/git.rs` → `== 1` (baseline: `0` across `studio/src-tauri/src`)
 - Dependencies: none
 
-**Task 2 — Read Proof Mode in ec-plan Step 0** `S`
-- File: `commands/ec-plan.md`
-- Anchor: `**Check for brainstorm decision:** If `{DECISION_FILE}` exists, read it silently.`
-- Reuse: the surrounding decision-reading block, which already parses `## Design Contract` / `## Design Direction` out of the same file
-- Code sample: append to that block's bullet list
-  ```markdown
-  - Parse `## Proof Mode` from the decision. If the section is absent, or names no mode, treat it as `handoff`.
-    Note: "(proof mode: {MODE})". `PROOF_MODE` governs Step 2.5, the task template, and the Handoff block below.
+**Task 2 — Register git_diff_stat in the handler list** `S`
+- File: `studio/src-tauri/src/lib.rs`
+- Anchor: `.invoke_handler(tauri::generate_handler![` → line 833
+- Code sample: add the entry beside the other git commands in that list, matching their `git::` path style
+  ```rust
+              git::git_diff_stat,
   ```
-- Do not touch: the Design Contract and Design Direction parsing rules in the same block; the expiry check; the saved-brainstorms fallback
-- Edge cases: decision absent entirely (the saved-brainstorms path) → `handoff`; both mode words present → the first one wins and the note records it
-- Acceptance: `/ec-plan` resolves a mode for every run, including runs with no decision file
-- Verify (local): `grep -c -F 'proof mode:' commands/ec-plan.md` → `== 1` (baseline: `0`)
+- Do not touch: every other entry in the list; the surrounding builder chain
+- Verify (local): `grep -c 'git_diff_stat' studio/src-tauri/src/lib.rs` → `== 1` (baseline: `0`)
+- Dependencies: Task 1 (the command must exist to be registered)
+
+**Task 3 — Mirror DiffStat in the frontend types and api wrapper** `S`
+- File: `studio/src/lib/types.ts`
+- Anchor: `export interface GitInfo {` → line 68
+- Code sample: add directly above the anchor, mirroring the Rust struct field for field in its camelCase serialisation
+  ```ts
+  export interface DiffStat {
+    available: boolean;
+    filesChanged: number;
+    insertions: number;
+    deletions: number;
+    error: string | null;
+  }
+  ```
+- Do not touch: `GitInfo`, `ProjectState` at line 42, and every other interface in the file
+- Verify (local): `grep -c 'export interface DiffStat' studio/src/lib/types.ts` → `== 1` (baseline: `0`)
+- Dependencies: Task 1 (the shape mirrors the Rust struct)
+
+**Task 4 — Build the Segmented control** `S`
+- File: `studio/src/components/segmented.tsx` (create)
+- Code sample: a two-option control matching the Contract — active option on `--color-brand-blue`, inactive muted, pill radius, full width
+  ```tsx
+  export function Segmented<T extends string>({
+    options, value, onChange, label,
+  }: {
+    options: { id: T; label: string }[];
+    value: T;
+    onChange: (id: T) => void;
+    label: string;
+  }) {
+    return (
+      <div role="tablist" aria-label={label} className="flex gap-1 rounded-lg border border-border bg-surface p-1">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            role="tab"
+            aria-selected={value === o.id}
+            onClick={() => onChange(o.id)}
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              value === o.id ? 'bg-brand-blue text-text' : 'text-muted hover:bg-hover'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  ```
+- Do not touch: no existing file; introduce no raw hex — every colour is a token utility
+- Verify (local): `grep -c 'role="tablist"' studio/src/components/segmented.tsx` → `== 1` (baseline: file absent)
 - Dependencies: none
 
-**Task 3 — State the deliverable rule and the proof rule** `M`
-- File: `commands/ec-plan.md`
-- Anchor: `### Task Granularity Rules`
-- Reuse: the existing `**Honest dependencies.**` / `**Two kinds of verification.**` bolded-rule format in the same document
-- Code sample: insert before the anchor
-  ```markdown
-  ### What belongs in a task — deliverable first
+**Task 5 — Build the WorkspaceRail left column** `L`
+- File: `studio/src/components/workspace-rail.tsx` (create)
+- Code sample: the Contract's left column top-to-bottom. Nav copy is read from the existing experience map, never restated.
+  ```tsx
+  import { BrandMark } from './brand-mark';
+  import { EXPERIENCES } from './experience-selector';
 
-  **Deliverable rule (applies in every mode).** Whatever the cycle was asked to
-  produce is always a task, whatever its medium and however long it takes —
-  writing code, editing config, running a migration, or entering a server to
-  change its state. This rule is stated first and is never overridden: the mode
-  below never judges whether work is "code".
-
-  **Proof rule (`handoff` mode only).** A step whose only job is to prove the
-  change works must not spend wall-clock inside the cycle. Building an artifact
-  so it can be inspected, launching an app or a browser to look at it, bundling,
-  compiling Rust, or running a suite to feel sure — all move to `## Handoff`.
-  The one exception is a static check that finishes in about two seconds, which
-  stays as `Verify (local)`. The allowed static checks are exactly:
-  `grep`, `grep -c`, `test -f`, `test -x`, `bash -n`, `python3 -m json.tool`,
-  `python3 -I -c` on a parse, and `tsc --noEmit`. Anything not on that list is a
-  Handoff step, not a verify. Measured on this repo: 16 such checks cost 0.04s
-  in total, `tsc` 2.19s, `cargo check` 35.97s, a universal DMG build 122s —
-  which is where the line was drawn.
-
-  In `in-cycle` mode the proof rule does not apply, because there the artifact or
-  the running system is itself the deliverable and the deliverable rule covers it.
+  export function WorkspaceRail({
+    experience, onExperience, search, onSearch, onAddProject, onSettings, user, children,
+  }: WorkspaceRailProps) {
+    return (
+      <aside aria-label="Workspace" className="flex w-[300px] shrink-0 flex-col border-r border-border bg-ground">
+        <div className="flex items-center gap-2.5 px-4 py-4">
+          <BrandMark size={28} />
+          <span className="text-lg font-semibold text-text">Effi Studio</span>
+        </div>
+        <nav aria-label="Experiences" className="flex flex-col gap-1 px-3">
+          {/* one card per experience: icon, name, blurb, chevron when selected */}
+        </nav>
+        <div className="mt-4 flex items-center justify-between border-t border-border px-4 pt-4">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">WORKSPACE</span>
+          <button aria-label="Add a project" onClick={onAddProject} className="rounded-full p-1 text-muted hover:bg-hover hover:text-text">{/* plus */}</button>
+        </div>
+        <div className="px-3 pt-3">
+          <input
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+            aria-label="Find a project"
+            placeholder="Find a project…"
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 pl-9 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">{children}</div>
+        <div className="flex flex-col gap-1 border-t border-border p-3">
+          <button onClick={onAddProject} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm text-text hover:bg-hover">{/* plus */}Add project</button>
+          <button onClick={onSettings} className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-text hover:bg-hover">{/* gear */}Settings</button>
+          {user && (<div className="flex items-center gap-2 rounded-lg px-3 py-2.5">{/* avatar + name */}</div>)}
+        </div>
+      </aside>
+    );
+  }
   ```
-- Do not touch: `### Task Granularity Rules` itself and the `### Flat Format Rules` block after it
-- Edge cases: a cycle whose deliverable genuinely is a build (the DMG release) declares `in-cycle` and is unaffected; a server-deploy cycle stays in `handoff` because the deploy is a deliverable, not a proof
-- Acceptance: a reader can tell which of two rules applies to any step, and the deliverable rule is unambiguous that non-code work qualifies
-- Verify (local): `grep -c -F 'Deliverable rule (applies in every mode)' commands/ec-plan.md` → `== 1` and `grep -c -F 'Proof rule (`handoff` mode only)' commands/ec-plan.md` → `== 1` (baseline: `0` for both)
-- Dependencies: Task 2 (the rules reference `PROOF_MODE`, which Task 2 defines)
-
-**Task 4 — Replace the test-authoring granularity example** `S`
-- File: `commands/ec-plan.md`
-- Anchor: `- "Write failing test for {behavior}"` → `commands/ec-plan.md:256`
-- Code sample: replace that single line with
-  ```markdown
-  - "Add {field} to {type} in {file}"
-  ```
-- Do not touch: the three sibling example lines around it (`Create {ComponentName}`, `Add {endpoint} call`, `Handle loading state`); the granularity sentence above them
-- Edge cases: `in-cycle` cycles may still plan test tasks — nothing forbids them, the example simply no longer steers every plan toward one
-- Acceptance: the granularity examples no longer present writing a test as the canonical first task
-- Verify (local): `grep -c -F 'Write failing test' commands/ec-plan.md` → `== 0` (baseline: `1` at line 256)
+  The user row renders only when the app actually knows a user; the Contract's `Jamie Smith` is sample data.
+- Do not touch: `brand-mark.tsx`, `experience-selector.tsx` — both are imported, not edited. No raw hex anywhere; every colour is a token utility.
+- Verify (local): `grep -c -F 'Find a project…' studio/src/components/workspace-rail.tsx` → `== 1` and `grep -c -F 'WORKSPACE' studio/src/components/workspace-rail.tsx` → `== 1` (baselines: `Find a project` appears in `0` files today; file absent)
 - Dependencies: none
 
-**Task 5 — Mark task template fields by mode** `M`
-- File: `commands/ec-plan.md`
-- Anchor: `**Task 1 — {name}** \`S/M/L\`` → `commands/ec-plan.md:322`
-- Reuse: the `**Exception-only fields.**` paragraph already in this document — the new note uses the same vocabulary rather than a second concept
-- Code sample: leave all twelve field lines in place and add, after the `**Exception-only fields.**` paragraph
-  ```markdown
-  **Fields by proof mode.** On `handoff`, a task carries exactly six lines:
-  `File`, `Anchor`, `Code sample`, `Do not touch`, `Verify (local)`,
-  `Dependencies`. `Reuse` and `Edge cases` fold into `Code sample`; `Acceptance`
-  folds into `Verify (local)`; `Verify (global)` is omitted entirely. `Anchor`
-  and `Do not touch` are never dropped — they are what makes `/ec-execute`'s
-  concurrent waves provably safe. `⚠️ Breaking change` and `Rollback` stay
-  exception-only exactly as above. On `in-cycle`, every field documented above
-  applies as written.
+**Task 6 — Rewrite ProjectSidebar as the rail's project list** `M`
+- File: `studio/src/components/project-sidebar.tsx`
+- Anchor: `export function ProjectSidebar({` → line 46
+- Code sample: each project becomes a card — a rounded-square initial tile, name, subtitle, branch pill, ellipsis — and the selected project expands into the existing `TreeRow` tree
+  ```tsx
+  <div className="rounded-xl border border-border bg-surface p-2.5">
+    <button className="flex w-full items-center gap-2.5 text-left" onClick={() => onSelect(p.path)}>
+      <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-blue text-sm font-semibold text-text">
+        {p.name.slice(0, 1).toUpperCase()}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-text">{p.name}</span>
+        {subtitle && <span className="block truncate text-xs text-muted">{subtitle}</span>}
+      </span>
+      {branch && <BranchPill branch={branch} />}
+    </button>
+    {selected && <div className="mt-2 border-l border-border pl-2">{/* TreeRow rows */}</div>}
+  </div>
   ```
-- Do not touch: all twelve existing field lines — `tests/test_command_docs.py:261-263` and `:371-372` require `- Anchor:`, `- Do not touch:`, `- Acceptance:`, `- Rollback:`, `- Verify (local):` and `- Verify (global):` to stay present in this file, each at `grep -c` of at least 1; also the `**Honest dependencies.**` and `**Two kinds of verification.**` paragraphs
-- Edge cases: a handoff plan that still writes `Acceptance` is not an error, just verbose — the rule names the required six, it does not forbid extras
-- Acceptance: a handoff-mode plan is specified to carry six field lines per task while the document still documents all twelve
-- Verify (local): `grep -c -F '**Fields by proof mode.**' commands/ec-plan.md` → `== 1` (baseline: `0`)
-- Dependencies: Task 2 (references the resolved mode)
+  `subtitle` and `branch` render only when the backend supplies them — the Contract's `Website · main` and `Backend service` are sample data.
+- Do not touch: `tree-row.tsx` — reused verbatim, never rewritten; `grep -c 'TreeRow' studio/src/components/project-sidebar.tsx` must stay at least `1` (it is `3` today). The `Add Folder…` control at line 150 moves to the rail's footer as `Add project`, so this file must not keep a second copy of it.
+- Verify (local): `grep -c -F 'Add Folder…' studio/src/components/project-sidebar.tsx` → `== 0` (baseline: `1`, at line 150)
+- Dependencies: Task 5 (the rail owns the footer this control moves into)
 
-**Task 6 — Add the Handoff block to the plan template** `M`
-- File: `commands/ec-plan.md`
-- Anchor: `### Per Task Detail`
-- Reuse: the plan template's existing `###` section style and fenced-block layout
-- Code sample: add to the plan template, after the `### Tasks` list section and before `### Per Task Detail`
-  ```markdown
-  ### Handoff
-  _Written on `handoff` mode. The proof steps this plan deliberately does not run,
-  as commands you can paste. Omit the section only when there are none._
-  - {what it proves} → `{exact command}`   (e.g. "DMG is universal and mounts" → `cd studio && npm run build:dmg`)
-  - {what to open} → {exact URL or app}    (e.g. "the new settings pane" → launch Effi Studio, Settings tab)
+**Task 7 — Build the ProjectActivity right column** `L`
+- File: `studio/src/components/project-activity.tsx` (create)
+- Code sample: the Contract's right column — heading, subtitle, segmented control, then either the plan card plus history, or history alone
+  ```tsx
+  export function ProjectActivity({ state, diff, claudeContext }: ProjectActivityProps) {
+    const [tab, setTab] = useState<'tasks' | 'history'>('tasks');
+    return (
+      <aside aria-label="Project activity" className="flex w-[400px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-ground p-4">
+        <header>
+          <h2 className="text-xl font-semibold text-text">Project activity</h2>
+          <p className="text-[13px] text-muted">Everything moving forward.</p>
+        </header>
+        <Segmented label="Project activity view" value={tab} onChange={setTab}
+          options={[{ id: 'tasks', label: 'Tasks' }, { id: 'history', label: 'History' }]} />
+        {tab === 'tasks'
+          ? <TaskPanel state={state} claudeContext={claudeContext} />
+          : <HistoryPanel history={state?.history ?? []} />}
+        <section>
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-base font-semibold text-text">Recent history</h3>
+            <button onClick={() => setTab('history')} className="text-xs text-accent hover:underline">View all</button>
+          </div>
+          <HistoryPanel history={(state?.history ?? []).slice(0, 2)} />
+        </section>
+        <GitCard branch={state?.branch ?? null} diff={diff} />
+      </aside>
+    );
+  }
   ```
-- Do not touch: `### Tasks`, `### Per Task Detail`, `### Grounding`, `### Impact Analysis` and the Design sections of the same template
-- Edge cases: a cycle with no proof steps at all (pure doc edit) omits the section; `in-cycle` mode omits it because the cycle runs those steps itself
-- Acceptance: a handoff plan ends with the exact commands the user needs, so nothing is lost by not running them
-- Verify (local): `grep -c '^### Handoff$' commands/ec-plan.md` → `== 1` (baseline: `0`). Anchored to the heading at line start because Task 8's checklist items mention `### Handoff` in prose, which the plan's own Count stability rule says to anchor around rather than count loosely.
-- Dependencies: Task 2 (the section is mode-gated)
+  `GitCard` shows the count and +/− only when `diff.available`; on `diff.error` it renders a disabled card naming the reason, never zeros.
+- Do not touch: `task-panel.tsx` and `history-panel.tsx` internals — both are composed here, and their own Contract restyling is Tasks 8 and 9
+- Verify (local): `grep -c -F 'Project activity' studio/src/components/project-activity.tsx` → `== 1` and `grep -c -F 'Everything moving forward.' studio/src/components/project-activity.tsx` → `== 1` (baseline: `Project activity` appears in `0` files)
+- Dependencies: Task 3 (the `DiffStat` type), Task 4 (the Segmented control)
 
-**Task 7 — Scope the Grounding Pass by mode** `M`
-- File: `commands/ec-plan.md`
-- Anchor: `## Step 2.5 — Grounding Pass (mandatory)` → `commands/ec-plan.md:222`
-- Reuse: the existing batched-probe script pattern in the same step — the slim pass is the same script with fewer probe lines
-- Code sample: insert directly after the anchor line
-  ```markdown
-  **Scope by proof mode.** On `handoff`, the pass records only what stays
-  checkable in milliseconds: the line count of each file a task touches, the
-  exact `Anchor` string with its line number, and `test -f` for every file a
-  task claims is new. Baseline string counts and the test baseline are skipped,
-  because `handoff` produces no numeric thresholds for them to feed — which also
-  means the traceability rule below has nothing to apply to. On `in-cycle` the
-  full pass runs exactly as specified, baselines included.
+**Task 8 — Restyle TaskPanel rows to the Contract** `M`
+- File: `studio/src/components/task-panel.tsx`
+- Anchor: `export function TaskPanel({` → line 40
+- Code sample: three visually distinct states and the `Up next` badge, replacing the monospace strikethrough rows
+  ```tsx
+  const state = task.done ? 'done' : isNext ? 'next' : 'todo';
+  <li className={`flex gap-2.5 rounded-lg p-2.5 ${state === 'next' ? 'border border-brand-blue bg-accent-tint' : ''}`}>
+    <span aria-hidden className="mt-0.5 shrink-0">{/* filled check | ring dot | empty ring */}</span>
+    <span className="min-w-0 flex-1">
+      <span className="flex items-center gap-2">
+        <span className={`text-[13px] font-medium ${state === 'done' ? 'text-muted' : 'text-text'}`}>{task.title}</span>
+        {state === 'next' && <span className="rounded bg-brand-blue px-1.5 py-0.5 text-[11px] text-text">Up next</span>}
+      </span>
+      {task.subtitle && <span className="block text-xs text-muted">{task.subtitle}</span>}
+    </span>
+  </li>
   ```
-- Do not touch: the `**Traceability rule:**` and `**Count stability rule.**` paragraphs — `tests/test_command_docs.py:266-268` requires the strings `Traceability rule` and `traces to a baseline` to stay present at `grep -c` of at least 1; also the read-only constraint sentence (`:256-258`) and the `## Step 2.5 — Grounding Pass` and `### Grounding` headings (`:252-253`)
-- Edge cases: a handoff task that genuinely needs a count (say a `grep -c` verify) records that one baseline rather than all of them — the rule skips baselines nothing needs, it does not forbid one that is needed
-- Acceptance: a handoff-mode grounding pass is specified as anchors plus new-file checks, and the traceability rule is explicitly scoped so it is not silently violated
-- Verify (local): `grep -c -F '**Scope by proof mode.**' commands/ec-plan.md` → `== 1` (baseline: `0`)
-- Dependencies: Task 2 (references the resolved mode)
+  A progress bar renders above the list only when `total > 0`, using the existing guarded ratio — the panel still computes no percentage of its own.
+- Do not touch: the `SourceLabel` rationale at lines 10-30 and the `percent` null-guard it documents; the rule that nothing here is interactive, because the CLI is the sole writer of the checklist
+- Verify (local): `grep -c -F 'Up next' studio/src/components/task-panel.tsx` → `== 1` (baseline: `0`)
+- Dependencies: none
 
-**Task 8 — Add the new self-review checklist items** `S`
-- File: `commands/ec-plan.md`
-- Anchor: `- [ ] Every task that calls an API names its error-handling approach — reused existing handler, or a new handler to create`
-- Reuse: the checklist's existing `- [ ]` one-line-per-rule format
-- Code sample: append after the anchor
-  ```markdown
-  - [ ] Proof mode is resolved and noted, defaulting to `handoff` when the decision does not say
-  - [ ] On `handoff`, no task builds, launches, serves, bundles, compiles Rust, or runs a suite — those are in `### Handoff`
-  - [ ] On `handoff`, every `Verify (local)` is one of the allowed static checks
-  - [ ] On `handoff`, `### Handoff` lists every proof step the plan chose not to run, or is omitted because there are none
+**Task 9 — Restyle HistoryPanel as a medallion timeline** `M`
+- File: `studio/src/components/history-panel.tsx`
+- Anchor: `export function HistoryPanel({ history }: { history: HistoryEntry[] }) {` → line 8
+- Code sample: cyan check medallions joined by a thin vertical line, each entry carrying a title, branch pill, timestamp, and a note card
+  ```tsx
+  <li className="relative flex gap-3 pb-4 last:pb-0">
+    <span aria-hidden className="absolute left-3 top-7 bottom-0 w-px bg-border last:hidden" />
+    <span aria-hidden className="z-10 grid size-6 shrink-0 place-items-center rounded-full bg-accent text-on-accent">{/* check */}</span>
+    <span className="min-w-0 flex-1">
+      <span className="flex items-center gap-2">
+        <span className="truncate text-sm font-medium text-text">{entry.title}</span>
+        {entry.branch && <BranchPill branch={entry.branch} />}
+      </span>
+      <span className="block text-xs text-muted">{entry.when}</span>
+      {entry.note && <span className="mt-1.5 block rounded-lg border border-border bg-surface p-2.5 text-xs text-muted">{entry.note}</span>}
+    </span>
+  </li>
   ```
-- Do not touch: the 21 existing checklist items; `Fix any issues found, then present the plan.` after the list
-- Edge cases: `tests/test_command_docs.py:385` pins the count at 21 and will fail until Task 12 updates it — that is the intended ordering, not a defect
-- Acceptance: the checklist carries the new rules, so a plan violating them fails self-review rather than reaching `/ec-refine`
-- Verify (local): `sed -n '/^## Step 4 — Self-Review/,/^## Step 5/p' commands/ec-plan.md | grep -c '^- \[ \]'` → `== 25` (baseline: `21`)
-- Dependencies: Task 3 (the items reference the rules it defines), Task 6 (they reference `### Handoff`)
+  Every field renders only when present on `HistoryEntry`; nothing is invented to fill the card.
+- Do not touch: the `WINDOW` slice and the `+N older` affordance — both stay, so a long history is still truthfully summarised
+- Verify (local): `grep -c 'rounded-full bg-accent' studio/src/components/history-panel.tsx` → `>= 1` (baseline: `0`)
+- Dependencies: none
 
-**Task 9 — Teach ec-refine the mode and the proof-verb rejection** `M`
-- File: `commands/ec-refine.md`
-- Anchor: `## Step 1 — Dry-run every Verify (local)` → `commands/ec-refine.md:55`
-- Reuse: the existing verdict-table format in the same step, and the `UNVERIFIABLE` verdict already defined there
-- Code sample: insert before the anchor
-  ```markdown
-  ## Step 0.9 — Proof mode and the proof-verb gate
-  Read `## Proof Mode` from `{DECISION_FILE}`; absent means `handoff`. Note
-  "(proof mode: {MODE})".
+**Task 10 — Build the Composer wired to ptyWrite** `M`
+- File: `studio/src/components/composer.tsx` (create)
+- Code sample: the Contract's composer, sending for real through the existing api wrapper
+  ```tsx
+  import { api } from '../lib/tauri-api';
 
-  On `handoff`, every `Verify (local)` must be one of the allowed static checks
-  named in `/ec-plan`'s proof rule. Scan the plan and report a **DEFECT** for any
-  task whose `Verify (local)` invokes a wall-clock proof step — matching any of
-  `npm run build`, `npm run tauri`, `cargo build`, `cargo check`, `cargo test`,
-  `pytest`, `vite build`, `hdiutil`, `docker build`, `playwright`, `cypress`,
-  `curl` against a running server, or a launch of the app. Name the task and say
-  the step belongs in `### Handoff`. This is the mechanical half of the proof
-  rule: without it the rule is prose a plan can quietly ignore.
-
-  On `handoff`, skip the baseline-traceability comparison in Step 2 — there are
-  no recorded baselines to compare against. The anchor checks, the new-file
-  checks, the dependency-edge check and the plan lint all still run; they are
-  static and cost nothing.
+  export function Composer({ sessionId, chips, onRemoveChip }: ComposerProps) {
+    const [text, setText] = useState('');
+    const canSend = sessionId !== null && text.trim().length > 0;
+    async function send() {
+      if (!canSend) return;
+      await api.ptyWrite(sessionId!, text + '\r');
+      setText('');
+    }
+    return (
+      <div className="rounded-xl border border-brand-blue bg-surface p-3">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+          aria-label="Message the agent"
+          placeholder="What would you like to build next?"
+          rows={2}
+          className="w-full resize-none bg-transparent text-sm text-text placeholder:text-muted focus-visible:outline-none"
+        />
+        <div className="flex items-center gap-2">
+          <button aria-label="Attach a file" className="text-muted hover:text-text">{/* paperclip */}</button>
+          {chips.map((c) => (
+            <span key={c.id} className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-text">
+              {c.label}
+              <button aria-label={`Remove ${c.label} from context`} onClick={() => onRemoveChip(c.id)}>{/* x */}</button>
+            </span>
+          ))}
+          <button aria-label="Send to the agent" disabled={!canSend} onClick={() => void send()}
+            className="ml-auto grid size-9 place-items-center rounded-full bg-accent text-on-accent disabled:opacity-40">{/* arrow up */}</button>
+        </div>
+        <p className="mt-1.5 text-right text-[11px] text-muted">Enter to send · Shift + Enter for a new line</p>
+      </div>
+    );
+  }
   ```
-- Do not touch: Step 1's verdict table, Step 3 anchors, Step 4 new-file absence, Step 4.5 dependency edges, Step 5's gate and sentinel handling
-- Edge cases: `in-cycle` mode runs every existing step unchanged; a plan with no `Verify (local)` at all is still audited for anchors and dependency edges
-- Acceptance: a handoff plan that smuggles in a build step fails `/ec-refine` by machine, not by reviewer judgement
-- Verify (local): `grep -c -F 'proof-verb gate' commands/ec-refine.md` → `== 1` (baseline: `0`)
-- Dependencies: Task 3 (the gate enforces the rule Task 3 writes)
+  With no session the send button is disabled rather than failing silently. The mockup's `Claude Sonnet` selector is omitted — the app does not know the agent's model.
+- Do not touch: `lib/tauri-api.ts` — `ptyWrite` is called, not changed; `terminal-pane.tsx` and the PTY lifecycle it owns
+- Verify (local): `grep -c 'ptyWrite' studio/src/components/composer.tsx` → `== 1` and `grep -c -F 'Enter to send · Shift + Enter for a new line' studio/src/components/composer.tsx` → `== 1` (baseline: `pty_write` appears in exactly `1` file, `lib/tauri-api.ts`; this file is absent)
+- Dependencies: none
 
-**Task 10 — Teach ec-execute the mode, pre-flight abort, and outward-facing confirmation** `M`
-- File: `commands/ec-execute.md`
-- Anchor: `## Step 2 — Pre-flight Check` → `commands/ec-execute.md:92`
-- Reuse: the pre-flight list's existing bullet format and its established "report it and ask / abort on AUTO" behaviour
-- Code sample: append two bullets to the pre-flight list and a rule after it
-  ```markdown
-  - Proof mode resolved from `{DECISION_FILE}` (absent means `handoff`), noted as "(proof mode: {MODE})"
-  - On `handoff`, no task's `Verify (local)` is a wall-clock proof step. One is a pre-flight failure: the step belongs in the plan's `### Handoff`, not in a task.
-
-  **Outward-facing tasks always confirm.** The deliverable rule makes server
-  work, deploys, migrations and release publication legitimate tasks. It does
-  not make them silent. Before executing a task that changes state outside this
-  working tree — SSH or remote shell, a deploy, a production migration, a
-  package or release publish, a DNS or infrastructure change — stop and ask the
-  user, naming the exact command and the target. Ask even when `AUTO=yes`:
-  auto-flow confirms plan gates, never outward-facing effects. Git stays
-  excluded entirely under `CLAUDE.md` GIT RULES.
+**Task 11 — Name the real six stages in FlowBar** `M`
+- File: `studio/src/components/flow-bar.tsx`
+- Anchor: `export function FlowBar({` → line 63
+- Code sample: the strip renders the real `Stage` values with the Contract's check / current-number / pending-number treatment
+  ```tsx
+  const STAGES = [
+    { id: 'brainstorm', label: 'Brainstorm', blurb: 'Explore the approach' },
+    { id: 'plan', label: 'Plan', blurb: 'Break it into tasks' },
+    { id: 'refine', label: 'Refine', blurb: 'Audit before any code' },
+    { id: 'execute', label: 'Execute', blurb: 'Make the changes' },
+    { id: 'review', label: 'Review', blurb: 'Verify and refine' },
+  ] as const;
   ```
-- Do not touch: `### Execution units — co-location fusion`, `### Wave scheduling`, `### Anchor Discipline`, the Evidence Rule, `### Timeout Rule`, and the auto-flow sentinel handling
-- Edge cases: a task that is outward-facing but read-only (listing remote state) needs no confirmation; a denied confirmation is a task failure routed through the existing Error Recovery path
-- Acceptance: server and deploy work can be planned as tasks, and `/ec-execute` never performs one without asking first
-- Verify (local): `grep -c -F 'Outward-facing tasks always confirm' commands/ec-execute.md` → `== 1` and `grep -c -F 'proof mode:' commands/ec-execute.md` → `>= 1` (baselines: `0` and `0`)
-- Dependencies: Task 3 (references the proof rule and the deliverable rule by name)
+  Declared deviation from the Design Contract: the mockup draws four generic steps (`Explore`, `Plan`, `Build`, `Review`); the real `Stage` enum at `studio/src-tauri/src/plan.rs:35-42` has six values, and using the mockup's four would mislabel the user's own `/ec-*` chain. The Contract records this deviation explicitly.
+- Do not touch: the existing `away` / `onFocus` / `onOpen` affordance at lines 111-113, which is how the bar offers to open a session
+- Verify (local): `grep -c 'Brainstorm' studio/src/components/flow-bar.tsx` → `== 1` (baseline: `0`)
+- Dependencies: none
 
-**Task 11 — Scope the ec-review unit-test gate and global gate by mode** `M`
-- File: `commands/ec-review.md`
-- Anchor: `Ask: "Add unit tests for this feature? (y/n):"` → `commands/ec-review.md:204`
-- Reuse: the conditional-gate style already used by this document's Design/Anti-slop gates ("Skip this gate entirely when...")
-- Code sample: wrap the anchor's gate and amend the definitive global gate
-  ```markdown
-  On `handoff` proof mode, skip this gate entirely — the cycle declared that
-  proving the change is the user's step, and asking for tests here contradicts it.
-  Ask only on `in-cycle`.
+**Task 12 — Assemble the three columns in Workbench** `L`
+- File: `studio/src/components/workbench.tsx`
+- Anchor: `<TaskPanel state={state} claudeContext={claudeContext} />` → line 648
+- Code sample: the inspector aside is replaced by `ProjectActivity`; the centre gains the breadcrumb row and the composer, and the terminal becomes a card
+  ```tsx
+  <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-muted">Workspace</span>
+      <span className="text-sm text-muted">/</span>
+      <span className="text-sm font-medium text-text">{project.name}</span>
+      <div className="ml-auto flex items-center gap-2">{/* branch pill, ellipsis */}</div>
+    </div>
+    {/* existing TabStrip */}
+    <FlowBar … />
+    <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface">
+      {/* existing TabPane / TerminalPane — unchanged */}
+    </div>
+    <Composer sessionId={activeSessionId} chips={chips} onRemoveChip={removeChip} />
+  </div>
+  <ProjectActivity state={state} diff={diff} claudeContext={claudeContext} />
   ```
-  and in `### Definitive global gate`, add
-  ```markdown
-  On `handoff`, this gate runs static checks only — type-check, lint, syntax
-  parse, and an existing fast suite — and never produces a distributable
-  artifact or launches the app. Anything heavier is listed in the plan's
-  `### Handoff` for the user. On `in-cycle` the gate runs in full as specified.
-  ```
-- Do not touch: Stage 1 spec compliance, the evidence audit, the scope-boundary check, Step 4's teardown and sentinel handling, Step 5's review-summary template; the two concurrent reviewer gates stay as they are
-- Edge cases: a project with no fast suite skips that part cleanly, as the existing gate already allows; `in-cycle` behaviour is unchanged
-- Acceptance: a handoff cycle is never asked to add tests it declared out of scope, and the review gate never builds an artifact the user will build themselves
-- Verify (local): `grep -c -F 'Ask only on `in-cycle`' commands/ec-review.md` → `== 1` (baseline: `0`)
-- Dependencies: Task 2 (mode resolution vocabulary)
+- Do not touch: `TabPane`, `ShellPane`, the PTY wiring, and the `[&_[aria-label='Add_a_tool']]:hidden` rule at line 238 — the terminal's behaviour is reused unchanged and only its container is restyled
+- Verify (local): `grep -c 'ProjectActivity' studio/src/components/workbench.tsx` → `>= 1` and `grep -c -F 'Workspace' studio/src/components/workbench.tsx` → `>= 1` (baseline: `Project activity` appears in `0` files)
+- Dependencies: Task 7 (ProjectActivity), Task 10 (Composer), Task 11 (FlowBar stages)
 
-**Task 12 — Update the checklist-count assertion** `S`
-- File: `tests/test_command_docs.py`
-- Anchor: `assert len(items) == 21, f'checklist has {len(items)} items'` → `tests/test_command_docs.py:385`
-- Code sample:
+**Task 13 — Wire the new rail into App.tsx** `M`
+- File: `studio/src/App.tsx`
+- Anchor: `import { ProjectSidebar } from './components/project-sidebar';` → line 23
+- Code sample: `WorkspaceRail` wraps the project list, so the rail owns brand, nav, search and footer while `ProjectSidebar` stays the list
+  ```tsx
+  import { WorkspaceRail } from './components/workspace-rail';
+  …
+  <WorkspaceRail
+    experience={experience} onExperience={setExperience}
+    search={projectSearch} onSearch={setProjectSearch}
+    onAddProject={addProject} onSettings={openSettings} user={user}
+  >
+    <ProjectSidebar … />
+  </WorkspaceRail>
+  ```
+  The search value filters the list passed to `ProjectSidebar`; an empty result renders the rail's empty state rather than a blank column.
+- Do not touch: routing between Build / Verify / Connections, the onboarding flow, and the Settings page — this task changes only how the left column is composed
+- Verify (local): `grep -c 'WorkspaceRail' studio/src/App.tsx` → `>= 1` (baseline: `0`)
+- Dependencies: Task 5 (the rail), Task 6 (the project list it wraps)
+
+**Task 14 — Add the workbench-v2 guard tests** `M`
+- File: `tests/test_workbench_v2.py` (create)
+- Code sample: lock the Contract's literal copy, the two declared deviations, and the token discipline that makes the palette match
   ```python
-          assert len(items) == 25, f'checklist has {len(items)} items'
+  import os
+  import re
+
+  SRC = os.path.join(os.path.dirname(__file__), '..', 'studio', 'src')
+
+
+  def _read(*parts):
+      with open(os.path.join(SRC, *parts), encoding='utf-8', errors='replace') as fh:
+          return fh.read()
+
+
+  class TestContractCopy:
+      """The mockup's strings are the spec. A reworded placeholder is the
+      cheapest way for this UI to drift away from the design it was built to."""
+
+      def test_rail_copy(self):
+          rail = _read('components', 'workspace-rail.tsx')
+          assert 'Find a project…' in rail
+          assert 'WORKSPACE' in rail
+          assert 'Add project' in rail
+
+      def test_activity_copy(self):
+          panel = _read('components', 'project-activity.tsx')
+          assert 'Project activity' in panel
+          assert 'Everything moving forward.' in panel
+          assert 'Recent history' in panel
+
+      def test_composer_copy(self):
+          composer = _read('components', 'composer.tsx')
+          assert 'What would you like to build next?' in composer
+          assert 'Enter to send · Shift + Enter for a new line' in composer
+
+
+  class TestDeclaredDeviations:
+      """Two places where the build deliberately departs from the mockup. Both
+      are recorded in the decision's Design Contract; a silent reversal to the
+      mockup's wording would mislabel the user's own /ec-* chain."""
+
+      def test_flow_bar_names_the_real_stages(self):
+          flow = _read('components', 'flow-bar.tsx')
+          assert 'Brainstorm' in flow and 'Refine' in flow
+          assert 'Explore' not in flow
+
+      def test_no_model_selector(self):
+          assert 'Claude Sonnet' not in _read('components', 'composer.tsx')
+
+
+  class TestNoFabricatedData:
+      """task-panel.tsx:10-30 set the precedent: show a value only when it is
+      real. These guards keep the mockup's sample data out of the product."""
+
+      SAMPLES = ['Jamie Smith', 'orbit-web', 'atlas-api', 'Website · main', 'Backend service']
+
+      def test_mockup_sample_data_is_not_hardcoded(self):
+          for name in ('workspace-rail.tsx', 'project-activity.tsx', 'composer.tsx',
+                       'project-sidebar.tsx'):
+              body = _read('components', name)
+              for sample in self.SAMPLES:
+                  assert sample not in body, f'{name} hardcodes {sample!r}'
+
+      def test_composer_sends_through_the_real_api(self):
+          assert 'ptyWrite' in _read('components', 'composer.tsx')
+
+
+  class TestTokenDiscipline:
+      """The palette already matches the mockup because every colour is a token.
+      One raw hex is how that stops being true."""
+
+      def test_no_raw_hex_in_components(self):
+          root = os.path.join(SRC, 'components')
+          offenders = []
+          for name in sorted(os.listdir(root)):
+              if not name.endswith('.tsx'):
+                  continue
+              with open(os.path.join(root, name), encoding='utf-8', errors='replace') as fh:
+                  if re.search(r'#[0-9a-fA-F]{6}\b', fh.read()):
+                      offenders.append(name)
+          assert not offenders, f'raw hex colours in: {offenders}'
   ```
-  and update the docstring above it from `all 21 rules` to `all 25 rules`
-- Do not touch: every other assertion in the file; the `read_command` helper; the `SWEEP_FILES` / `RETIRED_COMMANDS` sweeps
-- Edge cases: the count must stay exact rather than becoming `>=` — the test exists so a silently dropped rule fails
-- Acceptance: the checklist guard tracks the real count and still fails if any rule is lost
-- Verify (local): `grep -c -F 'assert len(items) == 25' tests/test_command_docs.py` → `== 1` (baseline: `grep -c -F 'assert len(items) == 21' tests/test_command_docs.py` → `1`)
-- Dependencies: Task 8 (creates the four items this count reflects)
-
-**Task 13 — Add Proof Mode guard tests** `M`
-- File: `tests/test_command_docs.py`
-- Anchor: `# --- Exception-only fields + verify split in ec-plan.md ---`
-- Reuse: `read_command()` and the house class-docstring style that states what would silently break
-- Code sample: append a new class at the end of the file
-  ```python
-  PROOF_MODE_COMMANDS = ['ec-brainstorm.md', 'ec-plan.md', 'ec-refine.md',
-                         'ec-execute.md', 'ec-review.md']
-
-
-  class TestProofMode:
-      """Proof Mode moves wall-clock proof steps out of the task list and into a
-      Handoff block. Each rule here is the only thing stopping that from
-      decaying back into a plan that makes the user wait for a build they will
-      redo themselves."""
-
-      @pytest.mark.parametrize('name', PROOF_MODE_COMMANDS)
-      def test_every_chain_command_knows_the_mode(self, name):
-          assert 'Proof Mode' in read_command(name) or 'proof mode' in read_command(name)
-
-      def test_deliverable_rule_comes_before_the_proof_rule(self):
-          """Stated the other way round, the mode would reject the very
-          non-code deliverables it is supposed to allow — server work, config,
-          migrations."""
-          content = read_command('ec-plan.md')
-          assert content.index('Deliverable rule') < content.index('Proof rule')
-
-      def test_deliverable_rule_names_non_code_work(self):
-          content = read_command('ec-plan.md')
-          for medium in ['config', 'migration', 'server']:
-              assert medium in content, medium
-
-      def test_handoff_defaults_when_undeclared(self):
-          assert 'handoff' in read_command('ec-plan.md')
-
-      def test_plan_template_has_a_handoff_block(self):
-          assert '### Handoff' in read_command('ec-plan.md')
-
-      def test_refine_rejects_proof_verbs_mechanically(self):
-          content = read_command('ec-refine.md')
-          assert 'proof-verb gate' in content
-          for verb in ['cargo build', 'npm run build', 'pytest']:
-              assert verb in content, verb
-
-      def test_execute_confirms_outward_facing_tasks_even_on_auto(self):
-          content = read_command('ec-execute.md')
-          assert 'Outward-facing tasks always confirm' in content
-          assert 'Ask even when `AUTO=yes`' in content
-
-      def test_anchor_and_do_not_touch_survive_the_slim_template(self):
-          """These two fields are what make concurrent waves provably safe."""
-          content = read_command('ec-plan.md')
-          assert '- Anchor:' in content
-          assert '- Do not touch:' in content
-          assert 'never dropped' in content
-  ```
-- Do not touch: every existing class and assertion in the file
-- Edge cases: the parametrized mode check accepts either capitalisation so a command that only says "proof mode: {MODE}" in a note still passes
-- Acceptance: every rule this cycle introduces is locked by a test that fails if the rule is removed
-- Verify (local): `python3 -m pytest tests/test_command_docs.py -q 2>&1 | tail -1` → `>= 119 passed` with `0 failed` (baseline: `110 passed`; this task adds 9 test functions and Task 12 changes one in place)
-- Verify (global): `python3 -m pytest -q 2>&1 | tail -1` → `>= 247 passed` with `0 failed` (baseline: `238 passed`)
-- Dependencies: Task 1, Task 3, Task 6, Task 9, Task 10, Task 12
-
-### Review-stage amendments (recorded 2026-10-30, after execution)
-Two of this plan's `Verify (local)` values were invalidated by Stage 2 fixes in
-`/ec-review`, by me, after their tasks had passed. Recorded so the archived plan
-does not read as a fabrication:
-- Task 2 — `grep -c 'proof mode:' commands/ec-plan.md` was `== 1` and is now `2`.
-  Fixing B1 (the saved-brainstorm path never parsed the mode) added a second
-  `(proof mode: {MODE})` note on that branch. Count above expectation, attributable.
-- Task 11 — `grep -c 'Ask only on' commands/ec-review.md` was `== 1` and is now `0`.
-  Fixing A7 reworded that gate: authoring a test is *changing*, so the offer now
-  stands in both modes and only the slow suite moves to Handoff. The phrase the
-  verify counted no longer exists. Verified at `1` when the task ran.
-- One file outside this plan's declared `File:` set was edited during review:
-  `hooks/session_stop.py`, for the pending-confirmation carve-out. It is the only
-  part of the chain that runs as code, so the prose rule could not bind without it.
-  The running copy is `~/.efficlaude/hooks/session_stop.py`; this edit takes effect
-  after `bash install.sh`.
-
-### Note on verify shape
-Every `Verify (local)` in this plan is a single check whose value MOVES when the task
-runs. Regression guards — strings that must merely stay present — live in `Do not touch`
-with their minimum count, never in `Verify (local)`, because a threshold already satisfied
-before the task runs cannot prove the task did anything. `/ec-refine` reported exactly that
-defect on Tasks 5 and 7 of this plan's first revision.
-
-### Handoff
-_This cycle edits the command Markdown that drives the chain, so its effect is only observable on the NEXT cycle. Nothing here is runnable proof the orchestrator can produce._
-- Proof Mode actually shortens a real plan → run `/ec-brainstorm` on any next feature, declare `Mode: handoff`, and compare the resulting plan's line count against the 506-line DMG plan in `.claude/plans/archive/`
-- `/ec-refine` really rejects a smuggled build step → in that next cycle, put `npm run build` in a task's `Verify (local)` on purpose and confirm refine reports a DEFECT
-- `/ec-execute` really asks before outward-facing work → plan a deploy-shaped task and confirm it stops to ask, including under `auto`
+- Do not touch: every existing test file; `pytest.ini`
+- Verify (local): `python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" tests/test_workbench_v2.py && grep -c 'class Test' tests/test_workbench_v2.py` → `== 4` (baseline: file absent). Running the suite is a Handoff step on this proof mode, not a verify.
+- Dependencies: Task 5, Task 6, Task 7, Task 10, Task 11 (every file these guards read must exist first)

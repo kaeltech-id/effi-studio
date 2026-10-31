@@ -63,6 +63,18 @@ export interface BranchInfo {
   current: boolean;
 }
 
+/** Mirrors `DiffStat` in git.rs, in its camelCase serialisation. `available`
+ *  and `error` are carried alongside the counts because a clean tree and an
+ *  unreadable git are different facts: zeros alone would render "0 files
+ *  changed" for a missing git binary. */
+export interface DiffStat {
+  available: boolean;
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+  error: string | null;
+}
+
 /** `detached` is explicit rather than inferred from a null branch: the Rust
  *  side distinguishes a detached HEAD from a folder it could not read. */
 export interface GitInfo {

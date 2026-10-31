@@ -105,6 +105,50 @@ pub fn git_info(path: String) -> GitInfo {
     }
 }
 
+/// `available` and `error` are carried alongside the counts because a clean
+/// tree and an unreadable one are different facts: zeros alone would render
+/// "0 files changed" for a missing git binary.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffStat {
+    pub available: bool,
+    pub files_changed: usize,
+    pub insertions: usize,
+    pub deletions: usize,
+    pub error: Option<String>,
+}
+
+/// Never `Err` — the same contract as `git_info`.
+#[tauri::command]
+pub fn git_diff_stat(path: String) -> DiffStat {
+    let root = Path::new(&path);
+    let empty = |error: Option<String>| DiffStat {
+        available: error.is_none(),
+        files_changed: 0,
+        insertions: 0,
+        deletions: 0,
+        error,
+    };
+
+    let out = match run(root, &["diff", "--numstat", "HEAD"]) {
+        Ok(out) => out,
+        Err(e) => return empty(Some(e)),
+    };
+
+    let mut stat = empty(None);
+    for line in out.lines().filter(|l| !l.trim().is_empty()) {
+        let mut cols = line.split('\t');
+        let added = cols.next().unwrap_or("-");
+        let removed = cols.next().unwrap_or("-");
+        stat.files_changed += 1;
+        // A binary file reports "-" for both columns; count the file, not a
+        // line total that does not exist.
+        stat.insertions += added.parse::<usize>().unwrap_or(0);
+        stat.deletions += removed.parse::<usize>().unwrap_or(0);
+    }
+    stat
+}
+
 /// Returns `Err` with git's own stderr on refusal, most often uncommitted
 /// changes that would be overwritten. Deliberately no force flag and no
 /// autostash: the user fixes the tree themselves, which is what keeps /ec-git

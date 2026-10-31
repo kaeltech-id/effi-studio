@@ -218,11 +218,19 @@ class TestInstallerComponentParity:
 # ─── Task 116: terminal input and live-region discipline ────────────────────
 
 class TestTerminalInputDiscipline:
-    """Two call sites may put bytes into a PTY: the user's own keystrokes, and
-    the flow bar typing a command the user pressed. A third would mean some
-    other surface can type into a running /ec-execute."""
+    """Three call sites may put bytes into a PTY, and each is a deliberate user
+    action: the user's own keystrokes, the flow bar typing a command the user
+    pressed, and the workbench composer sending a message the user typed and
+    submitted. A fourth would mean some surface can type into a running
+    /ec-execute without the user asking it to.
 
-    WRITERS = {'studio/src/App.tsx', 'studio/src/components/terminal-pane.tsx'}
+    The composer was admitted with Workbench v2. It is the same intent as the
+    terminal — a person addressing the agent — through a different surface, and
+    it writes only inside its own submit handler, never on a timer, a mount, or
+    a model response."""
+
+    WRITERS = {'studio/src/App.tsx', 'studio/src/components/terminal-pane.tsx',
+               'studio/src/components/composer.tsx'}
     WRAPPER = 'studio/src/lib/tauri-api.ts'
 
     def _callers(self):

@@ -1,20 +1,25 @@
-import { useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { AddToolMenu, type SetupTarget, type WorkspaceToolKind } from './add-tool-menu';
 import { AgentSessionPane, type AgentCapabilities } from './agent-session-pane';
-import { HistoryPanel } from './history-panel';
-import { PanelSection } from './panel-section';
-import { PropertiesPanel } from './properties-panel';
-import { StageRail } from './stage-rail';
+import { Composer, type ContextChip } from './composer';
+import { ProjectActivity } from './project-activity';
 import { TabStrip } from './tab-strip';
-import { TaskPanel } from './task-panel';
 import { TerminalPane } from './terminal-pane';
 import type { Agent } from '../lib/agents';
 import type { Tab } from '../lib/tabs';
-import type { ComponentReport, GitInfo, Project, ProjectState } from '../lib/types';
+import type { ComponentReport, DiffStat, GitInfo, Project, ProjectState } from '../lib/types';
+import { api } from '../lib/tauri-api';
 
 /**
- * ONE PROJECT'S WORKBENCH: a header, a row of tabs, and a body that holds
- * EVERY open tab's pane at once.
+ * ONE PROJECT'S WORKBENCH: the Contract's CENTRE COLUMN — a breadcrumb, a row
+ * of tabs, the workflow strip, a card holding EVERY open tab's pane at once,
+ * and the composer anchored under it — plus `Inspector`, the right column the
+ * host mounts beside it.
  *
  * The body is the whole point of the file, and it is built on one invariant:
  *
@@ -57,9 +62,65 @@ const NO_CAPABILITIES: AgentCapabilities = {
   slashCommands: false,
 };
 
+/** The composer carries no context chips. The mockup draws two — a folder and
+ *  a file count — and both are sample data: this app has no attachment path and
+ *  no file picker feeding the agent, and a chip with a ✕ that removes nothing
+ *  real is a dead control. One frozen empty array rather than a new `[]` per
+ *  render, so the composer is not handed a new prop on every keystroke. */
+const NO_CHIPS: ContextChip[] = [];
+
+/** Never called: with no chips there is no ✕ to press. It exists because
+ *  `Composer` requires the handler, not because anything can reach it. */
+function removeNoChip() {}
+
+function useGitDiffStat(path: string | null): DiffStat | null {
+  /** Keyed to the path it describes. Without the key, switching projects left
+   *  the PREVIOUS project's numbers on screen under the NEW project's branch
+   *  pill for the length of a `git diff --numstat` subprocess — a wrong
+   *  reading rendered as a confident one, which is the exact failure the
+   *  five-way DiffStat split exists to prevent. */
+  const [diff, setDiff] = useState<{ path: string; stat: DiffStat } | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setNonce((n) => n + 1);
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, []);
+
+  useEffect(() => {
+    if (path === null) return;
+    let live = true;
+    api
+      .gitDiffStat(path)
+      .then((stat) => {
+        if (live) setDiff({ path, stat });
+      })
+      .catch((err: unknown) => {
+        if (!live) return;
+        setDiff({
+          path,
+          stat: {
+            available: false,
+            filesChanged: 0,
+            insertions: 0,
+            deletions: 0,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        });
+      });
+    return () => {
+      live = false;
+    };
+  }, [path, nonce]);
+
+  return diff?.path === path ? diff.stat : null;
+}
+
 export interface WorkbenchProps {
-  /** Null only in the one case where no folder has been added yet. The header
-   *  still renders — Settings has to stay reachable with nothing configured. */
+  /** Null only in the one case where no folder has been added yet. The column
+   *  still renders: the breadcrumb says so in words, and the body offers the
+   *  one thing there is to do. */
   project: Project | null;
   state: ProjectState | null;
   /** This project's tabs in the user's own order, each carrying the live
@@ -73,8 +134,17 @@ export interface WorkbenchProps {
   /** Bumped by the host after a flow-bar dispatch moved focus to a button.
    *  Applied to the active tab only; 0 never steals focus. */
   focusNonce: number;
-  settingsOpen: boolean;
-  onToggleSettings: () => void;
+  /** ACCEPTED AND NO LONGER DRAWN. The workbench header used to carry a
+   *  Settings toggle; the Contract gives the centre column a breadcrumb, a
+   *  branch pill and nothing else, and `Settings` is a row in the left rail
+   *  now (workspace-rail.tsx, wired to this same toggle at App.tsx:1964). A
+   *  second one here would be the same drawer behind two buttons.
+   *
+   *  Both stay on the interface so the host's call site keeps compiling
+   *  unchanged; nothing in this file reads either. Drop them from App.tsx and
+   *  then from here, in that order. */
+  settingsOpen?: boolean;
+  onToggleSettings?: () => void;
   onSelectTab: (tabId: string) => void;
   /** A tab with no live process: metadata only. */
   onCloseTab: (tab: Tab) => void;
@@ -127,8 +197,6 @@ export function Workbench({
   agents,
   reports,
   focusNonce,
-  settingsOpen,
-  onToggleSettings,
   onSelectTab,
   onCloseTab,
   onCloseSession,
@@ -171,66 +239,51 @@ export function Workbench({
   const providerName = (providerId: string) =>
     agents.find((a) => a.id === providerId)?.name ?? providerId;
 
-  const branch = state?.branch ?? null;
+  // Truthiness, not just null: `ProjectState.branch` is a plain string, and an
+  // empty one is a project git could not name. A pill with nothing in it would
+  // be a branch claimed and not said.
+  const branch = state?.branch ? state.branch : null;
+  /** The session the composer types into: the one in FRONT. Reading "whatever
+   *  session is live" would let a line land in a tab the user is not looking
+   *  at, which is the same class of mistake the tabs.map below exists to
+   *  prevent. A tab with no process answers null and the composer disables
+   *  itself rather than sending into nothing. */
+  const activeSessionId = tabs.find((tab) => tab.id === activeTabId)?.sessionId ?? null;
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
-      {/* TASK 68. The project header: name, path and branch. Path and branch
-          are truncated and carry their full value in `title`, because a path
-          is the one string here that is routinely longer than the window and
-          routinely needed in full. */}
-      <header className="flex shrink-0 items-start gap-3 border-b border-border px-4 py-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-3">
-            <h1
-              title={project?.name}
-              className="min-w-0 truncate text-base leading-[24px] font-semibold text-text"
-            >
-              {project?.name ?? 'No project selected'}
-            </h1>
-            {branch !== null && (
-              <span
-                title={branch}
-                className="max-w-[200px] shrink-0 truncate rounded-lg border border-border bg-raised px-2 py-0.5 font-mono text-xs leading-[18px] text-muted"
-              >
-                {branch}
-              </span>
-            )}
+    /* THE CENTRE COLUMN of the Contract, stacked in its order: breadcrumb, tab
+       strip, workflow strip, the card holding the body, and the composer
+       anchored at the bottom. Everything above the body is shrink-0 and the
+       body is min-h-0 flex-1, so the chrome takes its own height ONCE and the
+       terminal takes every pixel left over. */
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 p-4">
+      {/* The Contract's breadcrumb row. `Workspace /` is fixed copy; the name
+          after it is the real project, never the mockup's. The path is the one
+          string here routinely longer than the window, so it rides in `title`
+          rather than in a second line.
+
+          The mockup's ellipsis is NOT drawn: it has no menu behind it, and the
+          rule this file already follows for the strip's second `+` is that a
+          control which opens nothing does not get rendered. */}
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="shrink-0 text-sm leading-[20px] text-muted">Workspace</span>
+        <span aria-hidden="true" className="shrink-0 text-sm leading-[20px] text-muted">
+          /
+        </span>
+        <h1
+          title={project?.path}
+          className="min-w-0 truncate text-sm leading-[20px] font-medium text-text"
+        >
+          {project?.name ?? 'No project selected'}
+        </h1>
+        {branch !== null && (
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <BranchPill branch={branch} />
           </div>
-          <p title={project?.path} className="mt-0.5 truncate text-xs leading-[18px] text-muted">
-            {project?.path ?? 'No folder is configured yet.'}
-          </p>
-        </div>
+        )}
+      </div>
 
-        <div className="flex shrink-0 items-center gap-3 pt-1">
-          {/* A recommendation, exactly as it was in the header this replaces:
-              the dots say which stage the plan is at, and nothing here claims
-              a stage is running. */}
-          <StageRail stage={state?.stage ?? 'Idle'} size="md" />
-          <span className="font-mono text-xs leading-[18px] text-muted">
-            {state ? `${state.done}/${state.total}` : ''}
-          </span>
-          <button
-            type="button"
-            onClick={onToggleSettings}
-            aria-expanded={settingsOpen}
-            aria-controls="settings-drawer"
-            className={`shrink-0 rounded-lg border px-2 py-1 text-xs leading-[18px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none ${
-              settingsOpen
-                ? 'border-accent bg-accent-tint text-text'
-                : 'border-border text-muted hover:bg-hover'
-            }`}
-          >
-            Settings
-          </button>
-        </div>
-      </header>
-
-      {/* TASK 67. One row of tabs, then the flow bar, then the body. All three
-          above the body are shrink-0 and the body is min-h-0 flex-1, so the
-          chrome takes its own height ONCE and the terminal takes every pixel
-          that is left — the generous terminal the contract asks for, rather
-          than a share that shrinks as the strip fills up. */}
+      {/* TASK 67. One row of tabs, then the flow bar, then the body. */}
       {project !== null && (
         <div className="relative shrink-0">
           {/* The wrapper carries the rule so it can only ever reach the strip's
@@ -263,34 +316,102 @@ export function Workbench({
 
       {flow}
 
-      <div className="relative min-h-0 flex-1">
-        {/* TASK 63. Every tab, every pass. Keyed on tab.id. */}
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={`absolute inset-0 ${tab.id === activeTabId ? '' : 'hidden'}`}
-          >
-            <TabPane
-              tab={tab}
-              agents={agents}
-              focusNonce={tab.id === activeTabId ? focusNonce : 0}
-              cwd={project?.path ?? ''}
-              browserPane={browserPane}
-              devicePane={devicePane}
-            />
-          </div>
-        ))}
+      {/* THE CARD. The Contract's radius, hairline and padding around the body
+          — and only around it. What is inside stays the terminal it has always
+          been: the mockup draws a chat transcript, and this app runs real CLI
+          agents under a PTY with no structured message stream behind them, so
+          bubbles, avatars, tool-call cards and diff cards would all be content
+          invented here. The deviation is declared in the Design Contract.
 
-        {tabs.length === 0 &&
-          (project === null ? (
-            <p className="p-4 text-sm leading-[20px] text-muted">
-              Add a folder to open a tool in it.
-            </p>
-          ) : (
-            <EmptyWorkbench projectName={project.name} onAddTool={openAddTool} />
+          `overflow-hidden` so the panes are clipped to the radius; the inner
+          `relative` box is what the absolutely positioned panes measure, which
+          keeps the padding real — `inset-0` resolves against the padding box,
+          so without it the padding would be drawn and then covered. */}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface p-3.5">
+        <div className="relative h-full w-full">
+          {/* TASK 63. Every tab, every pass. Keyed on tab.id. */}
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`absolute inset-0 ${tab.id === activeTabId ? '' : 'hidden'}`}
+            >
+              <TabPane
+                tab={tab}
+                agents={agents}
+                focusNonce={tab.id === activeTabId ? focusNonce : 0}
+                cwd={project?.path ?? ''}
+                browserPane={browserPane}
+                devicePane={devicePane}
+              />
+            </div>
           ))}
+
+          {tabs.length === 0 &&
+            (project === null ? (
+              <p className="text-sm leading-[20px] text-muted">
+                Add a folder to open a tool in it.
+              </p>
+            ) : (
+              <EmptyWorkbench projectName={project.name} onAddTool={openAddTool} />
+            ))}
+        </div>
       </div>
+
+      {/* The composer, anchored at the foot of the column exactly as the
+          Contract draws it. It writes the typed line plus a carriage return
+          into the ACTIVE tab's PTY — the same transport a keystroke in the
+          pane above uses — and disables itself when that tab has no session.
+          Only with a project: with no folder configured there is no tab, no
+          session and nothing a message could be addressed to. */}
+      {project !== null && (
+        <div className="shrink-0">
+          <Composer
+            sessionId={activeSessionId}
+            chips={NO_CHIPS}
+            onRemoveChip={removeNoChip}
+            // `onAttach` is deliberately omitted, which is what keeps the
+            // paperclip off the row: nothing in this app attaches a file to a
+            // message.
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+/** The Contract's branch pill: git mark, branch name, and no chevron. The
+ *  chevron the mockup draws opens a branch switcher, and this column is handed
+ *  no checkout handler, so it is not drawn — the same call `project-activity.tsx`
+ *  made for the pill on its own git card. The full name rides in `title`,
+ *  because a branch name outlives the 24ch the row can spare.
+ *
+ *  A third local copy of this pill now exists (here, history-panel.tsx:7 and
+ *  project-activity.tsx:44). Lifting one of them into a shared component is the
+ *  right fix and it needs a file this unit may not write. */
+function BranchPill({ branch }: { branch: string }) {
+  return (
+    <span
+      title={branch}
+      className="flex min-w-0 items-center gap-1.5 rounded-full border border-border bg-raised px-2.5 py-1 text-xs leading-[18px] text-muted"
+    >
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="size-3 shrink-0"
+      >
+        <line x1="6" y1="3" x2="6" y2="15" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="6" cy="18" r="3" />
+        <path d="M18 9a9 9 0 0 1-9 9" />
+      </svg>
+      <span className="sr-only">Branch: </span>
+      <span className="max-w-[160px] truncate">{branch}</span>
+    </span>
   );
 }
 
@@ -440,60 +561,72 @@ function ShellPane({
  * something else is already explaining better. */
 
 /* ------------------------------------------------------------------------- *
- * TASKS 74 + 75. The inspector column.
+ * THE RIGHT COLUMN.
  *
  * It is a SIBLING of the workbench, never an ancestor of a pane. Nothing below
  * belongs to a tab, holds a pty or can unmount one: the tab panes live in the
- * `tabs.map` above, under their own `tab.id` keys, and `selected` here is a
- * piece of state in a component that does not render them. Switching Tasks to
- * History re-renders this column and nothing else — there is no path from this
- * `useState` to the body's subtree, so a /ec-execute cannot be killed by
- * looking at the history.
+ * `tabs.map` above under their own `tab.id` keys, and the Tasks/History
+ * selection is a piece of state inside `ProjectActivity`, a component that does
+ * not render them. Looking at the history cannot kill a running /ec-execute.
  *
- * The same discipline applies inside the column anyway: both tab panels are
- * mounted on every pass and the inactive one is hidden by a class, so neither
- * panel loses its scroll position when the other is shown.
+ * What stood here — a tablist, two mounted panels and a `Project & Git`
+ * disclosure — is now `project-activity.tsx` in full: it owns the heading, the
+ * segmented control, the plan card's chrome, the `Recent history` preview and
+ * the git card, and it composes `TaskPanel` and `HistoryPanel` itself. This
+ * file renders neither of those two directly any more; doing so beside
+ * `ProjectActivity` would put each of them on screen twice.
+ *
+ * So what is left here is exactly the part the host still asks for and the
+ * column itself does not own: WHERE it sits. From 1100px up the column is part
+ * of the layout; below it, it is a drawer over the terminal, opened by the
+ * host's own button and closed by the ✕ or Escape.
  * ------------------------------------------------------------------------- */
-
-type InspectorTabId = 'tasks' | 'history';
-
-/** The two views, in the order the mockup puts them. The loop below names its
- *  item `view` rather than `tab`: a workspace tab in this file is a process
- *  with a pty behind it, and the one key minted from a tab id in this tree
- *  should stay the pane-mounted invariant's and nothing else's. */
-const INSPECTOR_TABS: { id: InspectorTabId; label: string }[] = [
-  { id: 'tasks', label: 'Tasks' },
-  { id: 'history', label: 'History' },
-];
 
 export interface InspectorProps {
   /** The active project's plan, or null with no project. */
   state: ProjectState | null;
+  /** The active project's absolute path, for the one `git_diff_stat` read this
+   *  column makes. Passed down rather than looked up: App already holds it
+   *  (`const active = projects.find(...)`), and an earlier revision routed it
+   *  through a module WeakMap keyed on `state`, which App replaces on every
+   *  `.claude/` write — so the card blanked to "No git status yet" and spawned
+   *  a second subprocess on every plan-file write. */
+  projectPath: string | null;
   /** Whether the active tab's provider could be asked to run a `/ec-*`
    *  command. Resolved by the host from the provider's declared capability and
    *  passed straight through, exactly as TaskPanel documents it. */
   claudeContext: boolean;
-  gitInfo: GitInfo | null;
-  gitBusy: boolean;
-  /** git's own stderr from the last refused action. Handed to PropertiesPanel
-   *  verbatim: no retry is offered here and nothing is forced. */
-  gitError: string | null;
-  gitCollapsed: boolean;
-  onToggleGit: () => void;
-  onCheckout: (branch: string) => void;
-  onCreateBranch: (name: string) => void;
-  /** Hidden by a class during onboarding — never removed, so the disclosure
-   *  and the selected tab survive the trip. */
+  /** ACCEPTED AND NO LONGER READ, all seven of them.
+   *
+   *  They fed `PropertiesPanel`, the branch list with its checkout and its
+   *  create-branch field. The Contract's right column ends with the
+   *  `Project & Git` CARD — a branch pill and the working tree's file count
+   *  with its +/− — and that card has no switcher behind it, so
+   *  `project-activity.tsx` draws no chevron and this column no longer mounts
+   *  the panel. Branch switching leaves the product with them; that is a
+   *  declared consequence of the Contract, not an oversight here.
+   *
+   *  They stay on the interface so the host's call site keeps compiling
+   *  unchanged. Drop them from App.tsx and then from here, in that order. */
+  gitInfo?: GitInfo | null;
+  gitBusy?: boolean;
+  gitError?: string | null;
+  gitCollapsed?: boolean;
+  onToggleGit?: () => void;
+  onCheckout?: (branch: string) => void;
+  onCreateBranch?: (name: string) => void;
+  /** Hidden by a class during onboarding — never removed, so the column's own
+   *  selection and scroll positions survive the trip. */
   hidden?: boolean;
   /** TASK 110. The column's display and position for the current band, as a
    *  class string the host composes: `static` from 1100px up, a `fixed` drawer
    *  below it, and `hidden` when that drawer is closed.
    *
    *  It is a CLASS and not a mode switch for one reason — `hidden` is
-   *  display:none, so the node, the selected tab, both panels' scroll
-   *  positions and the Project & Git disclosure all stay mounted through every
-   *  band. There is no branch in this file that removes the column, and the
-   *  host does not persist any of it: see App.tsx's `overlay`.
+   *  display:none, so the node, the column's Tasks / History selection and its
+   *  scroll position all stay mounted through every band. There is no branch
+   *  in this file that removes the column, and the host does not persist any
+   *  of it: see App.tsx's `overlay`.
    *
    *  Defaults to the pre-drawer behaviour, so a host that passes nothing gets
    *  a column that is simply always in the flow. */
@@ -506,67 +639,34 @@ export interface InspectorProps {
 
 export function Inspector({
   state,
+  projectPath,
   claudeContext,
-  gitInfo,
-  gitBusy,
-  gitError,
-  gitCollapsed,
-  onToggleGit,
-  onCheckout,
-  onCreateBranch,
   hidden = false,
   band = 'flex',
   onCloseDrawer,
 }: InspectorProps) {
-  const [selected, setSelected] = useState<InspectorTabId>('tasks');
-  const tabRefs = useRef(new Map<InspectorTabId, HTMLButtonElement>());
-
-  /** Automatic activation: the arrows select as they move. Both panels are
-   *  already mounted, so arrowing across them reveals one and costs nothing —
-   *  unlike the workspace strip above, where a tab stop may be a whole
-   *  session and selection therefore waits for Enter. */
-  const select = (id: InspectorTabId) => {
-    setSelected(id);
-    tabRefs.current.get(id)?.focus();
-  };
-
-  const onTabKeyDown = (event: React.KeyboardEvent, index: number) => {
-    const last = INSPECTOR_TABS.length - 1;
-    let next: number | null = null;
-    if (event.key === 'ArrowRight') next = index === last ? 0 : index + 1;
-    else if (event.key === 'ArrowLeft') next = index === 0 ? last : index - 1;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = last;
-    if (next === null) return;
-    event.preventDefault();
-    select(INSPECTOR_TABS[next].id);
-  };
-
-  /** A count beside a tab, or nothing. `0/0` is not a progress reading and a
-   *  project with no plan has no ratio, so the Tasks tab carries a figure only
-   *  once there is one — no division happens here either way. */
-  const detailFor = (id: InspectorTabId): string | null => {
-    if (id === 'tasks') {
-      return state !== null && state.total > 0 ? `${state.done}/${state.total}` : null;
-    }
-    const runs = state?.history.length ?? 0;
-    return runs > 0 ? String(runs) : null;
-  };
+  /* The one `git_diff_stat` read in the app, taken for the project this column
+     is showing and nowhere else — the hidden projects' workbenches start no
+     read of their own. A rejection arrives as a DiffStat carrying the reason,
+     so the card names the failure instead of printing zeros at it. */
+  
+  const diff = useGitDiffStat(projectPath);
 
   return (
-    <aside
-      id="project-inspector"
-      /* TASK 110. 300px from 1360 up and 280 from 1100 — the two widths the
-         mockup measures — then a 300px DRAWER below 1100, where the window is
-         too narrow to spend a third of it on a column that is not the
-         terminal. The column is shrink-0 in both flow bands so the terminal,
-         not the inspector, absorbs every pixel the window gains, and below
-         1100 it leaves the flow entirely and the terminal takes its width too.
+    /* TASK 110's bands, kept exactly as the host composes them: `static` from
+       1100px up, a `fixed` drawer below it, and `hidden` when that drawer is
+       closed. `hidden` is display:none, so the node, the column's Tasks /
+       History selection and its scroll position all survive every resize —
+       there is no branch here that removes the column.
 
-         `bg-transparent` from 1100 up keeps the in-flow column exactly as it
-         was — the ground behind it, with one border-l — while the drawer gets
-         an opaque surface, because a drawer sits over the terminal. */
-      className={`fixed inset-y-0 right-0 z-40 w-[300px] max-w-[85vw] shrink-0 flex-col border-l border-border bg-surface min-[1100px]:static min-[1100px]:w-[280px] min-[1100px]:bg-transparent min-[1360px]:w-[300px] ${
+       A plain div rather than an <aside>: `ProjectActivity` renders the
+       complementary landmark itself, named by its own `Project activity`
+       heading, and nesting one landmark inside another would announce the
+       column twice. Width comes from the column too (400px, the Contract's);
+       this wrapper only places it and stays out of its way. */
+    <div
+      id="project-inspector"
+      className={`fixed inset-y-0 right-0 z-40 max-w-[85vw] shrink-0 flex-col overflow-hidden bg-ground min-[1100px]:static min-[1100px]:max-w-none ${
         hidden ? 'hidden' : band
       }`}
       onKeyDown={(e) => {
@@ -577,7 +677,7 @@ export function Inspector({
           column IS a drawer: from 1100px up it is part of the layout and there
           is nothing to close. */}
       {onCloseDrawer && (
-        <div className="flex h-10 shrink-0 items-center justify-end border-b border-border px-2 min-[1100px]:hidden">
+        <div className="flex h-10 shrink-0 items-center justify-end border-b border-l border-border px-2 min-[1100px]:hidden">
           <button
             type="button"
             onClick={onCloseDrawer}
@@ -589,111 +689,12 @@ export function Inspector({
         </div>
       )}
 
-      <div
-        role="tablist"
-        aria-label="Project inspector"
-        className="flex shrink-0 border-b border-border px-2"
-      >
-        {INSPECTOR_TABS.map((view, index) => {
-          const active = view.id === selected;
-          const detail = detailFor(view.id);
-          return (
-            <button
-              key={view.id}
-              type="button"
-              role="tab"
-              id={`inspector-tab-${view.id}`}
-              aria-selected={active}
-              aria-controls={`inspector-panel-${view.id}`}
-              // Roving tabindex: the tablist is one stop, and Tab re-enters on
-              // whichever tab is showing.
-              tabIndex={active ? 0 : -1}
-              ref={(el) => {
-                if (el) tabRefs.current.set(view.id, el);
-                else tabRefs.current.delete(view.id);
-              }}
-              onClick={() => setSelected(view.id)}
-              onKeyDown={(event) => onTabKeyDown(event, index)}
-              className={`-mb-px flex h-10 min-w-0 flex-1 items-center justify-center gap-2 border-b-2 px-3 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent motion-reduce:transition-none ${
-                active ? 'border-accent text-text' : 'border-transparent text-muted hover:text-text'
-              }`}
-            >
-              <span className={`truncate text-sm leading-[20px] ${active ? 'font-semibold' : ''}`}>
-                {view.label}
-              </span>
-              {detail !== null && (
-                <span className="shrink-0 font-mono text-xs leading-[18px] text-muted">
-                  {detail}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      {/* A row, so the column stretches to this wrapper's height and scrolls
+          inside its own `overflow-y-auto` rather than overflowing it. */}
+      <div className="flex min-h-0 flex-1">
+        <ProjectActivity state={state} diff={diff} claudeContext={claudeContext} />
       </div>
-
-      {/* Both panels, every pass; `hidden` picks the one on screen. */}
-      <div className="relative min-h-0 flex-1">
-        <div
-          id="inspector-panel-tasks"
-          role="tabpanel"
-          aria-labelledby="inspector-tab-tasks"
-          // A focus stop so the checklist can be scrolled from the keyboard.
-          // The hidden panel is display:none and so is out of the tab order
-          // and out of the accessibility tree with it.
-          tabIndex={0}
-          className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
-            selected === 'tasks' ? '' : 'hidden'
-          }`}
-        >
-          <TaskPanel state={state} claudeContext={claudeContext} />
-        </div>
-        <div
-          id="inspector-panel-history"
-          role="tabpanel"
-          aria-labelledby="inspector-tab-history"
-          tabIndex={0}
-          className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent ${
-            selected === 'history' ? '' : 'hidden'
-          }`}
-        >
-          {/* Its own copy for its own absence: an empty history says no run has
-              been ARCHIVED, which is a different fact from a project with no
-              plan, and HistoryPanel keeps saying it in its own words — along
-              with each run's title, slug, date, time, branch and the count of
-              the older runs the window is holding back. */}
-          <HistoryPanel history={state?.history ?? []} />
-        </div>
-      </div>
-
-      {/* TASK 75. Project & Git, as the one disclosure the mockup draws at the
-          foot of the column. It is PanelSection — the rail's own header,
-          chevron and aria-expanded — rather than a second collapsible invented
-          here. PropertiesPanel is handed through untouched, so every git state
-          it already surfaces survives: the branch list, the explicit
-          `detached` flag, `available: false`, git's verbatim error, the hidden
-          count and the unfinished-task warning. Nothing here retries a refused
-          checkout and nothing here forces one. */}
-      <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-border">
-        <PanelSection
-          title="Project & Git"
-          collapsed={gitCollapsed}
-          onToggle={onToggleGit}
-          // The branch, when git names one. A detached HEAD names none, and is
-          // left to PropertiesPanel to say in full rather than guessed at from
-          // the absence here.
-          detail={gitInfo?.branch ?? undefined}
-        >
-          <PropertiesPanel
-            gitInfo={gitInfo}
-            incompleteTasks={state ? Math.max(0, state.total - state.done) : 0}
-            busy={gitBusy}
-            error={gitError}
-            onCheckout={onCheckout}
-            onCreateBranch={onCreateBranch}
-          />
-        </PanelSection>
-      </div>
-    </aside>
+    </div>
   );
 }
 

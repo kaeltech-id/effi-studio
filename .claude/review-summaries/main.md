@@ -1,101 +1,97 @@
-# Review Summary — Proof Mode
+# Review Summary — Workbench v2
 _Date: 2026-10-30_
 
 ## Feature
-Proof Mode — pisahkan "mengubah" dari "membuktikan" di plan/refine/execute
+Workbench v2 — ambil mockup persis di mana produk bisa jujur (proof mode: handoff)
 
 ## Tasks completed
-All 13 tasks `- [x]` (see `.claude/plans/archive/`). Waves: 3.
+All 14 `- [x]`, 4 waves. See `.claude/plans/archive/`.
 
 ## Files modified
-- `commands/ec-brainstorm.md`, `commands/ec-plan.md`, `commands/ec-refine.md`,
-  `commands/ec-execute.md`, `commands/ec-review.md`, `tests/test_command_docs.py`
-- `hooks/session_stop.py` — **outside the plan's declared File: set**, added during review
-Blast radius: no dependents — isolated change.
+New: `workspace-rail.tsx`, `segmented.tsx`, `project-activity.tsx`, `composer.tsx`,
+`tests/test_workbench_v2.py`, Rust `git_diff_stat`.
+Rewritten: `project-sidebar.tsx`, `task-panel.tsx`, `history-panel.tsx`, `flow-bar.tsx`,
+`workbench.tsx`, left column of `App.tsx`, `types.ts`, `tauri-api.ts`, `git.rs`, `lib.rs`,
+`tab-strip.tsx`, `tauri.conf.json`.
+Out of plan scope, during execution: `tests/test_studio_guards.py` (PTY-writer allowlist).
+Blast radius: no dependents.
+
+## Answering the actual question
+"Bisa dibuat sama persis?" — **Structurally yes; literally no, and the gaps are named.**
+All three columns match the Contract's order exactly and all 19 Contract copy strings are
+verbatim. The palette already matched before this cycle. What cannot match:
+
+- **The centre body stays a terminal.** The mockup draws a chat transcript; the app runs
+  CLI agents in a PTY with no structured message stream, so bubbles, avatars, tool-call
+  cards and diff cards would be invented content. Declared.
+- **Three mockup elements have no data source at all** and were refused rather than faked:
+  the history note card (`HistoryEntry` has no note field), the task subtitle (`Task` is
+  `{done, text}`), and the per-row ellipsis menus (no handlers).
+- **The flow strip names the real six-value `Stage` enum**, not the mockup's four generic
+  labels, which would have mislabelled the user's own `/ec-*` chain.
+- **Brand blue and violet cannot carry borders, text, rings or strokes** — 3.82:1 and
+  4.49:1 on navy, banned by `test_studio_guards.py:634`. Selected states use
+  `border-accent bg-accent-tint` instead of the mockup's blue edge.
 
 ## Issues fixed during review
-Stage 1 clean; evidence audit 13/13 at execution time.
+Three reviewers: visual fidelity vs the mockup, React quality/type safety, accessibility.
 
-Stage 2 found severe defects in what had just shipped. Two independent reviewers;
-every claim below was verified against the files before fixing.
+**Two WCAG AA failures, both blocking, both fixed**
+- `project-sidebar.tsx:180` (SC 2.4.7) — the project menu's only item **removes a project**,
+  focus is moved onto it programmatically when the menu opens, and the sole focus indicator
+  was `bg-raised` → `bg-hover` at **1.12:1**: invisible. A keyboard user's focus landed on a
+  destructive control with no visible indication. Now uses the file's own `FOCUS` ring.
+- `project-activity.tsx:90` (SC 1.4.3) — `opacity-60` on the failed Git card composited the
+  **error reason** to **3.79:1** at 12px. The one line saying *why* git failed was the one
+  that faded below the floor. Opacity dropped (→ 8.34:1), reason promoted to `text-text`,
+  and the `aria-disabled` it hung on removed (not a supported state on `role="region"`).
+- `composer.tsx:125` (SC 2.4.7, contested) — the only control sharing a keyboard surface
+  with a live terminal had no focus ring, while the constant sat ten lines above it. Fixed.
 
-**Blocking — the mode was unusable as shipped**
-- `handoff` skipped every grounding baseline, but `/ec-refine` Step 1 can only
-  reach its PASS row via a recorded baseline. The first real `handoff` plan using
-  `grep -c` would be reported DEFECT, the chain would delete its own sentinel, and
-  `/ec-plan` would regenerate the identical plan. Deadlock. This plan's own tasks
-  used that exact pattern. → per-string baselines are now explicitly still recorded.
-- The allowed-check whitelist (`ec-plan`) and the forbidden-verb blacklist
-  (`ec-refine`) were not complements: `npm test`, `jest`, `vitest`, `go build`,
-  `make`, `eslint`, `ruff`, `mypy` were on neither, so they passed refine and burned
-  the wall-clock the mode exists to remove; while `wc -l`, `ls`, `jq`, `test -d`
-  were cheap but unlisted, so correct plans were rejected by the letter.
-  → one authoritative allowed-check rule in `ec-plan`, referenced by name elsewhere.
-- `/ec-review` on `handoff` would reach for `cargo check` as the "equivalent"
-  type-check — a 35.97s Rust compile, the very measurement used to draw the line.
-- "a task carries exactly six lines / `Anchor` never dropped" contradicted
-  `Anchor` being exception-only, so authors would write `Anchor: new file` on every
-  new-file task and the plan lint would flag every one. → "six core lines" plus the
-  exception-only lines, with `Anchor`'s own exception restored.
-- Four unconditional checklist items (traceability, Acceptance, measured
-  thresholds, API error handling) demanded the opposite of the `handoff` rules.
-- The mode was never parsed on the saved-brainstorms path, and `/ec-review` deletes
-  the decision file on a clean review — so a declared `in-cycle` silently became
-  `handoff` and the record was destroyed. → the mode is now stamped into the plan
-  file, which all four commands read and which survives both deletion paths.
-- The `### Handoff` block — the deliverable of the whole mode — was written at plan
-  time and never surfaced again; `/ec-execute`'s read order skips it and `/ec-review`
-  never printed it. → `/ec-review` now echoes it verbatim in the report and summary.
-- Nothing checked that a rejected proof step reappears in `### Handoff`, so deleting
-  a proof step was the cheapest way to pass the gate — the exact decay path the
-  guard class claims to prevent.
-- "build the DMG" under the default mode pitted the never-overridden deliverable
-  rule against the no-build checklist item, with no resolution. → escalate to
-  `in-cycle` when the requested deliverable IS the artifact.
-- Authoring a test is *changing*, not *proving*, so skipping the whole unit-test
-  gate on `handoff` smuggled a scope decision into a proof decision. → the offer
-  stands in both modes; only a slow suite moves to Handoff.
+**Two real React bugs, both fixed**
+- A module `WeakMap` bridged the project path to `Inspector`, keyed on the `ProjectState`
+  object — which `App.tsx:771` **replaces on every `.claude/` write**. During `/ec-execute`
+  the Git card therefore blanked to "No git status yet" and spawned an extra
+  `git diff --numstat` subprocess on every plan-file write. The code's own comment claimed
+  the bridge *prevented* that frame; it was the only thing producing it. Replaced with a
+  `projectPath` prop from `App.tsx:1397`, which already held the value. −75 lines.
+- `useGitDiffStat` retained the **previous project's** numbers under the **new project's**
+  branch pill for the length of a git subprocess. The stat is now keyed to its own path.
 
-**Security — the new guardrail did not hold**
-- The outward-facing confirmation bound the orchestrator, but subagents run the
-  commands and the Step 4 prompt list never mentioned it — and pre-flight cannot
-  even see `Code sample`, because Step 1 deliberately skips `### Per Task Detail`.
-- `hooks/session_stop.py` injected "Do not stop. Invoke /ec-execute now and continue
-  the chain to completion" with no carve-out for a pending confirmation. That is the
-  only part of the system running as code, so it outranked the prose rule. Observed
-  first-hand: this session received that message repeatedly.
-  → `.claude/.awaiting-confirm-{branch}` makes the driver stay silent; proven at runtime.
-- "auto-skip confirmation gates" was unqualified in `ec-execute` and `ec-plan`.
-- The trigger set was a closed enumeration; `$HOME`, `~/.claude/`, messaging APIs,
-  non-production datastores and global package installs all fell outside it, and a
-  self-assessed read-only carve-out failed open. → principle over enumeration,
-  ambiguity resolves to asking, no read-only escape.
-- A denial routed straight into "Retry / Skip / Fix manually?" with nothing
-  recording it. → `- [~]` marks a denied task durably.
+**Visual fidelity, fixed**
+- `tauri.conf.json` default window 1180×760 → **1500×950**. At 1180 the centre column was
+  480px against the Contract's 886px, so every flow-strip label truncated on first run —
+  the mockup was unreachable at launch.
+- `tab-strip.tsx:281` — dropped `bg-surface` + `border-b` so the tabs float, which the plan
+  itself specified ("only its container chrome changes") and execution had not done.
 
-**Tests** 122 → 137. Four shipped guards were near-vacuous and were rewritten:
-`test_handoff_defaults_when_undeclared` asserted only that the word `handoff`
-appeared somewhere in a file containing it 15 times — it would have passed on
-"never default to handoff" and could not have caught the bug its own name describes.
-All 19 Proof Mode guards were then mutation-tested: 14 mutations, every one caught,
-after tightening one assertion that passed because a substring survived elsewhere.
+**Under-build of the plan's own task, fixed**
+- Task 3 asked for "the frontend types **and api wrapper**"; only the type landed, so
+  `workbench.tsx` called `invoke()` directly against the rule `tauri-api.ts:33-37` states.
+  `api.gitDiffStat` added; the direct `invoke` import removed.
+- `project-sidebar.tsx` `as Node` cast replaced with `instanceof` narrowing; `Segmented`'s
+  option/props types exported so a caller cannot silently widen `T` to `string`.
 
-## Known gaps, deliberately not closed
-- `hooks/session_stop.py` edit takes effect only after `bash install.sh`; the
-  running copy is `~/.efficlaude/hooks/session_stop.py`.
-- No `PreToolUse` hook denies `ssh`/`kubectl`/`terraform` by default. The rule is
-  still prose plus a sentinel; a real deny-by-default gate would be the actual
-  control. Flagged, not built — it changes how the toolkit permissions behave.
-- `.claude/decisions/main.md` listed "changing /ec-brainstorm" as a Non-Goal while
-  Task 1 edits it. The edit is right; the non-goal was wrong.
-- `studio/VERIFICATION.md:173` still reads "no DMG was built", false since the
-  previous cycle. Out of scope both times.
+## Known gaps, deliberately NOT fixed
+- **Branch checkout and create-branch are gone from the UI.** The Contract's right column
+  ends with the `Project & Git` card and draws no switcher, so following it removed the
+  surface that mounted `PropertiesPanel`. Rust commands and api wrappers are intact. This is
+  a product decision and should land as its own change with that stated, not as cleanup.
+  `properties-panel.tsx` is orphaned and the seven git props stay accepted-and-unread until
+  then — they are what keep the feature's wiring visible.
+- **The Rust in this cycle has never been compiled.** `git.rs` and `lib.rs` changed;
+  `cargo check` measures 35.97s and the allowed-check rule makes it a Handoff step.
+- Four different "selected" expressions across the columns, four copies of the branch pill,
+  `role="tree"` without a tree keyboard model, the flow bar's undeclared command row, and the
+  tab `+` pinned to the column edge — all recorded, none urgent.
 
 ## Review result
 | Check | Status |
 |-------|--------|
-| Spec compliance | ✓ |
-| Code quality | ✓ after fixes |
-| Security | ✓ after fixes (2 gaps flagged above) |
-| Tests | 15 guards added · suite 265 passed, 0 failed |
-| Compilation | n/a — no `.ts`/`.tsx`/`.rs` touched; deferred by design on `handoff` |
+| Spec compliance | ✓ 14/14, evidence audit 14/14 |
+| Visual fidelity | ✓ after fixes — structure exact, named deviations only |
+| Code quality / type safety | ✓ after fixes |
+| Accessibility | ✓ after fixes (2 AA failures found and closed) |
+| Tests | 8 guards added · suite 265 → 273 passed, 0 failed |
+| Type-check | ✓ `tsc --noEmit` clean |
+| Rust compile | **deferred to Handoff by proof mode** |
